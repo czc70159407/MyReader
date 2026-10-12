@@ -154,9 +154,10 @@ fun ReaderScreen(
                     load = { viewModel.loadOutline() },
                     onDismiss = { showOutline = false },
                     // 跳页同步通知 VM：不依赖下一帧渲染回调，防同帧退出时 flush 落旧页；
-                    // clamp 防损坏大纲越界页码落库（渲染端 setDisplayedViewIndex 对越界 no-op）
+                    // clamp 防损坏大纲越界页码落库（渲染端 setDisplayedViewIndex 对越界 no-op），
+                    // coerceAtLeast 与 ReaderViewModel.initialPage 处同款防御（pageCount=0 时上界不越 -1）
                     onJump = { page ->
-                        val target = page.coerceIn(0, s.pageCount - 1)
+                        val target = page.coerceIn(0, (s.pageCount - 1).coerceAtLeast(0))
                         uiPage = target
                         viewModel.onPageChanged(target)
                     },

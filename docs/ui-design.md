@@ -32,8 +32,14 @@ fun MuPdfReaderView(
                 override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                     super.onSizeChanged(w, h, oldw, oldh)
                     // 旋转/分屏等尺寸变化必须 refresh()：复用的 PageView 持旧尺寸位图会白屏
-                    // （M4 真机回归发现；refresh 重建子 view + adapter 页尺寸缓存）
-                    if (oldw > 0 && (w != oldw || h != oldh)) refresh()
+                    // （M4 真机回归发现；refresh 重建子 view + adapter 页尺寸缓存）。
+                    // 分屏拖动每帧触发 onSizeChanged，全量重建成本高——去抖 150ms 静止后执行一次。
+                    // 去抖窗口内 onLayout2 会以「旧布局值 + 新屏宽」误判自动翻页 → 锁存并恢复
+                    // 尺寸变化瞬间的 mCurrent（完整实现见 MuPdfReaderView.kt：lockedCurrent 机制）
+                    if (oldw <= 0 || (w == oldw && h == oldh)) return
+                    refreshPending?.let(::removeCallbacks)
+                    refreshPending = Runnable { /* 恢复锁存页 + refresh() */ }
+                        .also { postDelayed(it, SIZE_SETTLE_DELAY_MS) }
                 }
             }.apply {
                 setAdapter(adapter)

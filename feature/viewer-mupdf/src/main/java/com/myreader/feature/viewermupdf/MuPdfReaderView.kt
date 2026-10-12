@@ -13,6 +13,9 @@ import com.artifex.mupdf.viewer.PageAdapter
 import com.artifex.mupdf.viewer.ReaderView
 import com.myreader.core.document.ProgressPayload
 
+/** 连续尺寸变化（分屏拖动分隔条等）静止该时长后才执行一次全量重建 */
+private const val SIZE_SETTLE_DELAY_MS = 150L
+
 /**
  * AndroidView 桥接 MuPDF [ReaderView]（瓦片渲染 + BitmapPool，预渲染窗口 ±1 页由其内部管理）。
  *
@@ -39,6 +42,13 @@ internal fun MuPdfReaderView(
             val adapter = PageAdapter(ctx, core)
             adapterRef.value = adapter
             object : ReaderView(ctx) {
+                private var refreshPending: Runnable? = null
+
+                /** 尺寸变化瞬间锁存的当前页：去抖窗口内 onLayout2 可能以「旧布局值 + 新屏宽」
+                 * 误判自动翻页（横屏居中页 left ≥ 竖屏半宽 → mCurrent--，ReaderView.java:631-640），
+                 * settle 后据此恢复，保证旋转/拖动不丢页 */
+                private var lockedCurrent = -1
+
                 override fun onMoveToChild(i: Int) {
                     super.onMoveToChild(i)
                     latestCallback(ProgressPayload.Page(i))
@@ -46,13 +56,26 @@ internal fun MuPdfReaderView(
 
                 override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                     super.onSizeChanged(w, h, oldw, oldh)
-                    // 旋转/分屏等尺寸变化：重建全部子 view 与共享位图。
-                    // 本桥接声明 configChanges 避免 Activity 重建 native 句柄，
-                    // 而 ReaderView 复用的 PageView 持有旧尺寸位图会白屏——
-                    // ReaderView.refresh() 即为此设计（重建子 view + adapter 页尺寸缓存）。
-                    if (oldw > 0 && (w != oldw || h != oldh)) {
-                        refresh()
-                    }
+                    // 尺寸变化需 refresh() 重建全部子 view 与共享位图（configChanges 下 Activity
+                    // 不重建，复用的 PageView 持旧尺寸位图会白屏）。分屏拖动分隔条等场景下
+                    // onSizeChanged 每帧触发，全量重建成本高（约 2x10MB 位图 + native 重渲染）——
+                    // 去抖：连续变化只在静止 SIZE_SETTLE_DELAY_MS 后执行一次。
+                    if (oldw <= 0 || (w == oldw && h == oldh)) return
+                    if (refreshPending == null) lockedCurrent = mCurrent   // pending 期间不覆盖（拒绝误判拨动值）
+                    refreshPending?.let(::removeCallbacks)
+                    refreshPending = Runnable {
+                        refreshPending = null
+                        if (isAttachedToWindow) {
+                            if (lockedCurrent >= 0 && mCurrent != lockedCurrent) {
+                                // 恢复锁存页（同步回调链：uiPage/进度防抖随之复位为正确页）
+                                onMoveOffChild(mCurrent)
+                                mCurrent = lockedCurrent
+                                onMoveToChild(lockedCurrent)
+                            }
+                            lockedCurrent = -1
+                            refresh()
+                        }
+                    }.also { postDelayed(it, SIZE_SETTLE_DELAY_MS) }
                 }
             }.apply {
                 setAdapter(adapter)

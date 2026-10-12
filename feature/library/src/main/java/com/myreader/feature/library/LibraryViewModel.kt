@@ -16,6 +16,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
@@ -48,6 +50,10 @@ class LibraryViewModel @Inject constructor(
     private val allFolders: StateFlow<List<Folder>> =
         repository.observeAllFolders().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** 首帧数据加载中：三个数据流首次发射前为 true（书架显示加载占位，避免空态闪现） */
+    val initialLoad: StateFlow<Boolean> = combine(folders, documents, allFolders) { _, _, _ -> false }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
+
     /** 面包屑层级（根「书架」之后的祖先目录名链，根→当前有序）；根目录时为空。
      *  当前目录被删除时随全量目录刷新自然回退（列表转空态，不崩溃） */
     val breadcrumb: StateFlow<List<String>> = allFolders.map { all ->
@@ -68,9 +74,22 @@ class LibraryViewModel @Inject constructor(
 
     // ---- 目录 / 文档管理操作 ----
 
+    /** 同父重名校验（folders 表无 UNIQUE(parentId,name)，业务层拦截静默重名） */
+    private suspend fun requireUniqueFolder(parentId: Long?, name: String, excludeId: Long? = null) {
+        val duplicate = repository.foldersIn(parentId).first().any { it.name == name && it.id != excludeId }
+        if (duplicate) throw IllegalArgumentException("该目录下已存在同名文件夹")
+    }
+
+    /** 同父文档重名校验 */
+    private suspend fun requireUniqueDocTitle(folderId: Long?, title: String, excludeId: Long) {
+        val duplicate = repository.docsIn(folderId, DocSort.TITLE).first().any { it.title == title && it.id != excludeId }
+        if (duplicate) throw IllegalArgumentException("该目录下已存在同名文档")
+    }
+
     fun createSubFolder(parentId: Long?, name: String) = launchOp {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@launchOp ""
+        requireUniqueFolder(parentId, trimmed)
         repository.createFolder(parentId, trimmed)
         "已创建文件夹「$trimmed」"
     }
@@ -81,6 +100,7 @@ class LibraryViewModel @Inject constructor(
             try {
                 val trimmed = name.trim()
                 if (trimmed.isEmpty()) return@launch
+                requireUniqueFolder(parentId, trimmed)
                 val id = repository.createFolder(parentId, trimmed)
                 if (parentId != null) folderTree.expanded[parentId] = true
                 _messages.send("已创建文件夹「$trimmed」")
@@ -98,6 +118,8 @@ class LibraryViewModel @Inject constructor(
     fun renameFolder(id: Long, name: String) = launchOp {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@launchOp ""
+        val folder = repository.getFolder(id) ?: throw IllegalArgumentException("目录不存在: $id")
+        requireUniqueFolder(folder.parentId, trimmed, excludeId = id)
         repository.renameFolder(id, trimmed)
         "已重命名文件夹"
     }
@@ -108,6 +130,8 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun moveFolder(id: Long, newParentId: Long?) = launchOp {
+        val folder = repository.getFolder(id) ?: throw IllegalArgumentException("目录不存在: $id")
+        if (folder.parentId == newParentId) return@launchOp "文件夹已在该目录"
         repository.moveFolder(id, newParentId)
         "已移动文件夹"
     }
@@ -115,11 +139,15 @@ class LibraryViewModel @Inject constructor(
     fun renameDocument(id: Long, title: String) = launchOp {
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return@launchOp ""
+        val doc = repository.getDocument(id) ?: throw IllegalArgumentException("文档不存在: $id")
+        requireUniqueDocTitle(doc.folderId, trimmed, excludeId = id)
         repository.renameDocument(id, trimmed)
         "已重命名文档"
     }
 
     fun moveDocument(id: Long, newFolderId: Long?) = launchOp {
+        val doc = repository.getDocument(id) ?: throw IllegalArgumentException("文档不存在: $id")
+        if (doc.folderId == newFolderId) return@launchOp "文档已在该目录"
         repository.moveDocument(id, newFolderId)
         "已移动文档"
     }
@@ -180,7 +208,7 @@ class LibraryViewModel @Inject constructor(
 
     private var duplicateDecision: CompletableDeferred<Boolean>? = null
 
-    fun importUris(uris: List<Uri>, targetFolderId: Long?, force: Boolean = false) {
+    fun importUris(uris: List<Uri>, targetFolderId: Long?) {
         if (uris.isEmpty() || _importing.value) return
         viewModelScope.launch {
             _importing.value = true
@@ -190,7 +218,7 @@ class LibraryViewModel @Inject constructor(
                 var rejected = 0
                 var failed = 0
                 for (uri in uris) {
-                    var r = importer.import(uri, targetFolderId = targetFolderId, force = force)
+                    var r = importer.import(uri, targetFolderId = targetFolderId)
                     if (r.status == DocumentImporter.Status.DUPLICATE_SKIPPED) {
                         // 重复逐个确认（M5）：挂起等待用户决策，确认后对该 uri force 重导
                         val stillImport = awaitDuplicateDecision(uri, r.existingTitle)

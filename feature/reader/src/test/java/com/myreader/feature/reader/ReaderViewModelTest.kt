@@ -265,6 +265,7 @@ class ReaderViewModelTest {
 
         override fun foldersIn(parentId: Long?): Flow<List<com.myreader.core.model.Folder>> = TODO()
         override fun observeAllFolders(): Flow<List<com.myreader.core.model.Folder>> = TODO()
+        override suspend fun getFolder(id: Long): com.myreader.core.model.Folder? = TODO()
         override suspend fun subtree(rootId: Long): List<com.myreader.core.model.Folder> = TODO()
         override suspend fun createFolder(parentId: Long?, name: String): Long = TODO()
         override suspend fun renameFolder(id: Long, name: String) = TODO()

@@ -87,6 +87,7 @@ fun LibraryScreen(
     val folders by viewModel.folders.collectAsStateWithLifecycle()
     val documents by viewModel.documents.collectAsStateWithLifecycle()
     val breadcrumb by viewModel.breadcrumb.collectAsStateWithLifecycle()
+    val initialLoad by viewModel.initialLoad.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val pendingDuplicate by viewModel.pendingDuplicate.collectAsStateWithLifecycle()
     val pendingImportUris by viewModel.pendingImportUris.collectAsStateWithLifecycle()
@@ -165,7 +166,15 @@ fun LibraryScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (folders.isEmpty() && documents.isEmpty()) {
+            when {
+                // 首帧数据未到达前显示加载占位，避免每层导航闪现空态
+                initialLoad -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+                folders.isEmpty() && documents.isEmpty() -> {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -184,7 +193,8 @@ fun LibraryScreen(
                         modifier = Modifier.padding(top = 16.dp),
                     )
                 }
-            } else {
+            }
+                else -> {
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 108.dp),
                     modifier = Modifier.fillMaxSize(),
@@ -218,7 +228,8 @@ fun LibraryScreen(
                         )
                     }
                 }
-            }
+            }   // else -> 网格分支
+        }   // when（initialLoad / 空态 / 网格）
 
             if (importing) {
                 Row(
@@ -347,7 +358,16 @@ fun LibraryScreen(
                     moveFolderTarget = null
                 },
                 onDismiss = { moveFolderTarget = null },
-                onCreateSubFolder = viewModel::createFolderAndSelect,
+                onCreateSubFolder = { parentId, name, onCreated ->
+                    // 弹窗内新建的目录实时并入排除集（父在排除集内则新目录必为其后代），
+                    // 避免「打开时快照」漏掉新建后代而绕过 UI 前置禁选
+                    viewModel.createFolderAndSelect(parentId, name) { newId ->
+                        if (parentId != null && parentId in excludedIds) {
+                            excluded = excludedIds + newId
+                        }
+                        onCreated(newId)
+                    }
+                },
                 excludedIds = excludedIds,
                 initialSelectedId = null,
             )

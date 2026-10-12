@@ -31,6 +31,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -39,6 +40,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -182,6 +184,34 @@ class LibraryViewModelTest {
         }
     }
 
+    // ---- 真实时钟轮询断言（消息由 Room 真实线程恢复链发出，时序不定，用收集列表而非 turbine 队头）----
+
+    private val receivedMessages = mutableListOf<String>()
+
+    private fun kotlinx.coroutines.test.TestScope.startCollectingMessages() {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.messages.collect { receivedMessages.add(it) }
+        }
+    }
+
+    private suspend fun awaitMessage(expected: String, timeoutMs: Long = 5_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (receivedMessages.contains(expected)) return
+            delay(10)
+        }
+        throw AssertionError("未收到消息「$expected」，实际收到: $receivedMessages")
+    }
+
+    private suspend fun awaitFolderChildren(expected: Int, timeoutMs: Long = 5_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (db.folderDao().children(null).first().size == expected) return
+            delay(10)
+        }
+        throw AssertionError("等待根级目录数 $expected 超时")
+    }
+
     @Test
     fun importPick_confirm_importsIntoSelectedFolder() = runTest(mainDispatcherRule.testScheduler) {
         val targetId = repository.createFolder(null, "目标")
@@ -264,7 +294,6 @@ class LibraryViewModelTest {
         val b = repository.createFolder(a, "b")
 
         viewModel.moveFolder(a, b)   // 移到自己的后代
-        idle()
 
         viewModel.messages.test {
             assertEquals("不能把目录移动到自己的子树内", awaitItem())
@@ -272,6 +301,60 @@ class LibraryViewModelTest {
         }
         // 结构未变
         assertEquals(a, db.folderDao().findById(b)!!.parentId)
+    }
+
+    @Test
+    fun createSubFolder_rejectsDuplicateName_sameParent() = runTest(mainDispatcherRule.testScheduler) {
+        startCollectingMessages()
+
+        viewModel.createSubFolder(null, "文档")
+        awaitFolderChildren(1)   // 真实等待首次落库，避免第二次查重在 insert 前执行
+
+        viewModel.createSubFolder(null, "文档")   // 同父重名
+        idle()
+
+        awaitMessage("该目录下已存在同名文件夹")
+        // 仅 1 条落库
+        assertEquals(1, db.folderDao().children(null).first().size)
+    }
+
+    @Test
+    fun renameDocument_rejectsDuplicateTitle_sameFolder() = runTest(mainDispatcherRule.testScheduler) {
+        startCollectingMessages()
+        val id1 = repository.addDocument(
+            folderId = null, title = "same.pdf", relPath = "1.pdf",
+            fileType = "pdf", mimeType = null, sourceUri = null,
+            fileSize = 1, contentHash = "h1", pageCount = 1,
+        )
+        repository.addDocument(
+            folderId = null, title = "other.pdf", relPath = "2.pdf",
+            fileType = "pdf", mimeType = null, sourceUri = null,
+            fileSize = 1, contentHash = "h2", pageCount = 1,
+        )
+
+        viewModel.renameDocument(id1, "other.pdf")   // 同父重名
+        idle()
+
+        awaitMessage("该目录下已存在同名文档")
+        // title 未变
+        assertEquals("same.pdf", db.documentDao().findById(id1)!!.title)
+    }
+
+    @Test
+    fun moveDocument_sameFolder_shortCircuitsWithNotice() = runTest(mainDispatcherRule.testScheduler) {
+        startCollectingMessages()
+        val targetId = repository.createFolder(null, "T")
+        viewModel.onUrisPicked(listOf(registerPdf("a.pdf")))
+        viewModel.confirmImportPick(targetId)
+        awaitDocCount(targetId, 1)
+        awaitMessage("导入 1 个")
+
+        val docId = db.documentDao().docsInByTitle(targetId).first().first().id
+        viewModel.moveDocument(docId, targetId)   // 移回当前所在目录：短路提示
+
+        awaitMessage("文档已在该目录")
+        // 不应出现「已移动文档」假反馈
+        assertFalse(receivedMessages.contains("已移动文档"))
     }
 
     @Test

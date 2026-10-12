@@ -98,6 +98,15 @@ class LibraryRepositoryImplTest {
     }
 
     @Test
+    fun getFolder_returnsModelOrNull() = runTest {
+        val f1 = repo.createFolder(null, "root")
+        val folder = repo.getFolder(f1)!!
+        assertEquals("root", folder.name)
+        assertNull(folder.parentId)
+        assertNull(repo.getFolder(999_999L))
+    }
+
+    @Test
     fun moveFolder_rejectsCycle() = runTest {
         val f1 = repo.createFolder(null, "a")
         val f2 = repo.createFolder(f1, "b")

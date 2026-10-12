@@ -27,8 +27,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
-/** 展开箭头图标占位宽度，无子级目录用它对齐 */
-private val TOGGLE_SLOT = 32.dp
+/** 展开箭头触达区宽度（48dp 无障碍最小触达），无子级目录用它对齐 */
+private val TOGGLE_SLOT = 48.dp
 private val INDENT_STEP = 16.dp
 
 /**
@@ -115,6 +115,6 @@ private fun ExpandToggle(hasChildren: Boolean, expanded: Boolean, onToggle: () -
         modifier = Modifier
             .size(TOGGLE_SLOT)
             .clickable(onClick = onToggle)
-            .padding(6.dp),
+            .padding(12.dp),   // 视觉图标 24dp，触达区保持 48dp
     )
 }

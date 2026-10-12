@@ -1,6 +1,7 @@
 package com.myreader.feature.library
 
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.myreader.core.data.repo.LibraryRepository
@@ -9,42 +10,177 @@ import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * 书架 ViewModel：根目录文档/文件夹流 + SAF 导入编排 + 重复导入确认交互。
- * M3 展示根目录（folderId=null）；目录树导航 M5 引入。
+ * 书架 ViewModel：目录浏览（M5 路由参数 folderId，null=根）+ 目录/文档管理操作 + SAF 导入编排。
+ * 全量目录流派生当前目录名；目录树状态（FolderTreeState）供 FolderPickerDialog 选目标。
  */
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
-    repository: LibraryRepository,
+    savedStateHandle: SavedStateHandle,
+    private val repository: LibraryRepository,
     private val importer: DocumentImporter,
 ) : ViewModel() {
 
+    /** 当前浏览目录（路由参数）：-1 哨兵（NavType.LongType 不允许 nullable）与缺失均视为根 */
+    private val folderId: Long? = savedStateHandle.get<Long>("folderId")?.takeIf { it != -1L }
+    val isRoot: Boolean = folderId == null
+
+    /** picker 弹窗默认选中项（= 当前浏览目录） */
+    val currentFolderId: Long? get() = folderId
+
     val folders: StateFlow<List<Folder>> =
-        repository.foldersIn(null).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        repository.foldersIn(folderId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val documents: StateFlow<List<LibraryItem>> =
-        repository.docsIn(null, DocSort.TITLE).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        repository.docsIn(folderId, DocSort.TITLE).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val allFolders: StateFlow<List<Folder>> =
+        repository.observeAllFolders().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 面包屑层级（根「书架」之后的祖先目录名链，根→当前有序）；根目录时为空。
+     *  当前目录被删除时随全量目录刷新自然回退（列表转空态，不崩溃） */
+    val breadcrumb: StateFlow<List<String>> = allFolders.map { all ->
+        buildList {
+            var cur = folderId?.let { id -> all.find { it.id == id } }
+            while (cur != null) {
+                add(0, cur.name)
+                cur = cur.parentId?.let { pid -> all.find { it.id == pid } }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 目录树状态（FolderPickerDialog 选目标用），懒创建避免无弹窗场景开销 */
+    val folderTree: FolderTreeState by lazy { FolderTreeState(repository, viewModelScope) }
+
+    /** 移动文件夹前置校验用：该目录自身 + 全部后代 id（这些目标禁选，防循环） */
+    suspend fun subtreeIds(id: Long): Set<Long> = repository.subtree(id).map { it.id }.toSet()
+
+    // ---- 目录 / 文档管理操作 ----
+
+    fun createSubFolder(parentId: Long?, name: String) = launchOp {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return@launchOp ""
+        repository.createFolder(parentId, trimmed)
+        "已创建文件夹「$trimmed」"
+    }
+
+    /** FolderPickerDialog 内新建子目录：创建成功后回调新 id（picker 自动选中）并展开父级 */
+    fun createFolderAndSelect(parentId: Long?, name: String, onCreated: (Long) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val trimmed = name.trim()
+                if (trimmed.isEmpty()) return@launch
+                val id = repository.createFolder(parentId, trimmed)
+                if (parentId != null) folderTree.expanded[parentId] = true
+                _messages.send("已创建文件夹「$trimmed」")
+                onCreated(id)
+            } catch (e: IllegalArgumentException) {
+                _messages.send(e.message ?: "创建失败")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _messages.send("创建失败：${e.message ?: "未知错误"}")
+            }
+        }
+    }
+
+    fun renameFolder(id: Long, name: String) = launchOp {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return@launchOp ""
+        repository.renameFolder(id, trimmed)
+        "已重命名文件夹"
+    }
+
+    fun deleteFolder(id: Long) = launchOp {
+        repository.deleteFolder(id)
+        "已删除文件夹（其中文档已移至根目录）"
+    }
+
+    fun moveFolder(id: Long, newParentId: Long?) = launchOp {
+        repository.moveFolder(id, newParentId)
+        "已移动文件夹"
+    }
+
+    fun renameDocument(id: Long, title: String) = launchOp {
+        val trimmed = title.trim()
+        if (trimmed.isEmpty()) return@launchOp ""
+        repository.renameDocument(id, trimmed)
+        "已重命名文档"
+    }
+
+    fun moveDocument(id: Long, newFolderId: Long?) = launchOp {
+        repository.moveDocument(id, newFolderId)
+        "已移动文档"
+    }
+
+    fun deleteDocument(id: Long) = launchOp {
+        repository.deleteDocument(id)
+        "已删除文档"
+    }
+
+    /** 统一操作编排：成功发消息，业务校验失败（IllegalArgumentException 带中文 message）走 snackbar，不吞取消 */
+    private fun launchOp(block: suspend () -> String) {
+        viewModelScope.launch {
+            try {
+                val message = block()
+                if (message.isNotEmpty()) _messages.send(message)
+            } catch (e: IllegalArgumentException) {
+                _messages.send(e.message ?: "操作失败")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _messages.send("操作失败：${e.message ?: "未知错误"}")
+            }
+        }
+    }
+
+    // ---- 导入 ----
 
     private val _importing = MutableStateFlow(false)
     val importing: StateFlow<Boolean> = _importing
+
+    /** SAF 选完待确认目标目录的 uris；确认后进 importUris（弹 FolderPickerDialog） */
+    private val _pendingImportUris = MutableStateFlow<List<Uri>?>(null)
+    val pendingImportUris: StateFlow<List<Uri>?> = _pendingImportUris
+
+    /** SAF 回调入口：先存 uris 弹目录选择（默认当前目录），不直接导入 */
+    fun onUrisPicked(uris: List<Uri>) {
+        if (uris.isEmpty() || _importing.value) return
+        _pendingImportUris.value = uris
+    }
+
+    fun cancelImportPick() {
+        _pendingImportUris.value = null
+    }
+
+    fun confirmImportPick(targetFolderId: Long?) {
+        val uris = _pendingImportUris.value ?: return
+        _pendingImportUris.value = null
+        importUris(uris, targetFolderId)
+    }
 
     /** Snackbar 消息通道 */
     private val _messages = Channel<String>(Channel.BUFFERED)
     val messages = _messages.receiveAsFlow()
 
-    /** 重复导入确认弹窗状态：uri + 已存在标题；确认后 force 重导 */
+    /** 重复导入确认弹窗状态：uri + 已存在标题；用户决策后经 deferred 唤醒导入循环 */
     private val _pendingDuplicate = MutableStateFlow<Pair<Uri, String>?>(null)
     val pendingDuplicate: StateFlow<Pair<Uri, String>?> = _pendingDuplicate
 
-    fun importUris(uris: List<Uri>, force: Boolean = false) {
+    private var duplicateDecision: CompletableDeferred<Boolean>? = null
+
+    fun importUris(uris: List<Uri>, targetFolderId: Long?, force: Boolean = false) {
         if (uris.isEmpty() || _importing.value) return
         viewModelScope.launch {
             _importing.value = true
@@ -53,15 +189,18 @@ class LibraryViewModel @Inject constructor(
                 var passwordMarked = 0
                 var rejected = 0
                 var failed = 0
-                var duplicate: Pair<Uri, String>? = null
                 for (uri in uris) {
-                    val r = importer.import(uri, targetFolderId = null, force = force)
+                    var r = importer.import(uri, targetFolderId = targetFolderId, force = force)
+                    if (r.status == DocumentImporter.Status.DUPLICATE_SKIPPED) {
+                        // 重复逐个确认（M5）：挂起等待用户决策，确认后对该 uri force 重导
+                        val stillImport = awaitDuplicateDecision(uri, r.existingTitle)
+                        if (!stillImport) continue
+                        r = importer.import(uri, targetFolderId = targetFolderId, force = true)
+                    }
                     when (r.status) {
                         DocumentImporter.Status.IMPORTED -> imported++
                         DocumentImporter.Status.IMPORTED_PASSWORD_MARKED -> passwordMarked++
-                        DocumentImporter.Status.DUPLICATE_SKIPPED -> {
-                            duplicate = uri to (r.existingTitle ?: "同名文档")
-                        }
+                        DocumentImporter.Status.DUPLICATE_SKIPPED -> Unit
                         DocumentImporter.Status.CORRUPT_REJECTED -> rejected++
                         DocumentImporter.Status.FAILED -> failed++
                     }
@@ -76,22 +215,31 @@ class LibraryViewModel @Inject constructor(
                     if (parts.isEmpty()) "未导入任何文档"
                     else parts.joinToString("；")
                 )
-                // 重复确认：仅单个重复时弹窗（多重复 M5 精化为逐个确认）
-                _pendingDuplicate.value = duplicate
             } finally {
                 _importing.value = false
             }
         }
     }
 
-    /** 用户确认「仍导入」：对重复 uri 走 force 路径 */
+    /** 置重复弹窗状态并挂起等待决策（确认=仍导入 / 跳过=false）。decision 必须先于置位就绪，
+     *  否则观察者看到弹窗状态立即 confirm 时可能读到 null 而丢失恢复信号 */
+    private suspend fun awaitDuplicateDecision(uri: Uri, existingTitle: String?): Boolean {
+        val decision = CompletableDeferred<Boolean>()
+        duplicateDecision = decision
+        _pendingDuplicate.value = uri to (existingTitle ?: "同名文档")
+        return decision.await()
+    }
+
+    /** 用户确认「仍导入」：唤醒导入循环对该 uri 走 force 重导 */
     fun confirmDuplicateImport() {
-        val pending = _pendingDuplicate.value ?: return
         _pendingDuplicate.value = null
-        importUris(listOf(pending.first), force = true)
+        duplicateDecision?.complete(true)
+        duplicateDecision = null
     }
 
     fun dismissDuplicate() {
         _pendingDuplicate.value = null
+        duplicateDecision?.complete(false)
+        duplicateDecision = null
     }
 }

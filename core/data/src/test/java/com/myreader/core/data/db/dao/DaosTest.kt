@@ -71,6 +71,24 @@ class FolderDaoTest {
     }
 
     @Test
+    fun observeAll_emitsAllFolders_andRespondsToChanges() = runTest {
+        folderDao.insert(folder(1, null, "a"))
+        folderDao.insert(folder(2, 1, "b"))
+
+        folderDao.observeAll().test {
+            // 全表观察：与 parentId 无关，各级目录都在结果中
+            assertEquals(setOf(1L, 2L), awaitItem().map { it.id }.toSet())
+
+            folderDao.insert(folder(3, null, "c"))
+            assertEquals(setOf(1L, 2L, 3L), awaitItem().map { it.id }.toSet())
+
+            folderDao.delete(2)
+            assertEquals(setOf(1L, 3L), awaitItem().map { it.id }.toSet())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun move_updatesParent() = runTest {
         folderDao.insert(folder(1, null, "a"))
         folderDao.insert(folder(2, null, "b"))

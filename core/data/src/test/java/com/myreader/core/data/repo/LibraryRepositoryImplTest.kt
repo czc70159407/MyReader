@@ -84,6 +84,20 @@ class LibraryRepositoryImplTest {
     }
 
     @Test
+    fun observeAllFolders_mapsEntitiesToModels() = runTest {
+        val f1 = repo.createFolder(null, "root")
+        val f2 = repo.createFolder(f1, "child")
+
+        repo.observeAllFolders().test {
+            val all = awaitItem()
+            assertEquals(setOf(f1, f2), all.map { it.id }.toSet())
+            assertEquals("root", all.first { it.id == f1 }.name)
+            assertEquals(f1, all.first { it.id == f2 }.parentId)
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
+    @Test
     fun moveFolder_rejectsCycle() = runTest {
         val f1 = repo.createFolder(null, "a")
         val f2 = repo.createFolder(f1, "b")

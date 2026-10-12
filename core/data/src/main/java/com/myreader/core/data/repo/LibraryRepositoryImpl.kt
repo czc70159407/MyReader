@@ -30,6 +30,9 @@ class LibraryRepositoryImpl @Inject constructor(
     override fun foldersIn(parentId: Long?): Flow<List<Folder>> =
         folderDao.children(parentId).map { list -> list.map { it.toModel() } }
 
+    override fun observeAllFolders(): Flow<List<Folder>> =
+        folderDao.observeAll().map { list -> list.map { it.toModel() } }
+
     override suspend fun subtree(rootId: Long): List<Folder> = withContext(dispatchers.io) {
         folderDao.subtree(rootId).map { it.toModel() }
     }

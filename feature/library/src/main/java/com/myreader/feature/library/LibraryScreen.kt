@@ -4,8 +4,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,14 +22,19 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,34 +57,59 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * 书架页（M3）：文档网格展示 + SAF 导入 + 重复确认 + 结果提示。
- * 点击条目 → onDocumentClick 进阅读器（M4 接入）；目录树 M5 引入。
+ * 书架页（M5）：单层目录浏览（子文件夹卡片 + 文档网格）+ SAF 导入（先选目标目录）
+ * + 文件夹/文档长按菜单（重命名/移动/删除/新建子目录）+ 目录树选择弹窗。
+ * 点击文件夹 → onFolderClick 进子目录（library?folderId=xx）；点击文档 → onDocumentClick 进阅读器。
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun LibraryScreen(
     onDocumentClick: (Long) -> Unit = {},
+    onFolderClick: (Long?) -> Unit = {},
+    onNavigateBack: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
+    val folders by viewModel.folders.collectAsStateWithLifecycle()
     val documents by viewModel.documents.collectAsStateWithLifecycle()
+    val breadcrumb by viewModel.breadcrumb.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val pendingDuplicate by viewModel.pendingDuplicate.collectAsStateWithLifecycle()
+    val pendingImportUris by viewModel.pendingImportUris.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // 长按菜单展开目标（卡片内 DropdownMenu 以 menuX?.id == item.id 判断展开）
+    var menuFolder by remember { mutableStateOf<Folder?>(null) }
+    var menuDocument by remember { mutableStateOf<LibraryItem?>(null) }
+
+    // 操作弹窗状态
+    var showNewFolderInCurrent by remember { mutableStateOf(false) }   // 顶栏新建（当前目录）
+    var renameFolderTarget by remember { mutableStateOf<Folder?>(null) }
+    var renameDocTarget by remember { mutableStateOf<LibraryItem?>(null) }
+    var deleteFolderTarget by remember { mutableStateOf<Folder?>(null) }
+    var deleteDocTarget by remember { mutableStateOf<LibraryItem?>(null) }
+    var moveDocTarget by remember { mutableStateOf<LibraryItem?>(null) }
+    var moveFolderTarget by remember { mutableStateOf<Folder?>(null) }  // 移动文件夹（先取 subtree 排除集）
+    var newSubFolderParent by remember { mutableStateOf<Folder?>(null) }  // 长按菜单「新建子目录」目标
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris ->
-        if (uris.isNotEmpty()) viewModel.importUris(uris)
+        if (uris.isNotEmpty()) viewModel.onUrisPicked(uris)
     }
 
     LaunchedEffect(Unit) {
@@ -87,9 +119,44 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(text = "MyReader 书架") },
+                // 面包屑：书架 / A / B ——根级弱化，当前级加粗；单 Text 便于整体省略
+                title = {
+                    Text(
+                        text = buildAnnotatedString {
+                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                                append("书架")
+                            }
+                            breadcrumb.forEachIndexed { i, name ->
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                                    append(" / ")
+                                }
+                                withStyle(
+                                    SpanStyle(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = if (i == breadcrumb.lastIndex) FontWeight.Bold else FontWeight.Normal,
+                                    ),
+                                ) { append(name) }
+                            }
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = {
+                    if (!viewModel.isRoot) {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回上级")
+                        }
+                    }
+                },
                 actions = {
-                    IconButton(onClick = { importLauncher.launch(arrayOf("application/pdf")) }, enabled = !importing) {
+                    IconButton(onClick = { showNewFolderInCurrent = true }) {
+                        Icon(imageVector = Icons.Filled.CreateNewFolder, contentDescription = "新建文件夹")
+                    }
+                    IconButton(
+                        onClick = { importLauncher.launch(arrayOf("application/pdf")) },
+                        enabled = !importing,
+                    ) {
                         Icon(imageVector = Icons.Filled.Add, contentDescription = "导入 PDF")
                     }
                 },
@@ -98,7 +165,7 @@ fun LibraryScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (documents.isEmpty()) {
+            if (folders.isEmpty() && documents.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -111,7 +178,7 @@ fun LibraryScreen(
                         tint = MaterialTheme.colorScheme.outline,
                     )
                     Text(
-                        text = "书架还是空的\n点右上角 + 导入 PDF",
+                        text = if (viewModel.isRoot) "书架还是空的\n点右上角 + 导入 PDF" else "此文件夹为空",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(top = 16.dp),
@@ -125,8 +192,30 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    items(documents, key = { it.id }) { item ->
-                        DocumentCard(item = item, onClick = { onDocumentClick(item.id) })
+                    items(folders, key = { "f_${it.id}" }) { folder ->
+                        FolderCard(
+                            folder = folder,
+                            onClick = { onFolderClick(folder.id) },
+                            onLongClick = { menuFolder = folder },
+                            menuExpanded = menuFolder?.id == folder.id,
+                            onDismissMenu = { menuFolder = null },
+                            onRename = { renameFolderTarget = folder },
+                            onMove = { moveFolderTarget = folder },
+                            onDelete = { deleteFolderTarget = folder },
+                            onNewSubFolder = { newSubFolderParent = folder },
+                        )
+                    }
+                    items(documents, key = { "d_${it.id}" }) { item ->
+                        DocumentCard(
+                            item = item,
+                            onClick = { onDocumentClick(item.id) },
+                            onLongClick = { menuDocument = item },
+                            menuExpanded = menuDocument?.id == item.id,
+                            onDismissMenu = { menuDocument = null },
+                            onRename = { renameDocTarget = item },
+                            onMove = { moveDocTarget = item },
+                            onDelete = { deleteDocTarget = item },
+                        )
                     }
                 }
             }
@@ -152,7 +241,120 @@ fun LibraryScreen(
         }
     }
 
-    // 重复导入确认
+    // ---- 操作弹窗 ----
+
+    // 新建文件夹（顶栏 = 当前目录；文件夹长按菜单 = 该文件夹）
+    if (showNewFolderInCurrent || newSubFolderParent != null) {
+        NewFolderDialog(
+            onConfirm = { name ->
+                viewModel.createSubFolder(
+                    newSubFolderParent?.id ?: viewModel.currentFolderId,
+                    name,
+                )
+                showNewFolderInCurrent = false
+                newSubFolderParent = null
+            },
+            onDismiss = {
+                showNewFolderInCurrent = false
+                newSubFolderParent = null
+            },
+        )
+    }
+
+    renameFolderTarget?.let { folder ->
+        RenameDialog(
+            currentName = folder.name,
+            onConfirm = {
+                viewModel.renameFolder(folder.id, it)
+                renameFolderTarget = null
+            },
+            onDismiss = { renameFolderTarget = null },
+        )
+    }
+
+    renameDocTarget?.let { item ->
+        // 锁定文件类型：扩展名独立展示不可编辑，防止改出错误类型（无扩展名的 title 不锁）
+        val ext = if ('.' in item.title) "." + item.title.substringAfterLast('.') else null
+        RenameDialog(
+            currentName = item.title,
+            lockedExtension = ext,
+            onConfirm = {
+                viewModel.renameDocument(item.id, it)
+                renameDocTarget = null
+            },
+            onDismiss = { renameDocTarget = null },
+        )
+    }
+
+    deleteFolderTarget?.let { folder ->
+        DeleteConfirmDialog(
+            title = "删除文件夹",
+            message = "将删除文件夹「${folder.name}」及其所有子目录，其中的文档将移至根目录。是否继续？",
+            onConfirm = {
+                viewModel.deleteFolder(folder.id)
+                deleteFolderTarget = null
+            },
+            onDismiss = { deleteFolderTarget = null },
+        )
+    }
+
+    deleteDocTarget?.let { item ->
+        DeleteConfirmDialog(
+            title = "删除文档",
+            message = "将删除《${item.title}》，物理文件一并删除。是否继续？",
+            onConfirm = {
+                viewModel.deleteDocument(item.id)
+                deleteDocTarget = null
+            },
+            onDismiss = { deleteDocTarget = null },
+        )
+    }
+
+    // 导入：选完文件弹目录选择（默认当前目录）
+    pendingImportUris?.let {
+        FolderPickerDialog(
+            state = viewModel.folderTree,
+            onConfirm = { target -> viewModel.confirmImportPick(target) },
+            onDismiss = viewModel::cancelImportPick,
+            onCreateSubFolder = viewModel::createFolderAndSelect,
+            initialSelectedId = viewModel.currentFolderId,
+        )
+    }
+
+    // 移动文档：任意目录（默认当前目录）
+    moveDocTarget?.let { item ->
+        FolderPickerDialog(
+            state = viewModel.folderTree,
+            onConfirm = { target ->
+                viewModel.moveDocument(item.id, target)
+                moveDocTarget = null
+            },
+            onDismiss = { moveDocTarget = null },
+            onCreateSubFolder = viewModel::createFolderAndSelect,
+            initialSelectedId = viewModel.currentFolderId,
+        )
+    }
+
+    // 移动文件夹：先取自身+后代作禁选集（UI 前置防循环；业务层 moveFolder require 兜底）
+    moveFolderTarget?.let { folder ->
+        var excluded by remember(folder.id) { mutableStateOf<Set<Long>?>(null) }
+        LaunchedEffect(folder.id) { excluded = viewModel.subtreeIds(folder.id) }
+        excluded?.let { excludedIds ->
+            FolderPickerDialog(
+                state = viewModel.folderTree,
+                onConfirm = { target ->
+                    viewModel.moveFolder(folder.id, target)
+                    moveFolderTarget = null
+                },
+                onDismiss = { moveFolderTarget = null },
+                onCreateSubFolder = viewModel::createFolderAndSelect,
+                excludedIds = excludedIds,
+                initialSelectedId = null,
+            )
+        }
+    }
+
+    // 重复导入确认（逐个确认：导入循环挂起等待决策）
     pendingDuplicate?.let { (uri, existingTitle) ->
         AlertDialog(
             onDismissRequest = viewModel::dismissDuplicate,
@@ -168,41 +370,127 @@ fun LibraryScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DocumentCard(item: LibraryItem, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-    ) {
-        Box(modifier = Modifier.aspectRatio(1f)) {
-            ThumbnailImage(relPath = item.thumbnailRelPath, modifier = Modifier.fillMaxSize())
-            // 状态角标：加密 / 损坏
-            when {
-                item.needsPassword -> StatusBadge(
-                    icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) },
-                    modifier = Modifier.align(Alignment.TopEnd),
-                )
-                item.pageCount == -2 -> StatusBadge(
-                    icon = { Icon(Icons.Filled.Warning, contentDescription = "已损坏", tint = Color.White, modifier = Modifier.size(14.dp)) },
-                    modifier = Modifier.align(Alignment.TopEnd),
+private fun FolderCard(
+    folder: Folder,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    menuExpanded: Boolean,
+    onDismissMenu: () -> Unit,
+    onRename: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
+    onNewSubFolder: () -> Unit,
+) {
+    Box {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        ) {
+            Box(
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp),
                 )
             }
-        }
-        Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
             Text(
-                text = item.title,
+                text = folder.name,
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.fillMaxWidth().padding(8.dp),
             )
-            if (item.pageCount > 0) {
-                Text(
-                    text = "${item.pageCount} 页",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
+        }
+        FolderMenu(
+            expanded = menuExpanded,
+            onDismiss = onDismissMenu,
+            onRename = onRename,
+            onMove = onMove,
+            onDelete = onDelete,
+            onNewSubFolder = onNewSubFolder,
+        )
+    }
+}
+
+@Composable
+private fun FolderMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onRename: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
+    onNewSubFolder: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(text = { Text(text = "重命名") }, onClick = { onDismiss(); onRename() })
+        DropdownMenuItem(text = { Text(text = "移动") }, onClick = { onDismiss(); onMove() })
+        DropdownMenuItem(text = { Text(text = "删除") }, onClick = { onDismiss(); onDelete() })
+        DropdownMenuItem(text = { Text(text = "新建子目录") }, onClick = { onDismiss(); onNewSubFolder() })
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DocumentCard(
+    item: LibraryItem,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    menuExpanded: Boolean,
+    onDismissMenu: () -> Unit,
+    onRename: () -> Unit,
+    onMove: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Box {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        ) {
+            Box(modifier = Modifier.aspectRatio(1f)) {
+                ThumbnailImage(relPath = item.thumbnailRelPath, modifier = Modifier.fillMaxSize())
+                // 状态角标：加密 / 损坏
+                when {
+                    item.needsPassword -> StatusBadge(
+                        icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) },
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    )
+                    item.pageCount == -2 -> StatusBadge(
+                        icon = { Icon(Icons.Filled.Warning, contentDescription = "已损坏", tint = Color.White, modifier = Modifier.size(14.dp)) },
+                        modifier = Modifier.align(Alignment.TopEnd),
+                    )
+                }
             }
+            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                )
+                if (item.pageCount > 0) {
+                    Text(
+                        text = "${item.pageCount} 页",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                }
+            }
+        }
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = onDismissMenu) {
+            DropdownMenuItem(text = { Text(text = "重命名") }, onClick = { onDismissMenu(); onRename() })
+            DropdownMenuItem(text = { Text(text = "移动") }, onClick = { onDismissMenu(); onMove() })
+            DropdownMenuItem(text = { Text(text = "删除") }, onClick = { onDismissMenu(); onDelete() })
         }
     }
 }

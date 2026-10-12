@@ -89,11 +89,15 @@ fun MuPdfReaderView(
 ```
 nav/MyReaderNavHost.kt
 routes:
-  library/{folderId?}           # 书架/目录树
+  library?folderId={folderId}   # 书架/目录浏览（M5：folderId 可选，缺省=根；startDestination 须写完整模式。
+                                #   注意 NavType.LongType 不允许 nullable（运行时抛 IllegalArgumentException），
+                                #   用哨兵 defaultValue=-1L 表示根（Routes.FOLDER_ID_NONE），VM 中转 null；
+                                #   Routes.library(null) 必须返回 "library"——空参数串 LongType 解析也会崩）
   reader/{documentId}           # 阅读器
-  folderPicker/{documentId?}    # 选/建目录用于移动或导入
-  settings                      # 阅读模式/主题/书架排序等偏好（DataStore 持久化）
+  settings                      # 阅读模式/主题/书架排序等偏好（DataStore 持久化，M7）
 ```
+
+> 「移动/导入选目录」用 **FolderPickerDialog**（M5 实现落定，原设计的 folderPicker 独立路由废弃）——弹窗内嵌目录树 + 新建子目录，避免为选目录增加路由栈层级。
 
 ### 目录树展示（关键）
 
@@ -102,12 +106,16 @@ routes:
 - 用 `FolderTreeState` 维护展开状态，`flat` 输出 `List<FolderNode>`（每节点带 `depth`）
 - `LazyColumn` 按 `depth` 加左 padding
 - 长按弹菜单：重命名/删除/移动/新建子目录
-- `moveFolder` 前用 `subtree()` 校验新父目录不在当前子树内（防循环，FK 只约束存在性不防循环）
+- `moveFolder` 前用 `subtree()` 校验新父目录不在当前子树内（防循环，FK 只约束存在性不防循环）；FolderPickerDialog 移动文件夹场景以 `subtree(id)` 预过滤禁选项（UI 前置）+ 业务层 require 兜底
 
 ```kotlin
-class FolderTreeState(private val repo: LibraryRepository) {   // 仓库统一为 LibraryRepository（目录+文档编排一体，不单设 FolderRepository）
-    val expanded: SnapshotStateMap<Long, Boolean> = mutableStateMapOf()
-    val flat: StateFlow<List<FolderNode>> = …   // combine(rootFlow, expanded)
+// M5 落定实现（feature/library/FolderTree.kt）：
+class FolderTreeState(
+    repo: LibraryRepository,        // 文档给定签名；次构造经 repo.observeAllFolders() 转发
+    scope: CoroutineScope,          // snapshotFlow 需 CoroutineScope——由 VM 持有（viewModelScope）
+) {
+    val expanded: SnapshotStateMap<Long, Boolean>   // mutableStateMapOf，缺失/false=收起
+    val flat: StateFlow<List<FolderNode>>           // combine(全表 Flow, snapshotFlow) → 组树展平
     fun toggle(id: Long)
 }
 
@@ -115,16 +123,20 @@ class FolderTreeState(private val repo: LibraryRepository) {   // 仓库统一�
 fun FolderTreeList(
     state: FolderTreeState,
     onFolderClick: (Long?) -> Unit,
-    onFolderLongPress: (Long) -> Unit,
+    onFolderLongPress: (Long) -> Unit,   // picker 内传 {} 禁用（选目标弹窗单一职责）
     modifier: Modifier = Modifier,
+    selectedId: Long? = null,            // picker 高亮选中项
 )
 ```
+
+- **组树方式（M5 落定）**：`FolderDao.observeAll()` 全表 Flow（目录量小全表无压力）→ `repo.observeAllFolders()` → 内存组树展平；比「一次性 subtree() 缓存」更简洁且自动响应增删改（重命名/移动后树自动刷新），同层按 `sortOrder, name` 排序（与 `foldersIn` 一致）；展平逻辑提取为纯函数 `buildFlatTree(folders, expandedIds)` 便于 JVM 单测
+- **书架页单层浏览（M5 UX 决策）**：书架显示当前目录的子文件夹卡片 + 文档网格（同一 `LazyVerticalGrid`，文件夹在前），点击文件夹 navigate 到 `library?folderId=xx`、顶栏返回箭头 popBackStack；顶栏标题从全量目录流派生（目录被删时回退「书架」，不崩溃）；FolderTreeList 用于 FolderPickerDialog（移动/导入选目标）
 
 ### 搜索、排序与文档操作
 
 - **搜索**：`LibraryScreen` 顶部搜索框 → `DocumentDao.search(q)`（`title LIKE`，**全库匹配不限当前文件夹**），结果复用文档条目 UI，点击直达阅读器
 - **排序**：`DocSort` 枚举（`TITLE` / `LAST_READ` / `ADDED` / `SIZE`）放 `core:model`，当前值存 DataStore；书架顶部切换，`LibraryRepository` 按 `DocSort` 分发到 `docsInBy*` 具名查询（Room 无法参数化 `ORDER BY`），默认 `TITLE`
-- **文档长按菜单**：重命名（`DocumentDao.rename`，仅改 `title` 不动 `relPath`/物理文件）/ 移动（复用 `folderPicker` 路由）/ 删除——与目录树操作对称
+- **文档长按菜单**：重命名（`DocumentDao.rename`，仅改 `title` 不动 `relPath`/物理文件）/ 移动（`FolderPickerDialog`）/ 删除——与目录树操作对称。落点（M5）：文件夹与文档卡片 `combinedClickable` 长按弹出各自 `DropdownMenu`（文件夹：重命名/删除/移动/新建子目录；文档：重命名/移动/删除），删除走 `DeleteConfirmDialog`（目录文案含「文档将移至根目录」，文档文案含「物理文件一并删除」）
 
 ### 导入流程
 
@@ -146,10 +158,10 @@ fun FolderTreeList(
 
 | 场景 | 处理 |
 |---|---|
-| 损坏/非 PDF 文件 | 导入时 `engine.open()` 抛 `CorruptDocumentException` → 删半成品文件、不入库，提示「无法读取」；打开时读 `pageCount` 抛错 → 标记 `pageCount = -2`（错误标记，区别于 `-1` 未知），书架条目置灰显示「已损坏」，长按可删除记录或重新导入，不自动重试、不崩溃 |
+| 损坏/非 PDF 文件 | 导入时 `engine.open()` 抛 `CorruptDocumentException` → 删半成品文件、不入库，提示「无法读取」；打开时读 `pageCount` 抛错 → 标记 `pageCount = -2`（错误标记，区别于 `-1` 未知），书架条目置灰显示「已损坏」，长按可删除记录（「重新导入」重选源文件替换为后续里程碑，M5 仅提供删除入口），不自动重试、不崩溃 |
 | 密码保护文档 | 导入时 `engine.open()` 抛 `PasswordRequiredException` → 照常入库置 `needsPassword = true`；打开时先弹密码对话框，`engine.open(path, fileType, password)` 成功后清除标记、补 `pageCount` 与缩略图；密码不持久化（v1 仅会话内） |
 | 重复导入 | 导入时 `contentHash` 命中已有记录 → 弹窗「已存在《title》，是否仍导入」，可跳过（跳过则删刚复制的文件） |
 | 存储空间不足 | 复制前 `StatFs` 检查 `filesDir` 可用空间 ≥ 文件大小 + 余量，不足则提示并中止，不写半文件 |
 | `countPages` 失败 | 进度页码保持 0，UI 提示「打开失败」并返回书架，标记 `pageCount = -2` 不重复尝试（书架引导删除/重导） |
-| 文件丢失（`relPath` 指向不存在） | 打开时 `File.exists()` 为 false → 书架该条目置「缺失」标记，引导删除记录或重新导入 |
+| 文件丢失（`relPath` 指向不存在） | 打开时 `File.exists()` 为 false → 书架该条目置「缺失」标记，引导删除记录（「重新导入」为后续里程碑，M5 仅提供删除入口） |
 | 大文件复制中断 | 导入流程事务 + 删半成品回滚；UI 显示进度 + 可取消 |

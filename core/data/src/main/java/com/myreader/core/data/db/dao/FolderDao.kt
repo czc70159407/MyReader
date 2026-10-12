@@ -13,6 +13,9 @@ interface FolderDao {
     @Query("SELECT * FROM folders WHERE parentId IS :parentId ORDER BY sortOrder, name")  // 根级传 null，必须 IS（= NULL 恒为假）
     fun children(parentId: Long?): Flow<List<FolderEntity>>
 
+    @Query("SELECT * FROM folders")   // 全表观察：目录树内存组树用，排序由内存组装统一处理（sortOrder, name）
+    fun observeAll(): Flow<List<FolderEntity>>
+
     @Query("""
         WITH RECURSIVE d AS (
           SELECT * FROM folders WHERE id = :rootId

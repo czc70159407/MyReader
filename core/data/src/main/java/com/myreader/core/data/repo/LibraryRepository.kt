@@ -13,6 +13,7 @@ interface LibraryRepository {
 
     // ---- 目录 ----
     fun foldersIn(parentId: Long?): Flow<List<Folder>>
+    fun observeAllFolders(): Flow<List<Folder>>   // 全表观察：目录树内存组树 + 当前目录名派生
     suspend fun subtree(rootId: Long): List<Folder>
     suspend fun createFolder(parentId: Long?, name: String): Long
     suspend fun renameFolder(id: Long, name: String)

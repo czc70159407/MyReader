@@ -57,4 +57,6 @@ dependencies {
     testImplementation(libs.room.runtime)      // inMemoryDatabaseBuilder（导入编排测试用真 Repository）
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)
+    testImplementation(libs.compose.ui.test.junit4)   // FolderTreeList Compose UI 测试（版本随 BOM）
+    testImplementation(libs.compose.ui.test.manifest)
 }

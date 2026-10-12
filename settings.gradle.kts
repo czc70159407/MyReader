@@ -31,6 +31,11 @@ rootProject.name = "MyReader"
 
 include(":app")
 
+include(":core:model")
+include(":core:common")
+include(":core:storage")
+include(":core:data")
+
 // MuPDF viewer 库（git submodule，锁定 1.28.x commit；其 jni/ 子模块刻意不初始化 → lib 走官方 Maven fitz 预编译分支）
 include(":third-party:mupdf")
 project(":third-party:mupdf").projectDir = file("third-party/mupdf-android-viewer/lib")

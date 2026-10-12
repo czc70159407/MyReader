@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -86,6 +88,16 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
     implementation(libs.coroutines.android)
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.room.runtime)   // DatabaseModule 组装层直接构建 Room 数据库（无需 compiler）
+
+    // 数据层（M2）：Repository 接口 + Room；feature 层将只依赖这些 core 接口
+    api(project(":core:data"))
+    api(project(":core:model"))
+    api(project(":core:common"))
+    implementation(project(":core:storage"))
+
     debugImplementation(libs.compose.ui.tooling)
 
     // M1 临时验收依赖：demo 直接打开 assets PDF；M4 起由 :feature:viewer-mupdf 承接，:app 不再直接依赖

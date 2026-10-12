@@ -42,8 +42,18 @@ android {
     }
 
     buildTypes {
+        debug {
+            // ABI 策略：debug 保留 x86_64（模拟器）+ arm64-v8a（真机）
+            ndk {
+                abiFilters += setOf("arm64-v8a", "x86_64")
+            }
+        }
         release {
             isMinifyEnabled = false
+            // ABI 策略：release 限 arm64-v8a + armeabi-v7a（减体积）
+            ndk {
+                abiFilters += setOf("arm64-v8a", "armeabi-v7a")
+            }
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -75,5 +85,9 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
+    implementation(libs.coroutines.android)
     debugImplementation(libs.compose.ui.tooling)
+
+    // M1 临时验收依赖：demo 直接打开 assets PDF；M4 起由 :feature:viewer-mupdf 承接，:app 不再直接依赖
+    implementation(project(":third-party:mupdf"))
 }

@@ -33,7 +33,7 @@
 | 项 | 选择 |
 |---|---|
 | 语言 / UI | Kotlin 2.0 + Jetpack Compose（Material 3），单 Activity + Navigation |
-| PDF 引擎 | [MuPDF](https://mupdf.com)（AGPL，git submodule 源码集成） |
+| PDF 引擎 | [MuPDF](https://mupdf.com)（AGPL）：viewer 层 git submodule 源码集成 + native 层官方 Maven 预编译构件 |
 | 数据库 | Room（schema 迁移纪律：禁用破坏性迁移） |
 | DI | Hilt（`@FileTypeKey` 多绑定按格式路由文档引擎） |
 | 最低 Android | API 26（Android 8.0），targetSdk 35 |
@@ -41,22 +41,22 @@
 
 ## 构建
 
-环境要求：JDK 21、Android SDK（Platform 35 + Build-Tools 35.0.0）、NDK（编译 MuPDF native 库）。
+环境要求：JDK 21、Android SDK（Platform 33/35 + Build-Tools 35.0.0）。无需 NDK——MuPDF native 层使用官方预编译构件。
 
 ```powershell
-# 克隆（含 MuPDF submodule）
-git clone --recursive <repository-url>
+# 克隆后拉起 submodule（注意：勿加 --recursive，原因见下）
+git clone <repository-url>
 cd MyReader
+git submodule update --init
 
-# 首次拉起 submodule（clone 未加 --recursive 时）
-git submodule update --init --recursive
-
-# 装配 Debug APK（首次会触发 MuPDF native 编译，耗时较长）
+# 装配 Debug APK
 .\gradlew.bat :app:assembleDebug
 
 # 全量构建 + 测试
 .\gradlew.bat build
 ```
+
+> **为什么不能用 `--recursive`**：MuPDF viewer 的嵌套子模块 `jni/`（mupdf-android-fitz）刻意保持未初始化——native 层（`libmupdf_java.so`）直接使用官方 Maven 预编译构件（`com.artifex.mupdf:fitz`，全 ABI），无需 NDK 工具链与源码编译；递归初始化会使构建切换到源码编译分支并失败。
 
 ## 项目结构
 

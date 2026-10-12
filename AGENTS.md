@@ -4,16 +4,17 @@
 
 ## 当前状态（会话开始必读 / 里程碑完成必更新）
 
-- **阶段**：M0 已完成——脚手架就绪，远程 GitHub `origin/main`（czc70159407/MyReader）
-- **下一步**：执行 M1（MuPDF submodule + native 编译）；前置：查证 submodule 上游迁移后的可用 URL + 安装 NDK（`sdkmanager "ndk;27.0.12077973"`）
-- **环境**：Windows / PowerShell 5 / JDK 21 / Gradle 8.14；Android SDK 位于 `D:\develop\Android\Sdk`（cmdline-tools + platform-tools + android-35 + build-tools 35.0.0，`local.properties` 已指向，`ANDROID_HOME` 用户级已设）；git 位于 `D:\develop\Git`（不在 PATH，需全路径或临时加 PATH）；gradle 命令一律 `.\gradlew.bat`
-- **已知卡点**：①Java TLS 访问 services.gradle.org 被干扰（已预置 `D:\develop\gradle-repository\wrapper\dists\gradle-8.14-bin\38aieal9i53h9rfe7vjup95b9` 缓存绕过，勿删该目录）；②M1 submodule URL 待查证：旧 cgit `git.ghostscript.com` 已 401，`gitlab.com/artifexsoftware/mupdf-android-viewer` 返回 401（路径不对或未公开），gitlab.com 本身可达；③M1 首次 native 编译需拉取 MuPDF 核心并 NDK 编译，耗时数十分钟
+- **阶段**：M1 构建验收已通过——submodule 锁定 1.28.2a（`8407044`）；demo APK 已产出（31.1MB，含 arm64-v8a/x86_64 `libmupdf_java.so`）；真机目视验证（countPages=3 + 首页渲染）待用户执行
+- **下一步**：用户真机安装 `app/build/outputs/apk/debug/app-debug.apk` 确认 demo（预期显示 `countPages() = 3` 与首页图像）；确认后 M1 标记完成，进入 M2 数据层
+- **环境**：Windows / PowerShell 5 / JDK 21 / Gradle 8.14；Android SDK 位于 `D:\develop\Android\Sdk`（cmdline-tools + platform-tools + platforms android-33/35 + build-tools 35.0.0，`local.properties` 已指向，`ANDROID_HOME` 用户级已设）；git 位于 `D:\develop\Git`（不在 PATH，需全路径或临时加 PATH）；gradle 命令一律 `.\gradlew.bat`
+- **已知卡点**：①Java TLS 访问 services.gradle.org 被干扰（已预置 `D:\develop\gradle-repository\wrapper\dists\gradle-8.14-bin\38aieal9i53h9rfe7vjup95b9` 缓存绕过，勿删该目录）；②M1 上游已查证解卡：仓库在 GitHub（`ArtifexSoftware/mupdf-android-viewer`），fitz 官方 Maven `maven.ghostscript.com` 可达且 AAR 含全 4 ABI——NDK 与 native 源码编译不再需要
 - **M0 验收证据**：`.\gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL in 53s`（35 tasks），产物 `app/build/outputs/apk/debug/app-debug.apk`（9.01MB）；真机启动显示 Hello 待用户目视确认（本环境无设备/模拟器）
+- **M1 验收证据**：`.\gradlew.bat :third-party:mupdf:assembleDebug` → `BUILD SUCCESSFUL in 21s`（fitz 1.28.2 官方 Maven 构件，免 NDK）；`.\gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL in 26s`，APK 31.1MB 含 `lib/arm64-v8a/libmupdf_java.so`（10.3MB）+ `lib/x86_64/libmupdf_java.so`（10.7MB），ABI 裁剪生效；demo（MainActivity 打开 assets/test.pdf，3 页）真机目视验证待用户
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M0 | 脚手架 + git init | 已完成 |
-| M1 | MuPDF submodule + .so | 未开始 |
+| M1 | MuPDF submodule + Maven fitz | 进行中 |
 | M2 | 数据层（Room/Hilt） | 未开始 |
 | M3 | 导入与书架 | 未开始 |
 | M4 | 阅读器（水平模式） | 未开始 |
@@ -34,7 +35,7 @@
 5. **文档同步**：schema/模块结构/依赖版本/接口签名变更，同一任务内更新本文档对应章节
 6. **不过度工程**：不引入本文档未列出的依赖/模块；确需偏离选型，先改「技术选型」章节并写明理由
 7. **测试下沉**：纯逻辑放 `core:*` 做 JVM 测试；改 `core:data`/`core:storage` 必须补跑对应单测
-8. **命令环境**：Windows PowerShell；clone/submodule 拉取后执行 `git submodule update --init --recursive`
+8. **命令环境**：Windows PowerShell；clone 后执行 `git submodule update --init`——**勿加 `--recursive`**：viewer 的嵌套 jni 子模块刻意不初始化以走 fitz Maven 预编译分支（见「MuPDF 集成方式」第 4 条）
 
 ## 常用命令（PowerShell）
 
@@ -42,7 +43,7 @@
 .\gradlew.bat build                              # 全量构建 + 测试
 .\gradlew.bat :core:data:test                    # 数据层单测
 .\gradlew.bat :app:assembleDebug                 # 装配 APK
-.\gradlew.bat :third-party:mupdf:assembleDebug   # 触发 MuPDF native 编译
+.\gradlew.bat :third-party:mupdf:assembleDebug   # 构建 MuPDF viewer 库（fitz 走官方 Maven 预编译，无 native 编译）
 ```
 
 ## Context
@@ -60,7 +61,7 @@
 | 决策点 | 选择 | 理由 |
 |---|---|---|
 | 语言/UI | Kotlin + Jetpack Compose，单 Activity + Navigation | Google 官方推荐，声明式 UI，开发效率高 |
-| PDF 引擎 | MuPDF 开源版（AGPL），**源码 git submodule 引入** | 渲染质量最好；AGPL 要求 APP 开源（已计划） |
+| PDF 引擎 | MuPDF 开源版（AGPL）：viewer 层源码 git submodule + fitz 层官方 Maven 预编译构件 | 渲染质量最好；AGPL 要求 APP 开源（已计划）。原「官方不发布 Maven、须源码编译」前提已过时：官方 `maven.ghostscript.com` 提供 fitz AAR（全 ABI，免 NDK 工具链与数十分钟首次 native 编译）；viewer 源码仍可读可定制 |
 | 最低 Android | API 26 (Android 8.0) | MuPDF native 库兼容 API 21+；26 覆盖当前 99%+ 设备，且自适应图标、Java 8 desugaring 默认开启，免去额外兼容配置 |
 | 构建工具 | Gradle + Kotlin DSL + 版本目录 (libs.versions.toml) | 统一版本管理 |
 | DI | Hilt | 官方推荐，与 Compose/Room 集成好 |
@@ -142,7 +143,7 @@ app ──► feature:reader ──► core:document (接口：DocumentEngine + 
 
 ## MuPDF 集成方式
 
-1. `git submodule add https://git.ghostscript.com/mupdf-android-viewer.git third-party/mupdf-android-viewer`（上游已从 cgit 迁至 GitLab，落地前验证 URL 可达性，并锁定到固定 commit）
+1. `git submodule add https://github.com/ArtifexSoftware/mupdf-android-viewer.git third-party/mupdf-android-viewer`，锁定固定 commit（当前 `8407044` = 1.28.2a，1.28.x 发布线；上游已从旧 cgit 迁至 GitHub）；更新 submodule = 显式 checkout 新 commit 后提交
 2. `settings.gradle.kts`：
    ```kotlin
    include(":third-party:mupdf")
@@ -150,10 +151,10 @@ app ──► feature:reader ──► core:document (接口：DocumentEngine + 
        file("third-party/mupdf-android-viewer/lib")
    ```
 3. `:feature:viewer-mupdf` 中 `implementation(project(":third-party:mupdf"))`（唯一依赖 MuPDF 的模块；按引擎拆分命名，未来 `feature:viewer-txt` 等并列）
-4. ABI：**debug 保留 `x86_64`（模拟器调试），release 限 `arm64-v8a` + `armeabi-v7a`**（so 约 8–12MB/ABI，去掉 x86 减体积）
-5. NDK 版本固定（如 `27.0.12077973`）
-6. **AGPL 合规**：README + About 页注明 MuPDF 来源 + AGPL 全文链接；APP 整体开源仓库
-7. **native 编译前置**：submodule 仅是 viewer 壳，`MuPDFCore` 的 `.so` 需 NDK 编译（首次构建会拉取 MuPDF 核心 tarball 并 ndk-build/CMake，耗时数分钟）；固定 NDK 版本，新机/CI 首次 `.\gradlew.bat :third-party:mupdf:assembleDebug` 即触发 native 编译，是 M1 真实卡点
+4. **fitz（JNI/native 层）走官方 Maven 预编译构件** `com.artifex.mupdf:fitz:1.28.2`（仓库 `https://maven.ghostscript.com/`，已在 settings.gradle.kts 注册并按 `com.artifex.mupdf` group 过滤）。lib 的 build.gradle 自带双路径：`jni/` 子模块存在→源码编译（需 NDK），不存在→Maven 分支——**因此 viewer 的嵌套子模块 `jni/`（mupdf-android-fitz）刻意保持未初始化**；clone 后只执行 `git submodule update --init`（**勿加 `--recursive`**：递归初始化 jni 会使 lib 走源码分支，且 `:jni` 未挂载而构建失败）
+5. fitz AAR 含全 4 ABI（arm64-v8a / armeabi-v7a / x86 / x86_64，约 20.6MB）；App 打包按 ABI 策略裁剪：**debug 保留 `x86_64`（模拟器调试），release 限 `arm64-v8a` + `armeabi-v7a`**
+6. **AGPL 合规**：README + About 页注明 MuPDF 来源 + AGPL 全文链接；APP 整体开源仓库；fitz 官方构件 pom 本身声明 AGPL，满足许可通告
+7. 若未来需改 MuPDF native 层（v1 无此需求）：初始化 `jni/` 递归子模块 + 安装 NDK + `include(":jni")` 挂载 `third-party/mupdf-android-viewer/jni`，lib 自动切源码分支
 
 > MuPDF 核心 API（在 `lib/` 模块，包名 `com.artifex.mupdf.viewer`）：
 > - `MuPDFCore`：`countPages()` / `drawPage(Bitmap, sizeX, sizeY, ...)` / `gotoPage(page)` / 大纲读取（返回标题+目标页结构，方法名以 submodule 源码为准）
@@ -512,7 +513,7 @@ room = { id = "androidx.room", version.ref = "room" }
 | 风险 | 对策 |
 |---|---|
 | 大文件 OOM | 依赖 MuPDF BitmapPool；水平模式预渲染窗口 ±1 页；垂直模式自管理 LRU(8页)+recycle；Application `onTrimMemory(MODERATE)` 调 `releaseBitmaps()` |
-| MuPDF so 体积 | **debug 保留 x86_64（模拟器调试），release 限 arm64-v8a + armeabi-v7a**；Play Bundle 自动 per-ABI；Release `ndk.debugSymbolLevel="SYMBOL_TABLE"` 去符号 |
+| MuPDF so 体积 | fitz AAR 官方已 strip；App 打包 `ndk.abiFilters` 裁剪——debug 保留 x86_64（模拟器调试），release 限 arm64-v8a + armeabi-v7a；Play Bundle 自动 per-ABI |
 | SAF 权限丢失 | 采用"复制到内部存储"方案，导入后即与 Uri 解耦；DB 仅存 `sourceUri` 备查不依赖 |
 | Compose 中 AndroidView 重组性能 | `AndroidView` 的 `factory` 只创建一次；模式/页码变化走 `update` 块做差分；`core` 生命周期用 `DisposableEffect` 管理，与 Document 绑定 |
 | 树形目录循环引用 | 业务层 `moveFolder` 前用 `subtree()` 检查新父目录不是当前子树成员；FK 仅约束存在性不防循环 |
@@ -556,8 +557,8 @@ room = { id = "androidx.room", version.ref = "room" }
    - 任务：`git init` + `.gitignore`（`.gradle/`、`build/`、`local.properties`、`keystore.properties`、`.idea/`）+ 首次提交；根 `build.gradle.kts` + `settings.gradle.kts` + `libs.versions.toml` + `:app` 空 MainActivity 显示 Hello；预留 release `signingConfigs` 占位（密钥从本地 `keystore.properties` 读取，不入仓）
    - 验收：`.\gradlew.bat :app:assembleDebug` 成功，app 启动显示 Hello
 2. **M1 MuPDF 子模块**
-   - 任务：① submodule 引入（先验证上游 URL，见「MuPDF 集成方式」）+ `:third-party:mupdf` 模块挂载；② 触发 native 编译产出 `.so`（首次拉取 MuPDF 核心并 NDK 编译，真实卡点，单独验证）；③ 编通过后验证 `MuPDFCore.countPages()` 一个 demo pdf
-   - 验收：`.\gradlew.bat :third-party:mupdf:assembleDebug` 编出 arm64/x86_64 `.so`；demo Activity 打开 assets 内测试 PDF，`countPages()` 返回正确页数，能渲染首页
+   - 任务：① submodule 引入并锁定 1.28.x commit（上游 GitHub，URL 与锁定值见「MuPDF 集成方式」）；② `:third-party:mupdf` 模块挂载 + fitz 官方 Maven 预编译依赖（免 NDK/native 编译）；③ demo pdf 验证 `MuPDFCore.countPages()` 与首页渲染
+   - 验收：`.\gradlew.bat :third-party:mupdf:assembleDebug` 构建通过（fitz AAR 含全 ABI `libmupdf_java.so`）；demo Activity 打开 assets 内测试 PDF，`countPages()` 返回正确页数，能渲染首页
 3. **M2 数据层**
    - 任务：Room 实体+DAO+Hilt 注入；写 `LibraryRepository` 与单元测试（`Room.inMemoryDatabaseBuilder`）
    - 验收：`.\gradlew.bat :core:data:test` 通过（插/查/移动/进度更新/删非空目录级联回根/搜索与排序/hash 查重）

@@ -134,8 +134,9 @@ fun FolderTreeList(
 
 ### 搜索、排序与文档操作
 
-- **搜索**：`LibraryScreen` 顶部搜索框 → `DocumentDao.search(q)`（`title LIKE`，**全库匹配不限当前文件夹**），结果复用文档条目 UI，点击直达阅读器
-- **排序**：`DocSort` 枚举（`TITLE` / `LAST_READ` / `ADDED` / `SIZE`）放 `core:model`，当前值存 DataStore；书架顶部切换，`LibraryRepository` 按 `DocSort` 分发到 `docsInBy*` 具名查询（Room 无法参数化 `ORDER BY`），默认 `TITLE`
+- **搜索（M6）**：顶栏搜索图标展开为输入框（navigationIcon 变「退出搜索」、trailing 清空键）→ `DocumentDao.search(q)`（`title LIKE`，**全库匹配不限当前文件夹**，结果固定按标题排序）；输入经 **300ms 防抖**实时出结果。内容切换**仅以 `searchResults != null` 为准**：`null` = 非搜索态（关键词为空/防抖未到，维持浏览内容），空列表 = 无命中（显示「未找到匹配文档」），两者语义严格区分。搜索态隐藏文件夹区块与最近阅读条；`BackHandler(enabled = searchActive)` 使系统返回先收起搜索而不 pop 导航栈；结果复用 `DocumentCard`（含长按菜单），点击直达阅读器
+- **排序（M6）**：顶栏三点溢出菜单（`SortMenu`），`DocSort`（`TITLE`/`LAST_READ`/`ADDED`/`SIZE`）四项中文标签（标题/最近阅读/添加时间/大小）+ 当前项 trailing Check；选中 `setSort` 写 DataStore（`LibraryPrefs`，持久化设计见数据分册）即时生效并重启保持；`documents = prefs.docSort.flatMapLatest { docsIn(folderId, it) }`。搜索结果固定按标题排序，故搜索态不展示排序菜单
+- **最近阅读条（M6）**：根书架网格首部全宽 `item(span = maxLineSpan)` 横向 `LazyRow`（`RecentSection`），卡片 100dp 宽 = 缩略图（含加密锁角标）+ 标题 + 「第 N 页」（仅 `progressType=="page"` 显示）；数据源 `recent(20)` 按 `lastReadAt DESC`；仅根目录显示、无阅读记录隐藏、搜索态不渲染；点击复用 `onDocumentClick` 直达阅读器（key 前缀 `r_` 与网格 `f_`/`d_` 无冲突）。**首项变化时横向滚动复位到最新项**：阅读返回后重排会在保留的横向偏移下原地换卡，视觉上像卡片跳变（M6 用户反馈），复位后跳变变为「展示刚读文档」的有意行为
 - **文档长按菜单**：重命名（`DocumentDao.rename`，仅改 `title` 不动 `relPath`/物理文件）/ 移动（`FolderPickerDialog`）/ 删除——与目录树操作对称。落点（M5）：文件夹与文档卡片 `combinedClickable` 长按弹出各自 `DropdownMenu`（文件夹：重命名/删除/移动/新建子目录；文档：重命名/移动/删除），删除走 `DeleteConfirmDialog`（目录文案含「文档将移至根目录」，文档文案含「物理文件一并删除」）
 
 ### 导入流程
@@ -152,14 +153,14 @@ fun FolderTreeList(
    - 由 mime/扩展名解析 `fileType`，插入 `DocumentEntity`（`pageCount` 已知则填否则 -1，`progressType` 默认按类型：页码式 "page"、流式 "cfi"）
    - 复制/插入失败的 Uri 回滚该条（事务 + 删半成品文件）
 4. 完成后刷新当前目录列表
-5. 首次打开兜底：`pageCount == -1` 或缺缩略图时（如加密文档解密成功后），`ReaderViewModel` 经 `DocumentEngineRouter.engineFor(doc.fileType).open(...)` 补齐 `pageCount`、清 `needsPassword` 并触发缩略图生成
+5. 首次打开兜底：`pageCount == -1` 或缺缩略图时（如加密文档解密成功后），`ReaderViewModel` 经 `DocumentEngineRouter.engineFor(doc.fileType).open(...)` 补齐 `pageCount` 并触发缩略图生成；**`needsPassword` 保留不清**（文件始终加密、密码不持久化，每次打开仍需输入——该标记即加密常驻标识，清掉会让书架/最近条锁角标永久消失；M6 验收用户反馈修正，另在 `PasswordRequiredException` 路径自愈置 true 兜住存量数据）；**加密文档不保留内容预览**：不补生成缩略图，且清除历史遗留缩略图（锁角标卡片却展示第一页内容违背加密语义，M6 用户反馈修正）
 
 ## 错误处理与边界
 
 | 场景 | 处理 |
 |---|---|
 | 损坏/非 PDF 文件 | 导入时 `engine.open()` 抛 `CorruptDocumentException` → 删半成品文件、不入库，提示「无法读取」；打开时读 `pageCount` 抛错 → 标记 `pageCount = -2`（错误标记，区别于 `-1` 未知），书架条目置灰显示「已损坏」，长按可删除记录（「重新导入」重选源文件替换为后续里程碑，M5 仅提供删除入口），不自动重试、不崩溃 |
-| 密码保护文档 | 导入时 `engine.open()` 抛 `PasswordRequiredException` → 照常入库置 `needsPassword = true`；打开时先弹密码对话框，`engine.open(path, fileType, password)` 成功后清除标记、补 `pageCount` 与缩略图；密码不持久化（v1 仅会话内） |
+| 密码保护文档 | 导入时 `engine.open()` 抛 `PasswordRequiredException` → 照常入库置 `needsPassword = true`；打开时先弹密码对话框，`engine.open(path, fileType, password)` 成功后补 `pageCount`、**保留 `needsPassword`（加密标识常驻）**、**清除并不再生成缩略图（加密文档不保留内容预览）**；密码不持久化（v1 仅会话内），每次打开均重新弹密码框；取消密码弹窗先让弹窗离开组合再返回书架（避免弹窗残影悬于转场之上） |
 | 重复导入 | 导入时 `contentHash` 命中已有记录 → 弹窗「已存在《title》，是否仍导入」，可跳过（跳过则删刚复制的文件） |
 | 存储空间不足 | 复制前 `StatFs` 检查 `filesDir` 可用空间 ≥ 文件大小 + 余量，不足则提示并中止，不写半文件 |
 | `countPages` 失败 | 进度页码保持 0，UI 提示「打开失败」并返回书架，标记 `pageCount = -2` 不重复尝试（书架引导删除/重导） |

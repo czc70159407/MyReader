@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.myreader.core.data.prefs.LibraryPrefs
 import com.myreader.core.data.repo.LibraryRepository
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
@@ -12,26 +13,34 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * 书架 ViewModel：目录浏览（M5 路由参数 folderId，null=根）+ 目录/文档管理操作 + SAF 导入编排。
+ * 书架 ViewModel：目录浏览（M5 路由参数 folderId，null=根）+ 目录/文档管理操作 + SAF 导入编排
+ * + M6 排序切换（LibraryPrefs 记忆）/ 全库搜索（防抖 300ms）/ 最近阅读。
  * 全量目录流派生当前目录名；目录树状态（FolderTreeState）供 FolderPickerDialog 选目标。
  */
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: LibraryRepository,
     private val importer: DocumentImporter,
+    private val prefs: LibraryPrefs,
 ) : ViewModel() {
 
     /** 当前浏览目录（路由参数）：-1 哨兵（NavType.LongType 不允许 nullable）与缺失均视为根 */
@@ -44,8 +53,54 @@ class LibraryViewModel @Inject constructor(
     val folders: StateFlow<List<Folder>> =
         repository.foldersIn(folderId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /** 当前目录文档（M6：排序跟随 LibraryPrefs 记忆值，切换即时生效；默认 TITLE） */
     val documents: StateFlow<List<LibraryItem>> =
-        repository.docsIn(folderId, DocSort.TITLE).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        prefs.docSort
+            .flatMapLatest { sort -> repository.docsIn(folderId, sort) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** 当前排序（UI 菜单勾选态展示用） */
+    val sort: StateFlow<DocSort> =
+        prefs.docSort.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocSort.TITLE)
+
+    /** 切换排序：写偏好即生效（documents 流跟随），重启保持 */
+    fun setSort(sort: DocSort) {
+        viewModelScope.launch { prefs.setDocSort(sort) }
+    }
+
+    // ---- 搜索（M6：全库标题搜索，不限当前文件夹）----
+
+    private val _searchQuery = MutableStateFlow("")
+    /** 输入框即时回显（未 trim，避免打字时空格被吃） */
+    val searchQuery: StateFlow<String> = _searchQuery
+
+    /**
+     * 搜索结果：null = 非搜索态（关键词为空/防抖未到），UI 维持浏览内容；
+     * emptyList = 有搜索但无命中（UI 显示「未找到匹配文档」）。两者语义严格区分。
+     */
+    val searchResults: StateFlow<List<LibraryItem>?> = _searchQuery
+        .map { it.trim() }
+        .debounce(SEARCH_DEBOUNCE_MS)
+        .flatMapLatest { q ->
+            if (q.isEmpty()) flowOf(null) else repository.search(q)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun onSearchQueryChange(query: String) {
+        _searchQuery.value = query
+    }
+
+    /** 退出搜索：清空关键词 → searchResults 回落 null → UI 恢复浏览态 */
+    fun exitSearch() {
+        _searchQuery.value = ""
+    }
+
+    // ---- 最近阅读（M6：根目录横向卡片条数据源，lastReadAt 降序）----
+
+    /** 仅根目录收集（子目录不显示最近条，VM 层 gate 避免白收流） */
+    val recent: StateFlow<List<LibraryItem>> =
+        (if (isRoot) repository.recent(RECENT_LIMIT) else flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val allFolders: StateFlow<List<Folder>> =
         repository.observeAllFolders().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -269,5 +324,10 @@ class LibraryViewModel @Inject constructor(
         _pendingDuplicate.value = null
         duplicateDecision?.complete(false)
         duplicateDecision = null
+    }
+
+    private companion object {
+        const val SEARCH_DEBOUNCE_MS = 300L
+        const val RECENT_LIMIT = 20
     }
 }

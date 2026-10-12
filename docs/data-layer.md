@@ -37,7 +37,7 @@ data class DocumentEntity(
     val sourceUri: String?,             // 原始 SAF Uri，仅记录来源不依赖
     val fileSize: Long,
     val contentHash: String? = null,     // SHA-256，导入复制时流式计算，重复导入检测用
-    val needsPassword: Boolean = false,  // 导入验证为加密文档 → true；解密成功后清除
+    val needsPassword: Boolean = false,  // 导入验证为加密文档 → true；常驻不清（文件始终加密，角标依赖此标记，M6 修正）
     val pageCount: Int = -1,             // 导入验证成功时填充；-1 未知（含待解密）；-2 打开损坏标记；流式(EPUB)恒为 -1
     val progressType: String = "page",  // "page"(页码式) / "cfi"(流式)，决定读哪个进度字段
     val currentPage: Int = 0,           // 进度（progressType="page" 时有效）
@@ -150,7 +150,7 @@ interface DocumentDao {
 - **路径安全（双闸）**：`copyIn` 对 ext 做字母数字白名单（1-10 位）；`resolve()` 对 relPath 做 canonical 包含校验（防 `../` 越出 libraryDir），`deleteDocument`/`deleteThumbnail`/`documentFile` 同受保护
 - **`relPath` 扁平化**：物理文件只按文档 ID 平铺到 `library/`，**不按文件夹建子目录**。文件夹层级仅由 DB 的 `folderId` 表达，与物理路径解耦——这样移动文档只改 `folderId`，不动文件、不改 `relPath`；删除文件夹时也不会残留孤儿物理文件
 - 删文档同时删本地 PDF + 缩略图文件：**先在 DB 事务内删记录，事务提交成功后再删物理文件**（DB 失败则文件不动，避免数据丢失；文件删除失败留为孤儿，由后续清理扫描兜底）
-- 缩略图：**导入时后台生成**——导入验证的 `open()` 句柄顺带渲染首页（经 `DocumentViewerProvider.thumbnail(doc)`），PNG 存 `filesDir/thumb/<id>.png`；导入时无法生成（如加密文档）则首次打开兜底
+- 缩略图：**导入时后台生成**——导入验证的 `open()` 句柄顺带渲染首页（经 `DocumentViewerProvider.thumbnail(doc)`），PNG 存 `filesDir/thumb/<id>.png`；导入时无法生成（如加密文档）**则保持无缩略图——加密文档永不补生成，且打开时清除历史遗留（内容预览与加密语义冲突，M6 修正）**
 
 ## 进度记忆实现时机（防频繁写库）
 
@@ -174,3 +174,11 @@ interface DocumentDao {
 进度变化 → onPageChanged  ─debounce 600ms─→  savePageProgress / saveCfiProgress（按 payload 类型分发）
 退出    → ON_PAUSE/ON_STOP/onDispose ─flush 立即写库─→ finish
 ```
+
+## 排序偏好持久化（DataStore，M6）
+
+- **存储**：`PreferenceDataStoreFactory` 创建 `DataStore<Preferences>`，文件 `filesDir/datastore/library_prefs.preferences_pb`；实例由 app 层 `RepositoryModule` `@Provides @Singleton` 提供（**单文件必须单实例**，1.1.x 会对同文件第二实例抛 `IllegalStateException`），`core:data` 不自建 Hilt module
+- **读写**：`core/data/prefs/LibraryPrefs.kt`——`docSort: Flow<DocSort>`（`intPreferencesKey("doc_sort")` 存 **ordinal**）+ `suspend fun setDocSort`；`null`/越界 ordinal 回退默认 `TITLE`（防枚举收缩后崩溃）
+- **约束：`DocSort` 枚举不可重排/在中间插入新值**（按 ordinal 持久化；违反仅导致回落默认值，可接受但应避免）
+- **接线**：`LibraryViewModel.documents = prefs.docSort.flatMapLatest { repository.docsIn(folderId, it) }`——切换排序即时生效、进程重启保持；搜索/最近阅读不持久化（会话态）
+- **测试**：`LibraryPrefsTest`（Robolectric + TemporaryFolder 真实文件；DataStore scope 须共享 `testScheduler` 的 `UnconfinedTestDispatcher`，否则虚拟时间推不动其内部协程）

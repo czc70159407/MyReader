@@ -53,7 +53,7 @@ sealed interface ReaderUiState {
 /**
  * 阅读器 ViewModel：按 documentId 打开文档（引擎经 [DocumentEngineRouter] 路由）+ 密码交互 +
  * 进度回写（防抖 600ms + onPause/onStop/onDispose 保底 flush）+ 加密文档首开兜底
- * （补 pageCount / 清 needsPassword / 补缩略图，见 docs/ui-design.md「导入流程」第 5 条）。
+ * （补 pageCount / 补缩略图；`needsPassword` 保留不清——加密标识常驻，见 docs/ui-design.md「导入流程」第 5 条）。
  */
 @HiltViewModel
 class ReaderViewModel @Inject constructor(
@@ -133,6 +133,14 @@ class ReaderViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PasswordRequiredException) {
+                // 加密自愈：标记常驻 true（含修复旧版本被误清的存量记录，幂等）
+                try {
+                    repository.setNeedsPassword(docId, true)
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Exception) {
+                    // 标记失败不影响密码交互
+                }
                 _state.value = ReaderUiState.NeedsPassword(item.title, wrongPassword = password != null)
                 return@launch
             } catch (e: DocumentException) {
@@ -167,7 +175,11 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** 首开兜底：页数/密码标记/缩略图与库内记录不一致时补齐（典型：加密文档解密成功后）。
+    /** 首开兜底：页数/缩略图与库内记录不一致时补齐（典型：加密文档解密成功后）。
+     *  **不清除 `needsPassword`**：文件始终加密（密码不持久化，每次打开仍需输入），该标记即
+     *  「加密文档」常驻标识，清掉会让书架/最近条锁角标永久消失（M6 验收用户反馈修复）。
+     *  **加密文档不保留内容预览**：清历史缩略图（含旧版本兜底生成的）且不补生成——锁角标卡片
+     *  却展示第一页内容违背加密语义（M6 用户反馈修复）。
      * 业务异常吞掉不影响阅读（各项下次打开重走自愈）；CancellationException 必须传播。 */
     private suspend fun backfillAfterOpen(item: LibraryItem, doc: Document) {
         try {
@@ -175,9 +187,11 @@ class ReaderViewModel @Inject constructor(
                 repository.setPageCount(docId, doc.pageCount)
             }
             if (item.needsPassword) {
-                repository.setNeedsPassword(docId, false)
-            }
-            if (item.thumbnailRelPath == null && doc.pageCount > 0) {
+                if (item.thumbnailRelPath != null) {
+                    withContext(dispatchers.io) { storage.deleteThumbnail(item.thumbnailRelPath) }
+                    repository.setThumbnail(docId, null)
+                }
+            } else if (item.thumbnailRelPath == null && doc.pageCount > 0) {
                 val thumb = withContext(dispatchers.io) { router.viewerFor(item.fileType).thumbnail(doc) }
                 val relPath = saveThumbnailPng(thumb)
                 repository.setThumbnail(docId, relPath)

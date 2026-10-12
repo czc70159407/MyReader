@@ -92,6 +92,7 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.room.runtime)   // DatabaseModule 组装层直接构建 Room 数据库（无需 compiler）
+    implementation(libs.datastore.preferences)   // RepositoryModule 提供 DataStore 实例（M6 排序偏好）
 
     // 数据层（M2）：Repository 接口 + Room；feature 层将只依赖这些 core 接口
     api(project(":core:data"))

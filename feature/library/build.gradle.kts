@@ -55,6 +55,7 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.robolectric)
     testImplementation(libs.room.runtime)      // inMemoryDatabaseBuilder（导入编排测试用真 Repository）
+    testImplementation(libs.datastore.preferences)   // 测试内构造 LibraryPrefs 的 DataStore 实例
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)
     testImplementation(libs.compose.ui.test.junit4)   // FolderTreeList Compose UI 测试（版本随 BOM）

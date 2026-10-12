@@ -62,7 +62,7 @@ app ──► feature:reader ──► core:document (接口：DocumentEngine + 
    └──► feature:viewer-mupdf ──► third-party:mupdf   (MuPDF 边界止于此)
             feature:viewer-mupdf 实现 DocumentEngine/Document/DocumentViewerProvider，@FileTypeKey("pdf") 注册
             feature:reader 不依赖任何 viewer-*，经 core:document 接口 + DI Map 按 doc.fileType 路由到对应引擎
-   core:data ──► core:storage   (独立链路)
+   core:data ──► core:storage + datastore-preferences   (独立链路；DataStore 仅书架排序偏好 M6，实例由 app DI 提供)
 ```
 
 - `feature:reader`、`feature:library` 只依赖 `core:document`（接口），**不传递依赖 MuPDF**；MuPDF 边界止于 `feature:viewer-mupdf`，`reader` 不直接 `implementation(project(":feature:viewer-mupdf"))`
@@ -147,7 +147,7 @@ javax-inject = { group = "javax.inject", name = "javax.inject", version = "1" } 
 dagger = { group = "com.google.dagger", name = "dagger", version.ref = "hilt" }   # @MapKey（@FileTypeKey 作为 IntoMap 自定义 key 的元注解契约）
 documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }   # 书架排序偏好（M6）：core:data + app DI + feature:library 测试
 # ---- 测试（对应「测试策略」各层）----
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }

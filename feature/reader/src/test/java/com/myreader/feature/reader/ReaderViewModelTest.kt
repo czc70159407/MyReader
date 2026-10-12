@@ -132,7 +132,7 @@ class ReaderViewModelTest {
     }
 
     @Test
-    fun `加密文档先弹密码 密码正确后 Ready 并回写页数与清除标记`() = runTest(dispatcher) {
+    fun `加密文档先弹密码 密码正确后 Ready 回写页数且加密标记保留`() = runTest(dispatcher) {
         writeFile("1.pdf")
         var calls = 0
         val engine = ScriptedEngine { password ->
@@ -140,7 +140,7 @@ class ReaderViewModelTest {
             if (password == null) throw PasswordRequiredException()
             FakeDocument(pageCount = 9)
         }
-        val vm = newViewModel(engine, item(pageCount = -1, needsPassword = true))
+        val vm = newViewModel(engine, item(pageCount = -1, needsPassword = true, thumbnailRelPath = null))
         advanceUntilIdle()
 
         assertTrue(vm.state.value is ReaderUiState.NeedsPassword)
@@ -152,7 +152,30 @@ class ReaderViewModelTest {
         val ready = vm.state.value as ReaderUiState.Ready
         assertEquals(9, ready.pageCount)
         assertEquals(1L to 9, repo.pageCountWrites.single())
-        assertEquals(1L to false, repo.passwordWrites.single())
+        // 加密文件始终加密（密码不持久化，每次打开仍需输入）：密码打开成功不清标记；
+        // PasswordRequiredException 自愈路径置 true（兜住旧版本误清的存量数据）
+        assertEquals(1L to true, repo.passwordWrites.single())
+        // 加密文档不保留内容预览：不补生成缩略图
+        assertTrue(repo.thumbnailWrites.isEmpty())
+    }
+
+    @Test
+    fun `加密文档遗留缩略图 密码打开后清除预览`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val engine = ScriptedEngine { password ->
+            if (password == null) throw PasswordRequiredException()
+            FakeDocument(pageCount = 3)
+        }
+        // 旧版本兜底给加密文档生成过缩略图（遗留预览泄露）
+        val vm = newViewModel(engine, item(needsPassword = true, thumbnailRelPath = "thumb/1.png"))
+        advanceUntilIdle()
+        assertTrue(vm.state.value is ReaderUiState.NeedsPassword)
+
+        vm.submitPassword("1234")
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value is ReaderUiState.Ready)
+        assertEquals(1L to null, repo.thumbnailWrites.single())   // 清字段（自愈遗留预览）
     }
 
     @Test

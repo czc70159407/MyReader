@@ -3,6 +3,9 @@ package com.myreader.feature.library
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.Preferences
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
 import androidx.compose.ui.Modifier
@@ -13,6 +16,7 @@ import androidx.test.core.app.ApplicationProvider
 import app.cash.turbine.test
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.prefs.LibraryPrefs
 import com.myreader.core.data.repo.LibraryRepositoryImpl
 import com.myreader.core.document.CorruptDocumentException
 import com.myreader.core.document.Document
@@ -24,16 +28,23 @@ import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.document.ReaderMode
 import com.myreader.core.document.SimpleDocumentEngineRouter
+import com.myreader.core.model.DocSort
+import com.myreader.core.model.LibraryItem
 import com.myreader.core.storage.DocumentStorage
 import java.io.ByteArrayInputStream
+import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -92,6 +103,7 @@ class LibraryViewModelTest {
     private lateinit var storage: DocumentStorage
     private lateinit var repository: LibraryRepositoryImpl
     private lateinit var importer: DocumentImporter
+    private lateinit var prefs: LibraryPrefs
     private lateinit var viewModel: LibraryViewModel
 
     private class FakeEngine(var behavior: Behavior) : DocumentEngine {
@@ -131,9 +143,9 @@ class LibraryViewModelTest {
 
     private val pdfBytes = "%PDF-1.4 fake".toByteArray()
 
-    private fun registerPdf(name: String): Uri {
+    private fun registerPdf(name: String, bytes: ByteArray = pdfBytes): Uri {
         val uri = Uri.parse("content://test/$name")
-        shadowOf(context.contentResolver).registerInputStream(uri, ByteArrayInputStream(pdfBytes))
+        shadowOf(context.contentResolver).registerInputStream(uri, ByteArrayInputStream(bytes))
         return uri
     }
 
@@ -148,7 +160,13 @@ class LibraryViewModelTest {
             viewers = mapOf("pdf" to FakeViewer()),
         )
         importer = DocumentImporter(context, router, storage, repository, dispatchers)
-        viewModel = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer)   // 根目录
+        // DataStore 测试实例：scope 共享 testScheduler（无参 UnconfinedTestDispatcher 会新建独立调度器，
+        // 虚拟时间推不动其内部协程）；每测试独立文件，避开同名多实例崩溃
+        val dataStore: DataStore<Preferences> = PreferenceDataStoreFactory.create(
+            scope = CoroutineScope(UnconfinedTestDispatcher(mainDispatcherRule.testScheduler) + Job()),
+        ) { File(tmp.newFolder("prefs"), "library.preferences_pb") }
+        prefs = LibraryPrefs(dataStore)
+        viewModel = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, prefs)   // 根目录
     }
 
     @After
@@ -211,6 +229,71 @@ class LibraryViewModelTest {
         }
         throw AssertionError("等待根级目录数 $expected 超时")
     }
+
+    // ---- M6 排序 / 搜索 / 最近阅读 ----
+
+    /** 让 stateIn 上游保持活跃（WhileSubscribed 无收集者不启动上游，仅读 .value 永远是初值） */
+    private fun TestScope.keepAlive(vararg flows: Flow<*>) {
+        flows.forEach { flow ->
+            backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { flow.collect {} }
+        }
+    }
+
+    /** 轮询等待文档顺序（debounce/Room 真实线程发射，advanceUntilIdle 只推虚拟任务，M5 教训）。
+     *  lambda 置最后参数以支持尾随 lambda 调用 */
+    private suspend fun awaitDocOrder(
+        vm: LibraryViewModel = viewModel,
+        timeoutMs: Long = 5_000,
+        expected: (List<String>) -> Boolean,
+    ) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            mainDispatcherRule.testScheduler.advanceUntilIdle()
+            if (expected(vm.documents.value.map { it.title })) return
+            delay(10)
+        }
+        throw AssertionError("等待文档顺序超时，当前: ${vm.documents.value.map { it.title }}")
+    }
+
+    /** 轮询等待偏好写入（DataStore edit 走共享 scheduler，写文件为真实 IO） */
+    private suspend fun awaitPrefsSort(expected: DocSort, timeoutMs: Long = 5_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            mainDispatcherRule.testScheduler.advanceUntilIdle()
+            if (prefs.docSort.first() == expected) return
+            delay(10)
+        }
+        throw AssertionError("排序偏好未写入，当前: ${prefs.docSort.first()}")
+    }
+
+    /** 搜索结果轮询：先推进虚拟时间跨过 300ms 防抖窗口，再等 Room 真实线程发射（lambda 置最后参数） */
+    private suspend fun awaitSearchResult(timeoutMs: Long = 5_000, predicate: (List<LibraryItem>?) -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            mainDispatcherRule.testScheduler.advanceTimeBy(1_000)
+            mainDispatcherRule.testScheduler.runCurrent()
+            if (predicate(viewModel.searchResults.value)) return
+            delay(10)
+        }
+        throw AssertionError("等待搜索结果超时，当前值: ${viewModel.searchResults.value}")
+    }
+
+    /** 轮询等待最近阅读列表（lambda 置最后参数） */
+    private suspend fun awaitRecent(timeoutMs: Long = 5_000, expected: (List<LibraryItem>) -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            mainDispatcherRule.testScheduler.advanceUntilIdle()
+            if (expected(viewModel.recent.value)) return
+            delay(10)
+        }
+        throw AssertionError("等待最近阅读超时，当前: ${viewModel.recent.value.map { it.title }}")
+    }
+
+    private suspend fun addDoc(title: String, hash: String, fileSize: Long): Long = repository.addDocument(
+        folderId = null, title = title, relPath = "$hash.pdf",
+        fileType = "pdf", mimeType = null, sourceUri = null,
+        fileSize = fileSize, contentHash = hash, pageCount = 1,
+    )
 
     @Test
     fun importPick_confirm_importsIntoSelectedFolder() = runTest(mainDispatcherRule.testScheduler) {
@@ -384,7 +467,7 @@ class LibraryViewModelTest {
     fun breadcrumb_showsAncestorChain_andFallsBackWhenFolderDeleted() = runTest(mainDispatcherRule.testScheduler) {
         val a = repository.createFolder(null, "A")
         val b = repository.createFolder(a, "B")
-        val vm = LibraryViewModel(SavedStateHandle(mapOf("folderId" to b)), repository, importer)
+        val vm = LibraryViewModel(SavedStateHandle(mapOf("folderId" to b)), repository, importer, prefs)
 
         vm.breadcrumb.test {
             assertEquals(emptyList<String>(), awaitItem())          // stateIn 初始值
@@ -399,5 +482,89 @@ class LibraryViewModelTest {
             assertEquals(emptyList<String>(), awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    // ---- M6 排序 / 搜索 / 最近阅读 ----
+
+    @Test
+    fun setSort_reordersImmediately_andPersistsAcrossVmRecreation() = runTest(mainDispatcherRule.testScheduler) {
+        addDoc("a.pdf", "h1", fileSize = 100)
+        addDoc("b.pdf", "h2", fileSize = 200)
+        keepAlive(viewModel.documents, viewModel.sort)
+
+        awaitDocOrder { it == listOf("a.pdf", "b.pdf") }   // 默认 TITLE
+
+        viewModel.setSort(DocSort.SIZE)
+        awaitDocOrder { it == listOf("b.pdf", "a.pdf") }   // 切换即时生效
+        awaitPrefsSort(DocSort.SIZE)
+
+        // 重建 VM（同偏好实例）：重启语义读回 SIZE
+        val vm2 = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, prefs)
+        keepAlive(vm2.documents)
+        awaitDocOrder(vm2) { it == listOf("b.pdf", "a.pdf") }
+    }
+
+    @Test
+    fun search_debounce_thenMatchesAcrossFolders() = runTest(mainDispatcherRule.testScheduler) {
+        val fid = repository.createFolder(null, "F")
+        viewModel.onUrisPicked(listOf(registerPdf("alpha.pdf")))
+        viewModel.confirmImportPick(null)
+        awaitDocCount(null, 1)
+        awaitImportMessage("导入 1 个")
+        // 内容须与 alpha 不同：相同字节 → contentHash 撞车 → 导入挂起等重复确认
+        viewModel.onUrisPicked(listOf(registerPdf("beta.pdf", "%PDF-1.4 beta".toByteArray())))
+        viewModel.confirmImportPick(fid)
+        awaitDocCount(fid, 1)
+
+        // Robolectric 无 SAF provider → 导入标题为「未命名文档」；重命名为确定性标题供搜索匹配
+        db.documentDao().rename(db.documentDao().docsInByTitle(null).first().single().id, "alpha.pdf")
+        db.documentDao().rename(db.documentDao().docsInByTitle(fid).first().single().id, "beta.pdf")
+        keepAlive(viewModel.searchResults)
+
+        assertNull(viewModel.searchResults.value)
+        viewModel.onSearchQueryChange("alp")
+
+        // 防抖窗口内不发射（仅推进 299ms）
+        mainDispatcherRule.testScheduler.advanceTimeBy(299)
+        mainDispatcherRule.testScheduler.runCurrent()
+        assertNull(viewModel.searchResults.value)
+
+        // 窗口过后 Room 真实线程发射 → 轮询等待；全库命中（beta 在子目录 F，未被命中但证明范围不限当前层）
+        awaitSearchResult { it != null && it.size == 1 }
+        assertEquals("alpha.pdf", viewModel.searchResults.value!!.single().title)
+    }
+
+    @Test
+    fun search_blankQueryAndExit_fallBackToBrowse() = runTest(mainDispatcherRule.testScheduler) {
+        viewModel.onUrisPicked(listOf(registerPdf("alpha.pdf")))
+        viewModel.confirmImportPick(null)
+        awaitDocCount(null, 1)
+        keepAlive(viewModel.searchResults)
+
+        viewModel.onSearchQueryChange("   ")   // 纯空白：trim 后为空 → 非搜索态
+        awaitSearchResult { it == null }
+
+        viewModel.onSearchQueryChange("alp")
+        awaitSearchResult { it != null }
+
+        viewModel.exitSearch()
+        awaitSearchResult { it == null }   // 退出搜索 → 回浏览态
+    }
+
+    @Test
+    fun recent_ordersByLastReadDesc_andEmptyForSubFolder() = runTest(mainDispatcherRule.testScheduler) {
+        val idA = addDoc("a.pdf", "h1", fileSize = 1)
+        val idB = addDoc("b.pdf", "h2", fileSize = 1)
+        // 显式时间戳避免同毫秒排序歧义
+        db.documentDao().updateProgress(idB, 1, 0, 1_000L)
+        db.documentDao().updateProgress(idA, 0, 0, 2_000L)
+        keepAlive(viewModel.recent)
+
+        awaitRecent { it.map { item -> item.id } == listOf(idA, idB) }   // lastReadAt DESC
+
+        // 非根目录 VM：recent 恒空（VM 层 gate，stateIn 初值即空）
+        val fid = repository.createFolder(null, "F")
+        val vm2 = LibraryViewModel(SavedStateHandle(mapOf("folderId" to fid)), repository, importer, prefs)
+        assertTrue(vm2.recent.value.isEmpty())
     }
 }

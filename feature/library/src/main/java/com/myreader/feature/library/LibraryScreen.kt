@@ -2,6 +2,7 @@ package com.myreader.feature.library
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -17,17 +18,27 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -44,6 +55,8 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,11 +73,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
 import java.io.File
@@ -91,7 +106,21 @@ fun LibraryScreen(
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val pendingDuplicate by viewModel.pendingDuplicate.collectAsStateWithLifecycle()
     val pendingImportUris by viewModel.pendingImportUris.collectAsStateWithLifecycle()
+    val currentSort by viewModel.sort.collectAsStateWithLifecycle()
+    val recent by viewModel.recent.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
+    val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // 搜索框展开态（本地 UI 态；结果与否由 searchResults 驱动，空白关键词维持浏览内容）
+    var searchActive by remember { mutableStateOf(false) }
+    fun exitSearch() {
+        searchActive = false
+        viewModel.exitSearch()
+    }
+
+    // 系统返回手势：搜索态先收起搜索，不 pop 导航栈
+    BackHandler(enabled = searchActive) { exitSearch() }
 
     // 长按菜单展开目标（卡片内 DropdownMenu 以 menuX?.id == item.id 判断展开）
     var menuFolder by remember { mutableStateOf<Folder?>(null) }
@@ -120,45 +149,86 @@ fun LibraryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                // 面包屑：书架 / A / B ——根级弱化，当前级加粗；单 Text 便于整体省略
                 title = {
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                                append("书架")
-                            }
-                            breadcrumb.forEachIndexed { i, name ->
-                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                                    append(" / ")
+                    if (searchActive) {
+                        // 搜索态：标题槽换输入框（实时搜索，结果由 300ms 防抖驱动）
+                        TextField(
+                            value = searchQuery,
+                            onValueChange = viewModel::onSearchQueryChange,
+                            placeholder = {
+                                Text(
+                                    text = "搜索全部文档",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = viewModel::exitSearch) {
+                                        Icon(imageVector = Icons.Filled.Close, contentDescription = "清空关键词")
+                                    }
                                 }
-                                withStyle(
-                                    SpanStyle(
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = if (i == breadcrumb.lastIndex) FontWeight.Bold else FontWeight.Normal,
-                                    ),
-                                ) { append(name) }
-                            }
-                        },
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                            },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent,
+                            ),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        // 面包屑：书架 / A / B ——根级弱化，当前级加粗；单 Text 便于整体省略
+                        Text(
+                            text = buildAnnotatedString {
+                                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                                    append("书架")
+                                }
+                                breadcrumb.forEachIndexed { i, name ->
+                                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                                        append(" / ")
+                                    }
+                                    withStyle(
+                                        SpanStyle(
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = if (i == breadcrumb.lastIndex) FontWeight.Bold else FontWeight.Normal,
+                                        ),
+                                    ) { append(name) }
+                                }
+                            },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 },
                 navigationIcon = {
-                    if (!viewModel.isRoot) {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回上级")
-                        }
+                    when {
+                        searchActive ->
+                            IconButton(onClick = { exitSearch() }) {
+                                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "退出搜索")
+                            }
+                        !viewModel.isRoot ->
+                            IconButton(onClick = onNavigateBack) {
+                                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回上级")
+                            }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showNewFolderInCurrent = true }) {
-                        Icon(imageVector = Icons.Filled.CreateNewFolder, contentDescription = "新建文件夹")
-                    }
-                    IconButton(
-                        onClick = { importLauncher.launch(arrayOf("application/pdf")) },
-                        enabled = !importing,
-                    ) {
-                        Icon(imageVector = Icons.Filled.Add, contentDescription = "导入 PDF")
+                    if (!searchActive) {
+                        IconButton(onClick = { showNewFolderInCurrent = true }) {
+                            Icon(imageVector = Icons.Filled.CreateNewFolder, contentDescription = "新建文件夹")
+                        }
+                        IconButton(
+                            onClick = { importLauncher.launch(arrayOf("application/pdf")) },
+                            enabled = !importing,
+                        ) {
+                            Icon(imageVector = Icons.Filled.Add, contentDescription = "导入 PDF")
+                        }
+                        IconButton(onClick = { searchActive = true }) {
+                            Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
+                        }
+                        SortMenu(current = currentSort, onSelect = viewModel::setSort)
                     }
                 },
             )
@@ -173,6 +243,52 @@ fun LibraryScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     CircularProgressIndicator()
+                }
+                // 搜索态（仅以 searchResults != null 切换；空白关键词/防抖中维持浏览内容）
+                searchResults != null -> {
+                    val results = searchResults.orEmpty()
+                    if (results.isEmpty()) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = MaterialTheme.colorScheme.outline,
+                            )
+                            Text(
+                                text = "未找到匹配文档",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(top = 16.dp),
+                            )
+                        }
+                    } else {
+                        // 全库结果（复用文档卡片与长按菜单；key 与浏览态同规范）
+                        LazyVerticalGrid(
+                            columns = GridCells.Adaptive(minSize = 108.dp),
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(results, key = { "d_${it.id}" }) { item ->
+                                DocumentCard(
+                                    item = item,
+                                    onClick = { onDocumentClick(item.id) },
+                                    onLongClick = { menuDocument = item },
+                                    menuExpanded = menuDocument?.id == item.id,
+                                    onDismissMenu = { menuDocument = null },
+                                    onRename = { renameDocTarget = item },
+                                    onMove = { moveDocTarget = item },
+                                    onDelete = { deleteDocTarget = item },
+                                )
+                            }
+                        }
+                    }
                 }
                 folders.isEmpty() && documents.isEmpty() -> {
                 Column(
@@ -202,6 +318,12 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
+                    // M6 最近阅读条：仅根目录 + 有阅读记录时显示（搜索态走上方独立分支）
+                    if (viewModel.isRoot && recent.isNotEmpty()) {
+                        item(key = "recent_header", span = { GridItemSpan(maxLineSpan) }) {
+                            RecentSection(recent = recent, onDocumentClick = onDocumentClick)
+                        }
+                    }
                     items(folders, key = { "f_${it.id}" }) { folder ->
                         FolderCard(
                             folder = folder,
@@ -560,5 +682,107 @@ private fun ThumbnailImage(relPath: String?, modifier: Modifier = Modifier) {
         )
     } else {
         Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant))
+    }
+}
+
+/**
+ * 排序菜单（M6）：顶栏三点溢出，4 个选项当前项勾选，选中即写偏好并即时生效。
+ * 搜索结果固定按标题排序（DocumentDao.search），故搜索态不展示此菜单。
+ * internal：供 Compose UI 测试直接渲染（无 Room/VM 依赖）。
+ */
+@Composable
+internal fun SortMenu(current: DocSort, onSelect: (DocSort) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "排序")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DocSort.entries.forEach { sort ->
+                DropdownMenuItem(
+                    text = { Text(text = sortLabel(sort)) },
+                    trailingIcon = {
+                        if (sort == current) {
+                            Icon(imageVector = Icons.Filled.Check, contentDescription = "当前排序")
+                        }
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(sort)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun sortLabel(sort: DocSort): String = when (sort) {
+    DocSort.TITLE -> "标题"
+    DocSort.LAST_READ -> "最近阅读"
+    DocSort.ADDED -> "添加时间"
+    DocSort.SIZE -> "大小"
+}
+
+/** 最近阅读条（M6）：根书架网格首部横向滑动卡片，点击直达阅读器。internal 供 Compose UI 测试 */
+@Composable
+internal fun RecentSection(recent: List<LibraryItem>, onDocumentClick: (Long) -> Unit) {
+    val listState = rememberLazyListState()
+    // 阅读返回后最近条按 lastReadAt 重排（刚读的文档升到首位）：内容在保留的横向偏移下原地换卡，
+    // 视觉上像卡片跳变（M6 验收用户反馈）——首项变化时把横向滚动复位到最新项，跳变变更有意的展示
+    LaunchedEffect(recent.firstOrNull()?.id) {
+        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
+            listState.scrollToItem(0)
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = "最近阅读",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LazyRow(
+            state = listState,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(top = 4.dp),
+        ) {
+            rowItems(recent, key = { "r_${it.id}" }) { item ->
+                RecentCard(item = item, onClick = { onDocumentClick(item.id) })
+            }
+        }
+    }
+}
+
+@Composable
+internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.width(100.dp).clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)) {
+            ThumbnailImage(relPath = item.thumbnailRelPath, modifier = Modifier.fillMaxSize())
+            // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）
+            if (item.needsPassword) {
+                StatusBadge(
+                    icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) },
+                    modifier = Modifier.align(Alignment.TopEnd),
+                )
+            }
+        }
+        Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            // 页码进度仅对页码式文档有意义（cfi 流式无页概念，M9 前不会有）
+            if (item.progressType == "page") {
+                Text(
+                    text = "第 ${item.currentPage + 1} 页",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            }
+        }
     }
 }

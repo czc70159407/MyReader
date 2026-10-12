@@ -81,11 +81,19 @@ fun ReaderScreen(
         }
 
         is ReaderUiState.NeedsPassword -> {
-            PasswordDialog(
-                wrongPassword = s.wrongPassword,
-                onDismiss = onBack,   // 无密码无法打开，取消即返回书架
-                onConfirm = viewModel::submitPassword,
-            )
+            // 取消即返回书架；先让弹窗离开组合（其独立窗口立即销毁）再触发导航——
+            // 否则弹窗作为残影悬在书架转场之上、随目的地离场突然消失，与页面退场速度不同步（M6 用户反馈）
+            var dialogDismissed by remember { mutableStateOf(false) }
+            if (!dialogDismissed) {
+                PasswordDialog(
+                    wrongPassword = s.wrongPassword,
+                    onDismiss = {
+                        dialogDismissed = true
+                        onBack()
+                    },
+                    onConfirm = viewModel::submitPassword,
+                )
+            }
         }
 
         is ReaderUiState.Failed -> Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {

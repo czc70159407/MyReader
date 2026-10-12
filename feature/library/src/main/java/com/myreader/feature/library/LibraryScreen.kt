@@ -108,19 +108,13 @@ fun LibraryScreen(
     val pendingImportUris by viewModel.pendingImportUris.collectAsStateWithLifecycle()
     val currentSort by viewModel.sort.collectAsStateWithLifecycle()
     val recent by viewModel.recent.collectAsStateWithLifecycle()
+    val searchActive by viewModel.searchOpen.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // 搜索框展开态（本地 UI 态；结果与否由 searchResults 驱动，空白关键词维持浏览内容）
-    var searchActive by remember { mutableStateOf(false) }
-    fun exitSearch() {
-        searchActive = false
-        viewModel.exitSearch()
-    }
-
-    // 系统返回手势：搜索态先收起搜索，不 pop 导航栈
-    BackHandler(enabled = searchActive) { exitSearch() }
+    // 系统返回手势：搜索态先收起搜索，不 pop 导航栈（searchActive 来自 VM，跨导航一致）
+    BackHandler(enabled = searchActive) { viewModel.exitSearch() }
 
     // 长按菜单展开目标（卡片内 DropdownMenu 以 menuX?.id == item.id 判断展开）
     var menuFolder by remember { mutableStateOf<Folder?>(null) }
@@ -205,7 +199,7 @@ fun LibraryScreen(
                 navigationIcon = {
                     when {
                         searchActive ->
-                            IconButton(onClick = { exitSearch() }) {
+                            IconButton(onClick = viewModel::exitSearch) {
                                 Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "退出搜索")
                             }
                         !viewModel.isRoot ->
@@ -225,7 +219,7 @@ fun LibraryScreen(
                         ) {
                             Icon(imageVector = Icons.Filled.Add, contentDescription = "导入 PDF")
                         }
-                        IconButton(onClick = { searchActive = true }) {
+                        IconButton(onClick = viewModel::openSearch) {
                             Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
                         }
                         SortMenu(current = currentSort, onSelect = viewModel::setSort)

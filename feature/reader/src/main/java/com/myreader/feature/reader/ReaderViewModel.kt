@@ -133,13 +133,15 @@ class ReaderViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: PasswordRequiredException) {
-                // 加密自愈：标记常驻 true（含修复旧版本被误清的存量记录，幂等）
-                try {
-                    repository.setNeedsPassword(docId, true)
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (_: Exception) {
-                    // 标记失败不影响密码交互
+                // 加密自愈：标记常驻 true，兜住旧版本误清的存量记录；已为 true（错密码重试路径）不重复写
+                if (!item.needsPassword) {
+                    try {
+                        repository.setNeedsPassword(docId, true)
+                    } catch (ce: CancellationException) {
+                        throw ce
+                    } catch (_: Exception) {
+                        // 标记失败不影响密码交互
+                    }
                 }
                 _state.value = ReaderUiState.NeedsPassword(item.title, wrongPassword = password != null)
                 return@launch

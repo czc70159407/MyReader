@@ -152,11 +152,25 @@ class ReaderViewModelTest {
         val ready = vm.state.value as ReaderUiState.Ready
         assertEquals(9, ready.pageCount)
         assertEquals(1L to 9, repo.pageCountWrites.single())
-        // 加密文件始终加密（密码不持久化，每次打开仍需输入）：密码打开成功不清标记；
-        // PasswordRequiredException 自愈路径置 true（兜住旧版本误清的存量数据）
-        assertEquals(1L to true, repo.passwordWrites.single())
+        // 加密文件始终加密（密码不持久化，每次打开仍需输入）：标记已为 true，自愈守卫跳过写库
+        assertTrue(repo.passwordWrites.isEmpty())
         // 加密文档不保留内容预览：不补生成缩略图
         assertTrue(repo.thumbnailWrites.isEmpty())
+    }
+
+    @Test
+    fun `加密标记被误清 首开自愈置回true`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val engine = ScriptedEngine { password ->
+            if (password == null) throw PasswordRequiredException()
+            FakeDocument(pageCount = 3)
+        }
+        // 旧版本误清（needsPassword=false 但文件仍加密）：首开弹密码时自愈置回 true
+        val vm = newViewModel(engine, item(needsPassword = false))
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value is ReaderUiState.NeedsPassword)
+        assertEquals(1L to true, repo.passwordWrites.single())
     }
 
     @Test
@@ -190,6 +204,8 @@ class ReaderViewModelTest {
 
         val state = vm.state.value as ReaderUiState.NeedsPassword
         assertTrue(state.wrongPassword)
+        // 标记已为 true：错密码重试路径不产生冗余写库（code-review 修正）
+        assertTrue(repo.passwordWrites.isEmpty())
     }
 
     @Test

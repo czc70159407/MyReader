@@ -541,6 +541,11 @@ class LibraryViewModelTest {
         awaitDocCount(null, 1)
         keepAlive(viewModel.searchResults)
 
+        // 搜索框展开态在 VM（跨导航一致）：openSearch/exitSearch 成对管理
+        assertFalse(viewModel.searchOpen.value)
+        viewModel.openSearch()
+        assertTrue(viewModel.searchOpen.value)
+
         viewModel.onSearchQueryChange("   ")   // 纯空白：trim 后为空 → 非搜索态
         awaitSearchResult { it == null }
 
@@ -549,6 +554,8 @@ class LibraryViewModelTest {
 
         viewModel.exitSearch()
         awaitSearchResult { it == null }   // 退出搜索 → 回浏览态
+        assertFalse(viewModel.searchOpen.value)
+        assertEquals("", viewModel.searchQuery.value)
     }
 
     @Test

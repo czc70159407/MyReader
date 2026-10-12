@@ -63,12 +63,25 @@ class LibraryViewModel @Inject constructor(
     val sort: StateFlow<DocSort> =
         prefs.docSort.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocSort.TITLE)
 
-    /** 切换排序：写偏好即生效（documents 流跟随），重启保持 */
+    /** 切换排序：写偏好即生效（documents 流跟随），重启保持；磁盘故障静默降级（排序不变），不崩溃 */
     fun setSort(sort: DocSort) {
-        viewModelScope.launch { prefs.setDocSort(sort) }
+        viewModelScope.launch {
+            try {
+                prefs.setDocSort(sort)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // DataStore 写失败（IO/磁盘故障）：偏好维持旧值，无副作用可吞
+            }
+        }
     }
 
     // ---- 搜索（M6：全库标题搜索，不限当前文件夹）----
+
+    /** 搜索框展开态放 VM（code-review 修正）：此前为 Compose 本地态，从搜索结果进阅读器返回后
+     *  本地态复位而 VM 查询存活，出现「结果网格 + 浏览态顶栏」失配且无退出入口 */
+    private val _searchOpen = MutableStateFlow(false)
+    val searchOpen: StateFlow<Boolean> = _searchOpen
 
     private val _searchQuery = MutableStateFlow("")
     /** 输入框即时回显（未 trim，避免打字时空格被吃） */
@@ -86,12 +99,17 @@ class LibraryViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    fun openSearch() {
+        _searchOpen.value = true
+    }
+
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
     }
 
-    /** 退出搜索：清空关键词 → searchResults 回落 null → UI 恢复浏览态 */
+    /** 退出搜索：收起输入框并清空关键词 → searchResults 回落 null → UI 恢复浏览态 */
     fun exitSearch() {
+        _searchOpen.value = false
         _searchQuery.value = ""
     }
 

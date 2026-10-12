@@ -92,8 +92,8 @@ third-party/
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M0 | 脚手架 + git init | 已完成 |
-| M1 | MuPDF submodule + native 编译 | 未开始 |
-| M2 | 数据层（Room/Hilt） | 未开始 |
+| M1 | MuPDF submodule + native 编译 | 已完成 |
+| M2 | 数据层（Room/Hilt） | 已完成 |
 | M3 | 导入与书架 | 未开始 |
 | M4 | 阅读器（水平模式 + 进度记忆） | 未开始 |
 | M5 | 目录树与文档管理 | 未开始 |

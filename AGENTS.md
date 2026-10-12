@@ -4,18 +4,18 @@
 
 ## 当前状态（会话开始必读 / 里程碑完成必更新）
 
-- **阶段**：M2 已完成——数据层就绪（4 个 core 模块 + Room/Hilt + LibraryRepository + 27 个单测全过 + schema 1.json）；M1 构建验收已过（真机目视 demo 待用户）
-- **下一步**：M3 导入与书架（SAF 导入 + 复制/hash 查重/打开验证/缩略图 + LibraryScreen）；M1 demo 真机目视待用户确认
+- **阶段**：M1/M2 均已完成——数据层就绪（4 个 core 模块 + Room/Hilt + LibraryRepository + 31 单测 + schema 1.json）；M1 真机验收通过（Android 16 真机截图确认 countPages=3 + 首页渲染）
+- **下一步**：M3 导入与书架（SAF 导入 + 复制/hash 查重/打开验证/缩略图 + LibraryScreen）
 - **环境**：Windows / PowerShell 5 / JDK 21 / Gradle 8.14；Android SDK 位于 `D:\develop\Android\Sdk`（cmdline-tools + platform-tools + platforms android-33/35 + build-tools 35.0.0，`local.properties` 已指向，`ANDROID_HOME` 用户级已设）；git 位于 `D:\develop\Git`（不在 PATH，需全路径或临时加 PATH）；gradle 命令一律 `.\gradlew.bat`
 - **已知卡点**：①Java TLS 访问 services.gradle.org 被干扰（已预置 `D:\develop\gradle-repository\wrapper\dists\gradle-8.14-bin\38aieal9i53h9rfe7vjup95b9` 缓存绕过，勿删该目录）；②M1 上游已查证解卡：仓库在 GitHub（`ArtifexSoftware/mupdf-android-viewer`），fitz 官方 Maven `maven.ghostscript.com` 可达且 AAR 含全 4 ABI——NDK 与 native 源码编译不再需要
 - **M0 验收证据**：`.\gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL in 53s`（35 tasks），产物 `app/build/outputs/apk/debug/app-debug.apk`（9.01MB）；真机启动显示 Hello 待用户目视确认（本环境无设备/模拟器）
-- **M1 验收证据**：`.\gradlew.bat :third-party:mupdf:assembleDebug` → `BUILD SUCCESSFUL in 21s`（fitz 1.28.2 官方 Maven 构件，免 NDK）；`.\gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL in 26s`，APK 31.1MB 含 `lib/arm64-v8a/libmupdf_java.so`（10.3MB）+ `lib/x86_64/libmupdf_java.so`（10.7MB），ABI 裁剪生效；demo（MainActivity 打开 assets/test.pdf，3 页）真机目视验证待用户
+- **M1 验收证据**：`.\gradlew.bat :third-party:mupdf:assembleDebug` → `BUILD SUCCESSFUL in 21s`（fitz 1.28.2 官方 Maven 构件，免 NDK）；`.\gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL in 26s`，APK 31.1MB 含 `lib/arm64-v8a/libmupdf_java.so`（10.3MB）+ `lib/x86_64/libmupdf_java.so`（10.7MB），ABI 裁剪生效；**真机验收通过**（Android 16 / SDK 36 真机 `adb install` 成功，截图确认 `countPages() = 3（预期 3）` 且 PDF 首页位图正常渲染）
 - **M2 验收证据**：`.\gradlew.bat :core:data:test` → `BUILD SUCCESSFUL`，**31/31 测试通过**（FolderDaoTest 5 / DocumentDaoTest 9 / LibraryRepositoryImplTest 9 / DocumentStorageTest 8，Robolectric+inMemory Room）；`.\gradlew.bat build` → `BUILD SUCCESSFUL in 1m 28s`（315 tasks）；schema 已导出 `core/data/schemas/…/1.json`；经 code-review + security-review 双审查，6 项 minor 问题全部修复（moveFolder 目标校验/路径穿越防护/ID 生成器提取+碰撞重试/LIKE 转义/删死代码/coroutines-core 修正），安全审查零可利用问题
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
 | M0 | 脚手架 + git init | 已完成 |
-| M1 | MuPDF submodule + Maven fitz | 已完成（真机目视待用户） |
+| M1 | MuPDF submodule + Maven fitz | 已完成 |
 | M2 | 数据层（Room/Hilt） | 已完成 |
 | M3 | 导入与书架 | 未开始 |
 | M4 | 阅读器（水平模式） | 未开始 |

@@ -23,6 +23,7 @@ interface LibraryRepository {
     fun docsIn(parentId: Long?, sort: DocSort): Flow<List<LibraryItem>>
     fun search(query: String): Flow<List<LibraryItem>>
     fun recent(limit: Int = 20): Flow<List<LibraryItem>>
+    suspend fun getDocument(id: Long): LibraryItem?        // 阅读器按 id 加载
     suspend fun findByHash(hash: String): LibraryItem?      // 重复导入检测
 
     suspend fun addDocument(
@@ -52,4 +53,5 @@ interface LibraryRepository {
     // ---- 状态 ----
     suspend fun setPageCount(id: Long, pageCount: Int)
     suspend fun setNeedsPassword(id: Long, value: Boolean)
+    suspend fun setThumbnail(id: Long, relPath: String?)   // 首开兜底补缩略图
 }

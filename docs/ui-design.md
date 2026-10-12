@@ -7,35 +7,38 @@
 ### Compose 桥接（AndroidView）
 
 ```kotlin
-// feature/viewer-mupdf/viewermupdf/MuPdfReaderView.kt（签名示意；viewer 内部可自由使用 MuPDF 具体类，
-// 对外只经 MuPdfViewerProvider.Content(doc: Document) 暴露，内部 cast 为 MuPdfDocument 取出 MuPDFCore。
-// 1.28.2 实测：MuPDF 底层类为 ReaderView(Context)，core 经 setAdapter(PageAdapter) 注入，见下方 API 备注）
+// feature/viewer-mupdf/viewermupdf/MuPdfReaderView.kt（M4 已落地，1.28.2 实测：
+// 上游 ReaderView 无 setViewListener/ViewListener——页面变化经 protected 钩子 onMoveToChild 暴露）。
+// 跳页机制：initialPage 变化（重组传入新值）时在 AndroidView update 块与 getDisplayedViewIndex()
+// 差分，不同则 setDisplayedViewIndex——跳页/大纲导航由外部状态驱动，无需命令式引用。
 @Composable
 fun MuPdfReaderView(
     core: MuPDFCore,
-    initialProgress: ProgressPayload.Page,
-    mode: ReaderMode,                          // HORIZONTAL / VERTICAL
+    initialPage: Int,
     onProgressChanged: (ProgressPayload.Page) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val viewRef = remember { mutableStateOf<ReaderView?>(null) }
+    val latestCallback by rememberUpdatedState(onProgressChanged)   // factory 只执行一次，经 State 转发最新回调
+    val adapterRef = remember { mutableStateOf<PageAdapter?>(null) }
     AndroidView(
         factory = { ctx ->
-            ReaderView(ctx).apply {
-                // setAdapter(PageAdapter 包装 core)；构造签名以 submodule 源码为准，M4 集成时最终确认
-                setDisplayedViewIndex(initialProgress.page)
-                setViewListener(object : ViewListener {
-                    override fun onPageChanged(page: Int, offset: Int) {
-                        onProgressChanged(ProgressPayload.Page(page, offset))
-                    }
-                })
-            }.also { viewRef.value = it }
+            val adapter = PageAdapter(ctx, core)
+            adapterRef.value = adapter
+            object : ReaderView(ctx) {
+                override fun onMoveToChild(i: Int) {
+                    super.onMoveToChild(i)
+                    latestCallback(ProgressPayload.Page(i))
+                }
+            }.apply {
+                setAdapter(adapter)
+                setDisplayedViewIndex(initialPage)
+            }
         },
-        update = { v -> /* 模式切换、跳页差分 */ },
+        update = { v -> if (v.getDisplayedViewIndex() != initialPage) v.setDisplayedViewIndex(initialPage) },
         modifier = modifier,
     )
     DisposableEffect(core) {
-        onDispose { viewRef.value?.releaseBitmaps() }
+        onDispose { adapterRef.value?.releaseBitmaps() }   // 释放共享 HQ 位图（ReaderView 自身无公开 releaseBitmaps）
     }
 }
 ```
@@ -62,9 +65,10 @@ fun MuPdfReaderView(
 
 ### 跳页与进度获取
 
-- 跳页：`readerView.setDisplayedViewIndex(page)` —— 由 ViewModel 传入上次 `currentPage`
-- 当前页：`onPageChanged(page, offset)` 回调 —— 用来回写进度
-- 大纲导航：`Document.outline()` 返回 `List<OutlineEntry>`（title/pageIndex/children）；顶部栏「目录」按钮弹出 `OutlineSheet`（ModalBottomSheet，展平缩进列表，复用目录树的扁平渲染模式），点击条目 `setDisplayedViewIndex(entry.pageIndex)`
+- 跳页：外部状态（GoToPageDialog / OutlineSheet）写入 `uiPage` → 经 `initialProgress` 传入渲染端，`update` 块与 `getDisplayedViewIndex()` 差分后调 `readerView.setDisplayedViewIndex(page)`
+- 当前页：覆写 `ReaderView.onMoveToChild(page)` 回调（1.28.2 无 ViewListener 接口）——用来回写进度
+- 进度回写：翻页回调 → `ReaderViewModel.onPageChanged` 防抖 600ms 落库（静止期后仅写最新页）；`ON_PAUSE`/`ON_STOP`/离开组合时 `flushProgress()` 立即落库保底（见 docs/data-layer.md「进度记忆实现时机」）
+- 大纲导航：`Document.outline()` 返回 `List<OutlineEntry>`（title/pageIndex/children）；顶部栏「目录」按钮弹出 `OutlineSheet`（ModalBottomSheet，打开时懒加载，展平缩进列表，复用目录树的扁平渲染模式），点击条目 `uiPage = entry.pageIndex` 经同一差分机制跳页
 
 ## UI 层架构
 

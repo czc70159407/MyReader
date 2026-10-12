@@ -154,25 +154,23 @@ interface DocumentDao {
 
 ## 进度记忆实现时机（防频繁写库）
 
-1. `ReaderViewModel` 持有 `MutableStateFlow<ProgressPayload>`（`Page(page, offset)` 或 `Cfi(cfi)`）
-2. `DocumentViewerProvider.Content` 的 `onProgressChanged` 回调更新该 StateFlow（引擎无关，统一类型）
-3. 防抖写库（按 `ProgressPayload` 类型分发，对应 Repository 的 `savePageProgress` / `saveCfiProgress`）：
+1. `ReaderViewModel` 持有 `MutableStateFlow<Int?> currentPage`（页码式 M4；流式 Cfi 进度 M9 按同型扩展）
+2. `DocumentViewerProvider.Content` 的 `onProgressChanged` 回调更新该状态（引擎无关，统一类型）
+3. 防抖写库（按 `ProgressPayload` 类型分发，对应 Repository 的 `savePageProgress` / `saveCfiProgress`；M4 已落地为 Job 版防抖，`PROGRESS_DEBOUNCE_MS = 600`）：
    ```kotlin
-   progressFlow
-       .debounce(1500)                     // 进度变化防抖 1.5s
-       .drop(1)
-       .onEach { p ->
-           when (p) {
-               is ProgressPayload.Page -> repo.savePageProgress(docId, p.page, p.scrollOffsetY)
-               is ProgressPayload.Cfi -> repo.saveCfiProgress(docId, p.cfi)
-           }
+   fun onPageChanged(page: Int) {
+       currentPage.value = page
+       progressJob?.cancel()                    // 静止期后仅写最新页：翻页重置计时
+       progressJob = viewModelScope.launch(io) {
+           delay(PROGRESS_DEBOUNCE_MS)
+           repo.savePageProgress(docId, page, 0)   // 流式文档走 saveCfiProgress
        }
-       .launchIn(viewModelScope)
+   }
    ```
-4. **保底写入**：`Lifecycle.Event.ON_PAUSE` 和 `BackHandler` 触发时立即按同上分发写库并 `await()`，保证离开时进度已落盘
-5. `pageCount` 只在首次（`-1`→实际值，页码式）写一次，不进入防抖流；流式文档跳过
+4. **保底写入**：`ReaderScreen` 的 `LifecycleEventObserver` 在 `ON_PAUSE` / `ON_STOP` 与 `DisposableEffect.onDispose` 时调 `flushProgress()`——取消防抖 Job 立即按当前页写库（幂等，重复 flush 只多写同值），保证离开时进度已落盘
+5. `pageCount` 只在首次（`-1`→实际值，页码式）写一次（首开兜底 `backfillAfterOpen`），不进入防抖流；流式文档跳过
 
 ```
-进度变化 → StateFlow.update  ─debounce 1.5s─→  savePageProgress / saveCfiProgress（按 payload 类型分发）
-退出    → onPause 回调       ─立即写库─→       await → finish
+进度变化 → onPageChanged  ─debounce 600ms─→  savePageProgress / saveCfiProgress（按 payload 类型分发）
+退出    → ON_PAUSE/ON_STOP/onDispose ─flush 立即写库─→ finish
 ```

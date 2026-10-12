@@ -8,8 +8,9 @@ import com.myreader.core.document.OutlineEntry
 /**
  * [Document] 的 MuPDF 实现：薄转发包装 [MuPDFCore] native 句柄。
  * 注意 MuPDFCore 非线程安全——并发 drawPage 须由调用方串行化（M7 垂直模式时上 mutex）。
+ * core 供同模块 [MuPdfReaderView] 桥接使用（MuPDF 具体类型不越出本模块）。
  */
-class MuPdfDocument(private val core: MuPDFCore) : Document {
+class MuPdfDocument(val core: MuPDFCore) : Document {
 
     override val pageCount: Int = core.countPages()
 

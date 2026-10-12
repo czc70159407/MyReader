@@ -105,6 +105,10 @@ class LibraryRepositoryImpl @Inject constructor(
         documentDao.findByHash(hash)?.toModel()
     }
 
+    override suspend fun getDocument(id: Long): LibraryItem? = withContext(dispatchers.io) {
+        documentDao.findById(id)?.toModel()
+    }
+
     override suspend fun addDocument(
         id: Long?,
         folderId: Long?,
@@ -184,6 +188,10 @@ class LibraryRepositoryImpl @Inject constructor(
 
     override suspend fun setNeedsPassword(id: Long, value: Boolean) = withContext(dispatchers.io) {
         documentDao.setNeedsPassword(id, value)
+    }
+
+    override suspend fun setThumbnail(id: Long, relPath: String?) = withContext(dispatchers.io) {
+        documentDao.setThumbnailRelPath(id, relPath)
     }
 }
 

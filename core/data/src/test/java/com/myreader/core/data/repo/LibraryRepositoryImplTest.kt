@@ -191,4 +191,20 @@ class LibraryRepositoryImplTest {
         assertEquals("pdf", item.fileType)
         assertEquals("page", item.progressType)
     }
+
+    @Test
+    fun getDocument_returnsItemOrNull() = runTest {
+        val id = addDoc("target")
+        assertEquals("target", repo.getDocument(id)!!.title)
+        assertNull(repo.getDocument(999L))
+    }
+
+    @Test
+    fun setThumbnail_updatesRelPath() = runTest {
+        val id = addDoc("thumb-doc")
+        assertNull(repo.getDocument(id)!!.thumbnailRelPath)
+
+        repo.setThumbnail(id, "thumb/$id.png")
+        assertEquals("thumb/$id.png", repo.getDocument(id)!!.thumbnailRelPath)
+    }
 }

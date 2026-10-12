@@ -19,7 +19,7 @@ import javax.inject.Inject
 /**
  * MuPDF 渲染提供者（@FileTypeKey("pdf") 注册）。
  * thumbnail：首页渲染（导入验证 / 首开兜底），供书架缩略图。
- * Content：阅读器渲染主体——M4 里程碑落地 ReaderView 桥接，M3 占位。
+ * Content：阅读器渲染主体——AndroidView 桥接 ReaderView（瓦片渲染 + BitmapPool）。
  */
 class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
 
@@ -34,9 +34,21 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         onProgressChanged: (ProgressPayload) -> Unit,
         modifier: Modifier,
     ) {
-        // M4 里程碑：AndroidView 桥接 ReaderView（瓦片渲染 + BitmapPool）+ 跳页 + 大纲导航
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text(text = "阅读器渲染将在 M4 提供", modifier = Modifier.padding(16.dp))
+        val muDoc = doc as MuPdfDocument
+        val initialPage = (initialProgress as? ProgressPayload.Page)?.page ?: 0
+        if (muDoc.pageCount <= 0) {
+            // 空文档/页数未知：ReaderView 依赖 adapter count，兜底不进桥接
+            Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(text = "无可显示的页面", modifier = Modifier.padding(16.dp))
+            }
+            return
         }
+        // M4 仅水平分页（mode 由设置页 M7 引入）；MuPDF ReaderView 即水平模式实现
+        MuPdfReaderView(
+            core = muDoc.core,
+            initialPage = initialPage,
+            onProgressChanged = onProgressChanged,
+            modifier = modifier,
+        )
     }
 }

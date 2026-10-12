@@ -38,6 +38,7 @@ include(":core:data")
 include(":core:document")
 
 include(":feature:library")
+include(":feature:reader")
 include(":feature:viewer-mupdf")
 
 // MuPDF viewer 库（git submodule，锁定 1.28.x commit；其 jni/ 子模块刻意不初始化 → lib 走官方 Maven fitz 预编译分支）

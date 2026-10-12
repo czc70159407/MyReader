@@ -61,11 +61,14 @@ import kotlinx.coroutines.withContext
 
 /**
  * 书架页（M3）：文档网格展示 + SAF 导入 + 重复确认 + 结果提示。
- * 点击条目暂无动作（阅读器 M4 接入）；目录树 M5 引入。
+ * 点击条目 → onDocumentClick 进阅读器（M4 接入）；目录树 M5 引入。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LibraryScreen(viewModel: LibraryViewModel = hiltViewModel()) {
+fun LibraryScreen(
+    onDocumentClick: (Long) -> Unit = {},
+    viewModel: LibraryViewModel = hiltViewModel(),
+) {
     val documents by viewModel.documents.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val pendingDuplicate by viewModel.pendingDuplicate.collectAsStateWithLifecycle()
@@ -123,7 +126,7 @@ fun LibraryScreen(viewModel: LibraryViewModel = hiltViewModel()) {
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(documents, key = { it.id }) { item ->
-                        DocumentCard(item = item)
+                        DocumentCard(item = item, onClick = { onDocumentClick(item.id) })
                     }
                 }
             }
@@ -166,9 +169,9 @@ fun LibraryScreen(viewModel: LibraryViewModel = hiltViewModel()) {
 }
 
 @Composable
-private fun DocumentCard(item: LibraryItem) {
+private fun DocumentCard(item: LibraryItem, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Box(modifier = Modifier.aspectRatio(1f)) {

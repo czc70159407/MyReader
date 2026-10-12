@@ -52,6 +52,9 @@ interface DocumentDao {
     @Query("UPDATE documents SET pageCount = :n WHERE id = :id")
     suspend fun setPageCount(id: Long, n: Int)
 
+    @Query("UPDATE documents SET thumbnailRelPath = :relPath WHERE id = :id")
+    suspend fun setThumbnailRelPath(id: Long, relPath: String?)   // 首开兜底补缩略图（如加密文档解密成功后）
+
     @Query("UPDATE documents SET folderId = :newFolderId WHERE id = :id")
     suspend fun move(id: Long, newFolderId: Long?)
 

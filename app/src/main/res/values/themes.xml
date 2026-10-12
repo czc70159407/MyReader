@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Compose 接管主题；XML 层仅需无标题栏基础主题（core:designsystem 在后续里程碑引入） -->
-    <style name="Theme.MyReader" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Compose 接管主题；XML 层仅无标题栏基础主题。DayNight parent（M7）：窗口背景随系统深色，
+         防深色偏好用户冷启动首帧闪白（Compose 首读 settings_prefs 后接管实际配色） -->
+    <style name="Theme.MyReader" parent="android:Theme.Material.NoActionBar" />
 </resources>

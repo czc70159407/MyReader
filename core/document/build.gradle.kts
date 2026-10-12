@@ -26,6 +26,7 @@ dependencies {
     val composeBom = platform(libs.compose.bom)
     api(composeBom)                      // DocumentViewerProvider 的 @Composable/ImageBitmap 契约对外可见
     api(libs.compose.ui)
+    api(project(":core:model"))          // ReaderMode（M7 迁入 core:model，偏好层与渲染层共用）
     implementation(libs.coroutines.android)
     implementation(libs.javax.inject)    // FileTypeKey @Qualifier
     implementation(libs.dagger)          // FileTypeKey @MapKey

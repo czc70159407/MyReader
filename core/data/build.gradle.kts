@@ -44,6 +44,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(libs.datastore.preferences)
+    implementation(libs.javax.inject)    // PrefsStoreQualifiers @Qualifier（与 core:document FileTypeKey 同款）
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.coroutines.android)

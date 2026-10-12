@@ -9,17 +9,19 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.myreader.feature.library.LibraryScreen
 import com.myreader.feature.reader.ReaderScreen
+import com.myreader.feature.settings.SettingsScreen
 
 /**
  * 路由表（docs/ui-design.md「UI 层架构」）：
  *   library?folderId={folderId}  书架/目录浏览（M5：folderId 可选参数，缺省=根；
  *                                「移动/导入选目录」用 FolderPickerDialog 弹窗，非独立路由）
- *   reader/{documentId}          阅读器（M4）
- *   settings：M7 预留
+ *   reader/{documentId}          阅读器（M4 水平；M7 增垂直滚动 + 顶栏实时切换）
+ *   settings                     设置页（M7：默认阅读模式/主题/书架排序，DataStore 持久化）
  */
 object Routes {
     const val LIBRARY = "library?folderId={folderId}"
     const val READER = "reader/{documentId}"
+    const val SETTINGS = "settings"
 
     /** 根目录的哨兵值：NavType.LongType 不允许 nullable（运行时抛 IllegalArgumentException） */
     const val FOLDER_ID_NONE = -1L
@@ -47,6 +49,7 @@ fun MyReaderNavHost(modifier: Modifier = Modifier) {
                 onDocumentClick = { id -> navController.navigate(Routes.reader(id)) },
                 onFolderClick = { folderId -> navController.navigate(Routes.library(folderId)) },
                 onNavigateBack = { navController.popBackStack() },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
             )
         }
         composable(
@@ -54,6 +57,11 @@ fun MyReaderNavHost(modifier: Modifier = Modifier) {
             arguments = listOf(navArgument("documentId") { type = NavType.LongType }),
         ) {
             ReaderScreen(
+                onBack = { navController.popBackStack() },
+            )
+        }
+        composable(route = Routes.SETTINGS) {
+            SettingsScreen(
                 onBack = { navController.popBackStack() },
             )
         }

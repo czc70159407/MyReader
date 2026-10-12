@@ -47,4 +47,5 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.datastore.preferences)   // ReaderViewModelTest 构造真 SettingsPrefs（纯 JVM File 落盘）
 }

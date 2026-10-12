@@ -7,6 +7,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.myreader.core.common.DefaultDispatcherProvider
 import com.myreader.core.common.DispatcherProvider
+import com.myreader.core.data.prefs.LibraryPrefsStore
+import com.myreader.core.data.prefs.SettingsPrefsStore
 import com.myreader.core.data.repo.LibraryRepository
 import com.myreader.core.data.repo.LibraryRepositoryImpl
 import com.myreader.core.storage.DocumentStorage
@@ -40,12 +42,22 @@ abstract class RepositoryModule {
         @Singleton
         fun provideDispatcherProvider(): DispatcherProvider = DefaultDispatcherProvider()
 
-        /** 书架偏好存储（M6 排序记忆）：单文件必须单实例，@Singleton 保证 */
+        /** 偏好 DataStore：单文件必须单实例，@Singleton 保证；限定符按文件区分（M7 起两个偏好文件） */
         @Provides
         @Singleton
-        fun providePreferencesDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+        @LibraryPrefsStore
+        fun provideLibraryPrefsDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
             PreferenceDataStoreFactory.create(scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)) {
                 context.preferencesDataStoreFile("library_prefs")
+            }
+
+        /** 设置偏好（M7：默认阅读模式 + 主题） */
+        @Provides
+        @Singleton
+        @SettingsPrefsStore
+        fun provideSettingsPrefsDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+            PreferenceDataStoreFactory.create(scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)) {
+                context.preferencesDataStoreFile("settings_prefs")
             }
     }
 }

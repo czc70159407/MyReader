@@ -1,8 +1,10 @@
 package com.myreader.feature.reader
 
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.SavedStateHandle
 import com.myreader.core.common.DispatcherProvider
+import com.myreader.core.data.prefs.SettingsPrefs
 import com.myreader.core.data.repo.LibraryRepository
 import com.myreader.core.document.CorruptDocumentException
 import com.myreader.core.document.Document
@@ -12,15 +14,19 @@ import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
-import com.myreader.core.document.ReaderMode
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
 import java.io.File
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -59,7 +65,19 @@ class ReaderViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun newViewModel(engine: DocumentEngine, item: LibraryItem): ReaderViewModel {
+    private fun newSettingsPrefs(): SettingsPrefs {
+        // 每用例独立文件（DataStore 1.1.x 同文件第二实例会挂起等待）；scope 共享 runTest 调度器
+        val dataStore = PreferenceDataStoreFactory.create(
+            scope = CoroutineScope(UnconfinedTestDispatcher(dispatcher.scheduler) + Job()),
+        ) { File(tmp.root, "settings-${System.nanoTime()}.preferences_pb") }
+        return SettingsPrefs(dataStore)
+    }
+
+    private fun newViewModel(
+        engine: DocumentEngine,
+        item: LibraryItem,
+        settingsPrefs: SettingsPrefs = newSettingsPrefs(),
+    ): ReaderViewModel {
         repo.docItem = item
         val router = FakeRouter(engine, ThrowingViewer())
         return ReaderViewModel(
@@ -67,6 +85,7 @@ class ReaderViewModelTest {
             repository = repo,
             storage = storage,
             router = router,
+            settingsPrefs = settingsPrefs,
             dispatchers = TestDispatcherProvider(dispatcher),
         )
     }
@@ -260,6 +279,114 @@ class ReaderViewModelTest {
         assertTrue(repo.savedProgress.isEmpty())
     }
 
+    // ---- M7：阅读模式 + 垂直偏移 ----
+
+    @Test
+    fun `初始模式取自设置偏好`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val prefs = newSettingsPrefs()
+        prefs.setDefaultReaderMode(ReaderMode.VERTICAL)
+        val vm = newViewModel(ScriptedEngine { FakeDocument() }, item(), prefs)
+        advanceUntilIdle()
+
+        assertEquals(ReaderMode.VERTICAL, vm.mode.value)
+    }
+
+    @Test
+    fun `toggleMode 切换会话模式且不回写偏好`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val prefs = newSettingsPrefs()
+        val vm = newViewModel(ScriptedEngine { FakeDocument() }, item(), prefs)
+        advanceUntilIdle()
+
+        assertEquals(ReaderMode.HORIZONTAL, vm.mode.value)
+        vm.toggleMode()
+        assertEquals(ReaderMode.VERTICAL, vm.mode.value)
+        // 切换是会话态：默认偏好不受影响
+        assertEquals(ReaderMode.HORIZONTAL, prefs.defaultReaderMode.first())
+    }
+
+    @Test
+    fun `密码重试不重置用户已切换的模式`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        var opened = false
+        val engine = ScriptedEngine { password ->
+            if (password == null) throw PasswordRequiredException()
+            opened = true
+            FakeDocument(pageCount = 3)
+        }
+        val prefs = newSettingsPrefs()
+        prefs.setDefaultReaderMode(ReaderMode.VERTICAL)
+        val vm = newViewModel(engine, item(needsPassword = true), prefs)
+        advanceUntilIdle()
+        assertTrue(vm.state.value is ReaderUiState.NeedsPassword)
+        assertEquals(ReaderMode.VERTICAL, vm.mode.value)
+
+        // 会话内切到水平后重试密码：modeInitialized 守卫保证模式保持用户选择
+        vm.toggleMode()
+        assertEquals(ReaderMode.HORIZONTAL, vm.mode.value)
+        vm.submitPassword("1234")
+        advanceUntilIdle()
+        assertTrue(opened)
+        assertEquals(ReaderMode.HORIZONTAL, vm.mode.value)
+    }
+
+    @Test
+    fun `垂直滚动偏移随页码防抖落库`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
+        advanceUntilIdle()
+
+        vm.onPageChanged(3, 250)
+        vm.onPageChanged(3, 400)   // 同页滚动只更新偏移，防抖重置
+        advanceTimeBy(ReaderViewModel.PROGRESS_DEBOUNCE_MS)
+        runCurrent()
+        val saved = repo.savedProgress.single()
+        assertEquals(3, saved.second)
+        assertEquals(400, saved.third)
+    }
+
+    @Test
+    fun `水平路径落库偏移恒为0`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
+        advanceUntilIdle()
+
+        vm.onPageChanged(4)   // 默认参数 = 水平回调路径
+        advanceTimeBy(ReaderViewModel.PROGRESS_DEBOUNCE_MS)
+        runCurrent()
+        assertEquals(0, repo.savedProgress.single().third)
+    }
+
+    @Test
+    fun `flush 落库包含垂直偏移`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
+        advanceUntilIdle()
+
+        vm.onPageChanged(7, 120)
+        vm.flushProgress()
+        advanceUntilIdle()
+
+        val saved = repo.savedProgress.single()
+        assertEquals(7, saved.second)
+        assertEquals(120, saved.third)
+    }
+
+    @Test
+    fun `Ready 透传库中垂直偏移`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(
+            ScriptedEngine { FakeDocument(pageCount = 5) },
+            item(currentPage = 2).copy(scrollOffsetY = 400),
+        )
+        advanceUntilIdle()
+
+        val state = vm.state.value as ReaderUiState.Ready
+        assertEquals(2, state.initialPage)
+        assertEquals(400, state.initialScrollOffsetY)
+    }
+
     // ---- fakes ----
 
     private class TestDispatcherProvider(d: CoroutineDispatcher) : DispatcherProvider {
@@ -282,6 +409,8 @@ class ReaderViewModelTest {
 
     private class FakeDocument(override val pageCount: Int = 5) : Document {
         override fun gotoPage(page: Int) {}
+        override suspend fun pageSize(page: Int): androidx.compose.ui.geometry.Size =
+            androidx.compose.ui.geometry.Size(595f, 842f)
         @Suppress("UNUSED_PARAMETER")
         override fun drawPage(bitmap: android.graphics.Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int) {}
         override suspend fun outline(): List<OutlineEntry> = emptyList()

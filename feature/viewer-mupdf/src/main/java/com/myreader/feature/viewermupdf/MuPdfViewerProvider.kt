@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.ProgressPayload
-import com.myreader.core.document.ReaderMode
+import com.myreader.core.model.ReaderMode
 import javax.inject.Inject
 
 /**
@@ -35,7 +35,7 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         modifier: Modifier,
     ) {
         val muDoc = doc as MuPdfDocument
-        val initialPage = (initialProgress as? ProgressPayload.Page)?.page ?: 0
+        val progress = (initialProgress as? ProgressPayload.Page) ?: ProgressPayload.Page(0)
         if (muDoc.pageCount <= 0) {
             // 空文档/页数未知：ReaderView 依赖 adapter count，兜底不进桥接
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -43,12 +43,22 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
             }
             return
         }
-        // M4 仅水平分页（mode 由设置页 M7 引入）；MuPDF ReaderView 即水平模式实现
-        MuPdfReaderView(
-            core = muDoc.core,
-            initialPage = initialPage,
-            onProgressChanged = onProgressChanged,
-            modifier = modifier,
-        )
+        when (mode) {
+            // M4 水平分页：AndroidView 桥接上游 ReaderView（瓦片渲染 + BitmapPool）
+            ReaderMode.HORIZONTAL -> MuPdfReaderView(
+                core = muDoc.core,
+                initialPage = progress.page,
+                onProgressChanged = onProgressChanged,
+                modifier = modifier,
+            )
+            // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）
+            ReaderMode.VERTICAL -> MuPdfVerticalView(
+                doc = doc,
+                initialPage = progress.page,
+                initialOffsetY = progress.scrollOffsetY,
+                onProgressChanged = { payload -> onProgressChanged(payload) },
+                modifier = modifier,
+            )
+        }
     }
 }

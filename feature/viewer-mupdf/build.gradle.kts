@@ -22,6 +22,12 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -38,4 +44,8 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)          // VerticalPageLoaderTest（LruCache/Bitmap 需 Android 运行时）
+    testImplementation(libs.coroutines.test)
 }

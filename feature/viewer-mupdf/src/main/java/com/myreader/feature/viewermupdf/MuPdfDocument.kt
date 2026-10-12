@@ -1,6 +1,7 @@
 package com.myreader.feature.viewermupdf
 
 import android.graphics.Bitmap
+import androidx.compose.ui.geometry.Size
 import com.artifex.mupdf.viewer.MuPDFCore
 import com.myreader.core.document.Document
 import com.myreader.core.document.OutlineEntry
@@ -17,6 +18,11 @@ class MuPdfDocument(val core: MuPDFCore) : Document {
     override fun gotoPage(page: Int) {
         // MuPDFCore.gotoPage 为 private；getPageSize 内部触发同逻辑（loadPage + bounds）
         core.getPageSize(page)
+    }
+
+    override suspend fun pageSize(page: Int): Size {
+        val size = core.getPageSize(page)
+        return Size(size.x, size.y)
     }
 
     override fun drawPage(

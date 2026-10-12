@@ -104,6 +104,7 @@ dependencies {
     // M3：书架 + MuPDF 引擎桥接（:app 仅做 DI 多绑定，不接触 MuPDF 具体类）
     implementation(project(":feature:library"))
     implementation(project(":feature:reader"))
+    implementation(project(":feature:settings"))
     implementation(project(":feature:viewer-mupdf"))
 
     debugImplementation(libs.compose.ui.tooling)

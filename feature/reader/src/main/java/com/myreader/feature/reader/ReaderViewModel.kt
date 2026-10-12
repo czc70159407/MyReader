@@ -5,6 +5,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.myreader.core.common.DispatcherProvider
+import com.myreader.core.data.prefs.SettingsPrefs
 import com.myreader.core.data.repo.LibraryRepository
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngineRouter
@@ -12,7 +13,9 @@ import com.myreader.core.document.DocumentException
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
+import com.myreader.core.document.ProgressPayload
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -25,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -43,6 +47,7 @@ sealed interface ReaderUiState {
         val title: String,
         val pageCount: Int,
         val initialPage: Int,
+        val initialScrollOffsetY: Int = 0,   // 垂直模式恢复用（M7；水平模式忽略）
     ) : ReaderUiState
 
     data class NeedsPassword(val title: String, val wrongPassword: Boolean) : ReaderUiState
@@ -61,11 +66,12 @@ class ReaderViewModel @Inject constructor(
     private val repository: LibraryRepository,
     private val storage: DocumentStorage,
     private val router: DocumentEngineRouter,
+    private val settingsPrefs: SettingsPrefs,
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
 
     companion object {
-        /** 页面静止该时长后才落库；期间翻页重置计时 */
+        /** 页面静止该时长后才落库；期间翻页/滚动重置计时 */
         const val PROGRESS_DEBOUNCE_MS = 600L
     }
 
@@ -74,30 +80,45 @@ class ReaderViewModel @Inject constructor(
     private val _state = MutableStateFlow<ReaderUiState>(ReaderUiState.Loading)
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
-    /** 当前页（0 基，进度回写事实源）；null = 尚未发生翻页（沿用库中进度，flush 无需写） */
-    private val currentPage = MutableStateFlow<Int?>(null)
+    /**
+     * 会话内阅读模式（M7）：初值取自设置偏好（仅首次打开，守卫防密码重试/重入重置），
+     * 阅读器内切换是临时态，不回写偏好——避免「打开 A 文档切一下垂直，所有新文档都变垂直」。
+     */
+    private val _mode = MutableStateFlow(ReaderMode.HORIZONTAL)
+    val mode: StateFlow<ReaderMode> = _mode.asStateFlow()
+    private var modeInitialized = false
+
+    /** 切换水平/垂直（ReaderScreen 顶栏入口）；当前页经 initialProgress 传递保持 */
+    fun toggleMode() {
+        _mode.value = if (_mode.value == ReaderMode.HORIZONTAL) ReaderMode.VERTICAL else ReaderMode.HORIZONTAL
+    }
+
+    /** 当前进度（0 基页 + 垂直偏移，回写事实源）；null = 尚未发生进度回调（沿用库中进度，flush 无需写） */
+    private val currentProgress = MutableStateFlow<ProgressPayload.Page?>(null)
     private var progressJob: Job? = null
 
     init {
         openDocument()
     }
 
-    fun onPageChanged(page: Int) {
-        if (currentPage.value == page) return
-        currentPage.value = page
+    /** 渲染端进度回调（水平：页码，offset 恒 0；垂直：页码 + 项内像素偏移，每帧发射由防抖吸收） */
+    fun onPageChanged(page: Int, scrollOffsetY: Int = 0) {
+        val current = currentProgress.value
+        if (current?.page == page && current.scrollOffsetY == scrollOffsetY) return
+        currentProgress.value = ProgressPayload.Page(page, scrollOffsetY)
         progressJob?.cancel()
         progressJob = viewModelScope.launch(dispatchers.io) {
             delay(PROGRESS_DEBOUNCE_MS)
-            repository.savePageProgress(docId, page, scrollOffsetY = 0)
+            repository.savePageProgress(docId, page, scrollOffsetY)
         }
     }
 
     /** onPause/onStop/onDispose 保底：取消防抖立即落库（幂等，重复 flush 只多写同值） */
     fun flushProgress() {
-        val page = currentPage.value ?: return
+        val progress = currentProgress.value ?: return
         progressJob?.cancel()
         viewModelScope.launch(dispatchers.io) {
-            repository.savePageProgress(docId, page, scrollOffsetY = 0)
+            repository.savePageProgress(docId, progress.page, progress.scrollOffsetY)
         }
     }
 
@@ -114,6 +135,12 @@ class ReaderViewModel @Inject constructor(
 
     private fun openDocument(password: String? = null) {
         viewModelScope.launch {
+            // 会话内模式初值：仅首个打开流程取偏好（守卫防密码重试/重入把用户已切换的模式打回默认）；
+            // 放入口保证密码弹窗阶段模式已就位。读流内已 catch IO，失败回落 HORIZONTAL
+            if (!modeInitialized) {
+                _mode.value = settingsPrefs.defaultReaderMode.first()
+                modeInitialized = true
+            }
             _state.value = ReaderUiState.Loading
             val item = repository.getDocument(docId)
             if (item == null) {
@@ -173,6 +200,7 @@ class ReaderViewModel @Inject constructor(
                 title = item.title,
                 pageCount = doc.pageCount,
                 initialPage = item.currentPage.coerceIn(0, (doc.pageCount - 1).coerceAtLeast(0)),
+                initialScrollOffsetY = item.scrollOffsetY.coerceAtLeast(0),
             )
         }
     }

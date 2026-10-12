@@ -18,8 +18,8 @@ import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
-import com.myreader.core.document.ReaderMode
 import com.myreader.core.document.SimpleDocumentEngineRouter
+import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.test.core.app.ApplicationProvider.getApplicationContext
@@ -80,6 +80,8 @@ class DocumentImporterTest {
     private class FakeDocument : Document {
         override val pageCount: Int = 3
         override fun gotoPage(page: Int) {}
+        override suspend fun pageSize(page: Int): androidx.compose.ui.geometry.Size =
+            androidx.compose.ui.geometry.Size(595f, 842f)
         override fun drawPage(bitmap: android.graphics.Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int) {}
         override suspend fun outline(): List<OutlineEntry> = emptyList()
         override fun close() {}

@@ -6,7 +6,7 @@
 
 | 风险 | 对策 |
 |---|---|
-| 大文件 OOM | 依赖 MuPDF BitmapPool；水平模式预渲染窗口 ±1 页；垂直模式自管理 LRU(8页)+recycle；Application `onTrimMemory(MODERATE)` 调 `releaseBitmaps()` |
+| 大文件 OOM | 依赖 MuPDF BitmapPool；水平模式预渲染窗口 ±1 页；垂直模式（M7 落地）自管理字节预算 LruCache（`maxMemory/8` clamp 16~48MB，不按固定页数——2K 屏横屏单页可达 30MB）+ **不手动 recycle**（minSdk 26 位图 native heap 由 GC 释放，recycle 在绘位图必崩）；Application `onTrimMemory(MODERATE)` 调 `releaseBitmaps()` |
 | MuPDF so 体积 | fitz AAR 官方已 strip；App 打包 `ndk.abiFilters` 裁剪——debug 保留 x86_64（模拟器调试），release 限 arm64-v8a + armeabi-v7a；Play Bundle 自动 per-ABI |
 | SAF 权限丢失 | 采用"复制到内部存储"方案，导入后即与 Uri 解耦；DB 仅存 `sourceUri` 备查不依赖 |
 | Compose 中 AndroidView 重组性能 | `AndroidView` 的 `factory` 只创建一次；模式/页码变化走 `update` 块做差分；`core` 生命周期用 `DisposableEffect` 管理，与 Document 绑定 |
@@ -56,9 +56,9 @@
 7. **M6 搜索、排序与最近阅读**
    - 任务：全库搜索；`DocSort` 排序切换（DataStore 记忆）；最近阅读列表
    - 验收：关键词命中全库文档（不限当前文件夹）；切换排序立即生效且重启保持；最近阅读按时间排序
-8. **M7 垂直滚动模式 + 设置**（v1.1，可选）
-   - 任务：`LazyColumn` + `drawPage` + LRU（注意 `MuPDFCore` 非线程安全，并发绘制需串行化）；`feature:settings` 设置页（阅读模式/主题/书架排序偏好，DataStore 持久化）
-   - 验收：长文档连续滚动流畅、滚动偏移可恢复；设置页偏好重启后保持
+8. **M7 垂直滚动模式 + 设置**（v1.1）
+   - 任务（M7 落地分解）：①`ReaderMode`/`ThemeMode` 枚举迁入/新建于 core:model（偏好层类型化暴露）；②`SettingsPrefs`（settings_prefs 文件，默认阅读模式+主题，双限定符 DI 与 LibraryPrefs 并列）；③`Document.pageSize` 接口（垂直布局定高 + 页面预热）；④垂直渲染 `VerticalPageLoader`（Mutex 串行 + Dispatchers.Default + 字节预算 LruCache）+ `MuPdfVerticalView`（LazyColumn，lastEmittedPage 防回环守卫）+ Provider 按 mode 分支；⑤阅读器接线（VM mode 会话态 + 顶栏切换 + scrollOffsetY 落库/恢复）；⑥`feature:settings` 模块（三组单选，排序与书架 SortMenu 同源双向同步）+ settings 路由 + 书架入口；⑦主题（MainActivity 动态 colorScheme + themes.xml DayNight 防首帧闪白）
+   - 验收：长文档连续滚动流畅、滚动偏移可恢复；设置页偏好重启后保持（细化场景见根 AGENTS.md M7 验收证据）
 9. **M8 备份与导出**（v1.1，可选）
    - 任务：导出 `library/` 目录 + 数据库 JSON 到用户指定 SAF 目录；导入恢复，解决 `filesDir` 换机/卸载即丢问题
    - 验收：导出 → 卸载重装/换机 → 导入恢复，目录树、文档、进度完整

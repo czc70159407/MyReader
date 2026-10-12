@@ -10,5 +10,3 @@ sealed class ProgressPayload {
     data class Cfi(val cfi: String) : ProgressPayload()
 }
 
-/** 阅读模式：水平分页（v1 默认）/ 垂直连续滚动（v1.1 可选） */
-enum class ReaderMode { HORIZONTAL, VERTICAL }

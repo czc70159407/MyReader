@@ -154,31 +154,35 @@ interface DocumentDao {
 
 ## 进度记忆实现时机（防频繁写库）
 
-1. `ReaderViewModel` 持有 `MutableStateFlow<Int?> currentPage`（页码式 M4；流式 Cfi 进度 M9 按同型扩展）
-2. `DocumentViewerProvider.Content` 的 `onProgressChanged` 回调更新该状态（引擎无关，统一类型）
+1. `ReaderViewModel` 持有 `MutableStateFlow<ProgressPayload.Page?> currentProgress`（页码 + 垂直偏移，M7 从单一 Int 页码扩展；流式 Cfi 进度 M9 按同型扩展）
+2. `DocumentViewerProvider.Content` 的 `onProgressChanged` 回调更新该状态（引擎无关，统一类型；水平路径 offset 恒 0，垂直路径含像素偏移）
 3. 防抖写库（按 `ProgressPayload` 类型分发，对应 Repository 的 `savePageProgress` / `saveCfiProgress`；M4 已落地为 Job 版防抖，`PROGRESS_DEBOUNCE_MS = 600`）：
    ```kotlin
-   fun onPageChanged(page: Int) {
-       currentPage.value = page
-       progressJob?.cancel()                    // 静止期后仅写最新页：翻页重置计时
+   fun onPageChanged(page: Int, scrollOffsetY: Int = 0) {
+       currentProgress.value = ProgressPayload.Page(page, scrollOffsetY)
+       progressJob?.cancel()                    // 静止期后仅写最新值：翻页/滚动重置计时
        progressJob = viewModelScope.launch(io) {
            delay(PROGRESS_DEBOUNCE_MS)
-           repo.savePageProgress(docId, page, 0)   // 流式文档走 saveCfiProgress
+           repo.savePageProgress(docId, page, scrollOffsetY)   // 流式文档走 saveCfiProgress
        }
    }
    ```
-4. **保底写入**：`ReaderScreen` 的 `LifecycleEventObserver` 在 `ON_PAUSE` / `ON_STOP` 与 `DisposableEffect.onDispose` 时调 `flushProgress()`——取消防抖 Job 立即按当前页写库（幂等，重复 flush 只多写同值），保证离开时进度已落盘
+4. **保底写入**：`ReaderScreen` 的 `LifecycleEventObserver` 在 `ON_PAUSE` / `ON_STOP` 与 `DisposableEffect.onDispose` 时调 `flushProgress()`——取消防抖 Job 立即按当前进度整体写库（幂等，重复 flush 只多写同值），保证离开时进度已落盘
 5. `pageCount` 只在首次（`-1`→实际值，页码式）写一次（首开兜底 `backfillAfterOpen`），不进入防抖流；流式文档跳过
+6. `scrollOffsetY` 语义（M7 启用）：垂直模式由渲染端回写实测像素偏移，水平模式恒 0；恢复时 `Ready.initialScrollOffsetY` 透传 `item.scrollOffsetY.coerceAtLeast(0)`，垂直实现 `scrollToItem(page, offset)` 一次性锚定（跨宽度恢复有近似误差，见 ui-design.md）
 
 ```
 进度变化 → onPageChanged  ─debounce 600ms─→  savePageProgress / saveCfiProgress（按 payload 类型分发）
 退出    → ON_PAUSE/ON_STOP/onDispose ─flush 立即写库─→ finish
 ```
 
-## 排序偏好持久化（DataStore，M6）
+## 轻量偏好持久化（DataStore，M6 排序 / M7 设置）
 
-- **存储**：`PreferenceDataStoreFactory` 创建 `DataStore<Preferences>`，文件 `filesDir/datastore/library_prefs.preferences_pb`；实例由 app 层 `RepositoryModule` `@Provides @Singleton` 提供（**单文件必须单实例**，1.1.x 会对同文件第二实例抛 `IllegalStateException`），`core:data` 不自建 Hilt module
-- **读写**：`core/data/prefs/LibraryPrefs.kt`——`docSort: Flow<DocSort>`（`intPreferencesKey("doc_sort")` 存 **ordinal**）+ `suspend fun setDocSort`；`null`/越界 ordinal 回退默认 `TITLE`（防枚举收缩后崩溃）
-- **约束：`DocSort` 枚举不可重排/在中间插入新值**（按 ordinal 持久化；违反仅导致回落默认值，可接受但应避免）
-- **接线**：`LibraryViewModel.documents = prefs.docSort.flatMapLatest { repository.docsIn(folderId, it) }`——切换排序即时生效、进程重启保持；搜索/最近阅读不持久化（会话态）
-- **测试**：`LibraryPrefsTest`（Robolectric + TemporaryFolder 真实文件；DataStore scope 须共享 `testScheduler` 的 `UnconfinedTestDispatcher`，否则虚拟时间推不动其内部协程）
+- **存储**：`PreferenceDataStoreFactory` 创建 `DataStore<Preferences>`，**双偏好文件**（M7 起两个）：
+  - `library_prefs.preferences_pb` → `LibraryPrefs`（书架排序，M6）
+  - `settings_prefs.preferences_pb` → `SettingsPrefs`（默认阅读模式 + 主题，M7）
+  - 实例由 app 层 `RepositoryModule` 以自定义限定符 `@LibraryPrefsStore` / `@SettingsPrefsStore` 分别 `@Provides @Singleton` 提供（**单文件必须单实例**，1.1.x 会对同文件第二实例抛 `IllegalStateException`；限定符定义在 `core/data/prefs/PrefsStoreQualifiers.kt`），`core:data` 不自建 Hilt module
+- **读写**：`intPreferencesKey` 存 **ordinal**——`LibraryPrefs.docSort: Flow<DocSort>`、`SettingsPrefs.defaultReaderMode: Flow<ReaderMode>` / `themeMode: Flow<ThemeMode>`（枚举均在 core:model）+ 各自 `suspend fun setXxx`；读流 `.catch { emit(emptyPreferences()) }`（IO 失败回落默认不崩调用方 stateIn）、`null`/越界 ordinal 回退默认值（TITLE / HORIZONTAL / SYSTEM）；写方法不吞异常，VM 层 try/catch 静默降级分工（M6 code-review 惯例）
+- **约束：`DocSort` / `ReaderMode` / `ThemeMode` 枚举均不可重排/在中间插入新值**（按 ordinal 持久化；违反仅导致回落默认值，可接受但应避免，仅允许尾部追加）
+- **接线**：`LibraryViewModel.documents = prefs.docSort.flatMapLatest { repository.docsIn(folderId, it) }`（M6）；`ReaderViewModel.openDocument` 入口 `settingsPrefs.defaultReaderMode.first()` 取会话初值（M7，`modeInitialized` 守卫防密码重试重置）；设置页三组偏好同源读写（排序与书架 SortMenu 双向同步零代码）；MainActivity 消费 `themeMode`（见 ui-design.md「主题」）
+- **测试**：`LibraryPrefsTest` / `SettingsPrefsTest`（Robolectric + TemporaryFolder 真实文件；DataStore scope 须共享 `testScheduler` 的 `UnconfinedTestDispatcher`，否则虚拟时间推不动其内部协程；每用例独立文件）；feature 层纯 JVM 测试亦可直接 `PreferenceDataStoreFactory.create(scope = ...) { File }` 构造真实例（ReaderViewModelTest / SettingsViewModelTest 先例，无需 Robolectric）

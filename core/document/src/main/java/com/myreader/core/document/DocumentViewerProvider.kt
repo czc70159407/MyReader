@@ -3,6 +3,7 @@ package com.myreader.core.document
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import com.myreader.core.model.ReaderMode
 
 /**
  * 渲染 Composable 提供者：feature:reader 经 [DocumentEngineRouter.viewerFor] 获取，

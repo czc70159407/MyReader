@@ -14,10 +14,10 @@ import kotlinx.coroutines.flow.map
 
 /**
  * 书架轻量偏好（DataStore，M6）：当前排序记忆。
- * 实例由 app 层 DI 提供（单文件单实例），core:data 不自建 Hilt module。
+ * 实例由 app 层 DI 提供（[LibraryPrefsStore] 限定 library_prefs 文件，单文件必须单实例）。
  */
 @Singleton
-class LibraryPrefs @Inject constructor(private val dataStore: DataStore<Preferences>) {
+class LibraryPrefs @Inject constructor(@LibraryPrefsStore private val dataStore: DataStore<Preferences>) {
 
     /** DocSort 以 ordinal 存储：枚举未来不可重排/插入（重排仅回落默认值，可接受，见 docs/data-layer.md） */
     private val keyDocSort = intPreferencesKey("doc_sort")

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -97,6 +98,7 @@ fun LibraryScreen(
     onDocumentClick: (Long) -> Unit = {},
     onFolderClick: (Long?) -> Unit = {},
     onNavigateBack: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
     val folders by viewModel.folders.collectAsStateWithLifecycle()
@@ -223,6 +225,9 @@ fun LibraryScreen(
                             Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
                         }
                         SortMenu(current = currentSort, onSelect = viewModel::setSort)
+                        IconButton(onClick = onOpenSettings) {
+                            Icon(imageVector = Icons.Filled.Settings, contentDescription = "设置")
+                        }
                     }
                 },
             )

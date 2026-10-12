@@ -60,7 +60,12 @@ fun MuPdfReaderView(
 - **优先用 MuPDF 内置瓦片渲染**：`ReaderView` 内部基于 `TileView` + `BitmapPool`，按视口预渲染相邻页、远页降级。直接用，不要自己 draw Bitmap
 - 限制最大 Bitmap 内存：`BitmapPool` 约 24MB，超出回收远页
 - 超大 PDF（>200 页/300MB）：`MuPDFCore` 默认只加载页数索引，本身就 OOM 友好；水平模式预渲染窗口收到 ±1 页
-- 垂直连续滚动模式（v1.1）：`LazyColumn` 渲染每页一个 `Image`，每页 Bitmap 由 `MuPDFCore.drawPage(...)` 在 `Dispatchers.Default` 异步生成 + `LruCache` 缓存（按页号，限制 8 页），`onScrolled` 滚出可视区时 `bitmap.recycle()`（注意 `MuPDFCore` 非线程安全，并发绘制需串行化）
+- 垂直连续滚动模式（M7 已落地）：`MuPdfVerticalView` = `LazyColumn` 每页一项 + `VerticalPageLoader` 渲染编排（feature:viewer-mupdf 内，Compose 无关可 Robolectric 测试）。要点：
+  - **线程模型（缺一不可）**：MuPDFCore 非线程安全 → 所有 `pageSize`/`drawPage` 收进 `Mutex` 串行化；`Bitmap.createBitmap` + `drawPage` 在 Mutex 临界区内 `withContext(Dispatchers.Default)` 执行（调用方是 Main 协程，native 渲染主线程执行必卡帧）。`Mutex.withLock` 为可取消挂起点：快速滚动时 item 离场、排队加载自动终止；取锁后 `ensureActive()` 再确认减少完成即弃的浪费渲染
+  - **内存**：`LruCache<Pair<页号,目标宽>, Bitmap>` 按**字节预算** `maxMemory/8`（clamp 16~48MB，典型设备等效 4~8 页；不按固定页数——2K 屏横屏单页可达 30MB）；key 含宽度，旋转/分屏后旧位图自然失配 + `LaunchedEffect(widthPx)` 立即 `evictAll()` 清引用。**不手动 `recycle()`**（原设计已修订）：minSdk 26 位图像素数据在 native heap、由 GC 经 NativeAllocationRegistry 释放，recycle 一个仍被 Image 绘制/状态持有的位图必崩；淘汰仅移除引用
+  - **布局**：页点尺寸经 `Document.pageSize()`（`getPageSize` 兼做页面预热）异步获取后定 item 高度；未就绪占位 4:3 + 加载圈；单页位图高度上限 4096（超长页等比降分辨率，防低端 GPU 纹理溢出）；点尺寸缓存于 loader 跨重组/跨宽度复用，防滚动中高度抖动
+  - **进度**：`snapshotFlow { firstVisibleItemIndex to firstVisibleItemScrollOffset }` 每帧发射 → `Page(index, offset)` 回写，防抖 600ms 落库由 VM 承担；恢复 = `scrollToItem(initialPage, initialOffsetY)` 一次性锚定（LazyList 锚「item 顶部 + 像素偏移」，占位高度收敛不影响锚点）；**跨宽度恢复的旧偏移有近似误差**（同宽度精确，已知限制）
+  - **外部跳页差分（防回环关键）**：`lastEmittedPage` 守卫区分「自身滚动回流」（page 相等 no-op）与「外部跳页」（`initialPage` 变化 → `scrollToItem(page, 0)` 顶部对齐）；跳页/大纲写 `uiPage` 时同步置 `uiOffsetY = 0`
 - **配置变更（横竖屏/键盘）**：阅读页 Activity 设 `android:configChanges="orientation|screenSize|keyboardHidden"`，自行处理配置变更，**避免 Activity 重建导致文档句柄（底层 `MuPDFCore` 的 JNI native 句柄）销毁重建**；句柄以 `Document` 接口形式由 `ReaderViewModel` 持有（reader 只见接口，底层是 `MuPdfDocument` 包装的 `MuPDFCore`），配置变更时 ViewModel 不销毁、句柄复用，`MuPdfReaderView`（我们的 Composable 包装）在 `update` 块按需重测布局
 - **native 资源释放**：`Document.close()` 由 `MuPdfDocument` 转发到底层 `MuPDFCore` 的 native 释放（实测为 `onDestroy()`）并 `releaseBitmaps()`；`DisposableEffect` 与 `ReaderViewModel.onCleared()` 都触发 `close()`，防止跨多次进出阅读器累积 native 内存泄漏
 
@@ -70,17 +75,21 @@ fun MuPdfReaderView(
 
 ### 阅读模式选择
 
-| 模式 | 适合 | 进度记忆 | 性能 | 默认 |
+| 模式 | 适合 | 进度记忆 | 性能 | 现状（M7） |
 |---|---|---|---|---|
-| 水平分页 | 单页/双页书籍式 | 页码即可，简单 | MuPDF 内置最优 | **默认** |
-| 垂直连续滚动 | 长文档/论文/扫描件 | 页码+像素偏移 | 需自管理 Bitmap | 设置可选（v1.1） |
+| 水平分页 | 单页/双页书籍式 | 页码（offset 恒 0） | MuPDF 内置最优 | **默认**（设置页可改默认值） |
+| 垂直连续滚动 | 长文档/论文/扫描件 | 页码+像素偏移 | 自管理 Bitmap（字节预算 LruCache） | **已实现**（设置页默认 + 阅读器顶栏实时切换） |
+
+- 默认值来自设置页「默认阅读模式」偏好（`SettingsPrefs`，DataStore 持久化）；**阅读器内切换是会话态**（`ReaderViewModel.mode`，`toggleMode()` 顶栏图标），不回写偏好——避免「打开 A 文档切一下垂直，所有新文档都变垂直」；`modeInitialized` 守卫防密码重试/重入把用户已切换的模式打回默认（初值在 `openDocument` 入口取，密码弹窗阶段即就位）
+- 切换保持当前页：两实现是不同 Composable，`when(mode)` 切换即旧实现离场（水平 `releaseBitmaps` / 垂直 `evictAll`）、新实现以当前 `(uiPage, uiOffsetY)` 全新组合；H→V offset 恒 0 停当前页顶部，V→H 丢弃 offset 定位当前页；顶栏页码/跳页框/大纲在两模式共用同一 `uiPage`
 
 ### 跳页与进度获取
 
-- 跳页：外部状态（GoToPageDialog / OutlineSheet）写入 `uiPage` → 经 `initialProgress` 传入渲染端，`update` 块与 `getDisplayedViewIndex()` 差分后调 `readerView.setDisplayedViewIndex(page)`
-- 当前页：覆写 `ReaderView.onMoveToChild(page)` 回调（1.28.2 无 ViewListener 接口）——用来回写进度
-- 进度回写：翻页回调 → `ReaderViewModel.onPageChanged` 防抖 600ms 落库（静止期后仅写最新页）；`ON_PAUSE`/`ON_STOP`/离开组合时 `flushProgress()` 立即落库保底（见 docs/data-layer.md「进度记忆实现时机」）
-- 大纲导航：`Document.outline()` 返回 `List<OutlineEntry>`（title/pageIndex/children）；顶部栏「目录」按钮弹出 `OutlineSheet`（ModalBottomSheet，打开时懒加载，展平缩进列表，复用目录树的扁平渲染模式），点击条目 `uiPage = entry.pageIndex` 经同一差分机制跳页
+- 跳页（水平）：外部状态（GoToPageDialog / OutlineSheet）写入 `uiPage` → 经 `initialProgress` 传入渲染端，`update` 块与 `getDisplayedViewIndex()` 差分后调 `readerView.setDisplayedViewIndex(page)`
+- 跳页（垂直）：同一外部状态写入 `uiPage`（并置 `uiOffsetY = 0` 顶部对齐）→ `MuPdfVerticalView` 的 `LaunchedEffect(initialPage)` 经 `lastEmittedPage` 守卫差分后 `scrollToItem(page, 0)`（自身滚动回流 page 相等 no-op，防回环）
+- 当前页（水平）：覆写 `ReaderView.onMoveToChild(page)` 回调（1.28.2 无 ViewListener 接口）；当前页（垂直）：`snapshotFlow { firstVisibleItemIndex to firstVisibleItemScrollOffset }`
+- 进度回写：渲染回调 → `ReaderViewModel.onPageChanged(page, scrollOffsetY)` 防抖 600ms 落库（静止期后仅写最新值；水平路径 offset 恒 0，垂直含像素偏移）；`ON_PAUSE`/`ON_STOP`/离开组合时 `flushProgress()` 立即落库保底（见 docs/data-layer.md「进度记忆实现时机」）
+- 大纲导航：`Document.outline()` 返回 `List<OutlineEntry>`（title/pageIndex/children）；顶部栏「目录」按钮弹出 `OutlineSheet`（ModalBottomSheet，打开时懒加载，展平缩进列表，复用目录树的扁平渲染模式），点击条目 `uiPage = entry.pageIndex` 经同一差分机制跳页（两模式通用）
 
 ## UI 层架构
 
@@ -93,11 +102,19 @@ routes:
                                 #   注意 NavType.LongType 不允许 nullable（运行时抛 IllegalArgumentException），
                                 #   用哨兵 defaultValue=-1L 表示根（Routes.FOLDER_ID_NONE），VM 中转 null；
                                 #   Routes.library(null) 必须返回 "library"——空参数串 LongType 解析也会崩）
-  reader/{documentId}           # 阅读器
-  settings                      # 阅读模式/主题/书架排序等偏好（DataStore 持久化，M7）
+  reader/{documentId}           # 阅读器（M4 水平；M7 增垂直滚动 + 顶栏实时切换）
+  settings                      # 设置页（M7 已落地）：默认阅读模式/主题/书架排序三组单选，DataStore 持久化；
+                                #   入口 = 书架顶栏 SortMenu 后的设置图标（LibraryScreen onOpenSettings）
 ```
 
 > 「移动/导入选目录」用 **FolderPickerDialog**（M5 实现落定，原设计的 folderPicker 独立路由废弃）——弹窗内嵌目录树 + 新建子目录，避免为选目录增加路由栈层级。
+
+### 主题（M7）
+
+- `ThemeMode { SYSTEM, LIGHT, DARK }`（core:model，`resolve(systemDark)` 纯函数）经 `SettingsPrefs` 持久化；设置页三选一
+- 消费点在 `MainActivity`：`runBlocking(Dispatchers.IO) { withTimeoutOrNull(300) { themeMode.first() } } ?: SYSTEM` 首读（本地小文件毫秒级；超时兜底防磁盘异常 ANR）→ `MaterialTheme(colorScheme = if (dark) darkColorScheme() else lightColorScheme())`（Material3 默认色板，不接 dynamicColor——与三选一语义冲突）；`LaunchedEffect` 持续 collect 同一流，设置页改动实时生效
+- 首帧双保险：`values/themes.xml` parent 用 `android:Theme.Material.NoActionBar`（DayNight，窗口背景随系统深色），防 XML 窗口层闪白
+- 系统深色快捷开关（uiMode 变更，configChanges 未含）触发 Activity 重建：VM 存活 + rememberSaveable + `LaunchedEffect(s)` 回填链路与 M4 横竖屏同型（回归验收场景）
 
 ### 目录树展示（关键）
 

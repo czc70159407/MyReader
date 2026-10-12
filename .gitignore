@@ -1,0 +1,18 @@
+# Gradle
+.gradle/
+build/
+
+# Local config（含 SDK 路径与签名密钥，不入仓）
+local.properties
+keystore.properties
+
+# IDE
+.idea/
+*.iml
+
+# Native build artifacts（M1+ MuPDF NDK 编译产物）
+.cxx/
+
+# OS
+.DS_Store
+Thumbs.db

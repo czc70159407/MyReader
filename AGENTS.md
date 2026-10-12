@@ -36,6 +36,7 @@
 6. **不过度工程**：不引入本文档未列出的依赖/模块；确需偏离选型，先改「技术选型」章节并写明理由
 7. **测试下沉**：纯逻辑放 `core:*` 做 JVM 测试；改 `core:data`/`core:storage` 必须补跑对应单测
 8. **命令环境**：Windows PowerShell；clone 后执行 `git submodule update --init`——**勿加 `--recursive`**：viewer 的嵌套 jni 子模块刻意不初始化以走 fitz Maven 预编译分支（见「MuPDF 集成方式」第 4 条）
+9. **提交门禁**：所有代码 commit / push 前必须交由用户决策——用户可选择「先 review」或「直接提交推送」；未经用户明确同意，不得执行任何 commit 或 push
 
 ## 常用命令（PowerShell）
 

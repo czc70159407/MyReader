@@ -153,7 +153,13 @@ fun ReaderScreen(
                 OutlineSheet(
                     load = { viewModel.loadOutline() },
                     onDismiss = { showOutline = false },
-                    onJump = { page -> uiPage = page },
+                    // 跳页同步通知 VM：不依赖下一帧渲染回调，防同帧退出时 flush 落旧页；
+                    // clamp 防损坏大纲越界页码落库（渲染端 setDisplayedViewIndex 对越界 no-op）
+                    onJump = { page ->
+                        val target = page.coerceIn(0, s.pageCount - 1)
+                        uiPage = target
+                        viewModel.onPageChanged(target)
+                    },
                 )
             }
             if (showGoTo) {
@@ -163,6 +169,7 @@ fun ReaderScreen(
                     onDismiss = { showGoTo = false },
                     onJump = { page ->
                         uiPage = page
+                        viewModel.onPageChanged(page)
                         showGoTo = false
                     },
                 )

@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -80,7 +80,8 @@ fun OutlineSheet(
                 color = MaterialTheme.colorScheme.outline,
             )
             else -> LazyColumn(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                items(entries!!, key = { "${it.depth}-${it.pageIndex}-${it.title}" }) { node ->
+                // key 用列表序号：PDF 大纲存在同名同页重复条目，内容拼 key 会触发重复 key 崩溃
+                itemsIndexed(entries!!, key = { index, _ -> index }) { _, node ->
                     Text(
                         text = node.title,
                         style = MaterialTheme.typography.bodyMedium,

@@ -19,6 +19,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -129,12 +130,20 @@ class ReaderViewModel @Inject constructor(
                 withContext(dispatchers.io) {
                     router.engineFor(item.fileType).open(file.absolutePath, item.fileType, password)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: PasswordRequiredException) {
                 _state.value = ReaderUiState.NeedsPassword(item.title, wrongPassword = password != null)
                 return@launch
             } catch (e: DocumentException) {
                 // 损坏标记 -2（区别于 -1 未知），书架引导删除/重导，不自动重试（ui-design 错误边界）
-                runCatching { repository.setPageCount(docId, -2) }
+                try {
+                    repository.setPageCount(docId, -2)
+                } catch (ce: CancellationException) {
+                    throw ce
+                } catch (_: Exception) {
+                    // 标记失败可自愈：下次打开重走此路径
+                }
                 _state.value = ReaderUiState.Failed(ReaderFailure.CORRUPT, "无法读取此文档（可能已损坏）")
                 return@launch
             } catch (e: Exception) {
@@ -142,7 +151,12 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
 
-            backfillAfterOpen(item, doc)
+            try {
+                backfillAfterOpen(item, doc)
+            } catch (e: CancellationException) {
+                doc.close()   // 取消时 Ready 未建立，onCleared 读不到 doc，必须就地释放 native 句柄
+                throw e
+            }
             _state.value = ReaderUiState.Ready(
                 doc = doc,
                 viewer = router.viewerFor(item.fileType),
@@ -153,22 +167,25 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** 首开兜底：页数/密码标记/缩略图与库内记录不一致时补齐（典型：加密文档解密成功后） */
+    /** 首开兜底：页数/密码标记/缩略图与库内记录不一致时补齐（典型：加密文档解密成功后）。
+     * 业务异常吞掉不影响阅读（各项下次打开重走自愈）；CancellationException 必须传播。 */
     private suspend fun backfillAfterOpen(item: LibraryItem, doc: Document) {
-        if (item.pageCount != doc.pageCount) {
-            repository.setPageCount(docId, doc.pageCount)
-        }
-        if (item.needsPassword) {
-            repository.setNeedsPassword(docId, false)
-        }
-        if (item.thumbnailRelPath == null && doc.pageCount > 0) {
-            try {
+        try {
+            if (item.pageCount != doc.pageCount) {
+                repository.setPageCount(docId, doc.pageCount)
+            }
+            if (item.needsPassword) {
+                repository.setNeedsPassword(docId, false)
+            }
+            if (item.thumbnailRelPath == null && doc.pageCount > 0) {
                 val thumb = withContext(dispatchers.io) { router.viewerFor(item.fileType).thumbnail(doc) }
                 val relPath = saveThumbnailPng(thumb)
                 repository.setThumbnail(docId, relPath)
-            } catch (_: Exception) {
-                // 缩略图兜底失败不影响阅读
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // 兜底失败不影响阅读
         }
     }
 

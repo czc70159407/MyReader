@@ -29,6 +29,12 @@ fun MuPdfReaderView(
                     super.onMoveToChild(i)
                     latestCallback(ProgressPayload.Page(i))
                 }
+                override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                    super.onSizeChanged(w, h, oldw, oldh)
+                    // 旋转/分屏等尺寸变化必须 refresh()：复用的 PageView 持旧尺寸位图会白屏
+                    // （M4 真机回归发现；refresh 重建子 view + adapter 页尺寸缓存）
+                    if (oldw > 0 && (w != oldw || h != oldh)) refresh()
+                }
             }.apply {
                 setAdapter(adapter)
                 setDisplayedViewIndex(initialPage)

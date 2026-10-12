@@ -43,6 +43,17 @@ internal fun MuPdfReaderView(
                     super.onMoveToChild(i)
                     latestCallback(ProgressPayload.Page(i))
                 }
+
+                override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                    super.onSizeChanged(w, h, oldw, oldh)
+                    // 旋转/分屏等尺寸变化：重建全部子 view 与共享位图。
+                    // 本桥接声明 configChanges 避免 Activity 重建 native 句柄，
+                    // 而 ReaderView 复用的 PageView 持有旧尺寸位图会白屏——
+                    // ReaderView.refresh() 即为此设计（重建子 view + adapter 页尺寸缓存）。
+                    if (oldw > 0 && (w != oldw || h != oldh)) {
+                        refresh()
+                    }
+                }
             }.apply {
                 setAdapter(adapter)
                 setDisplayedViewIndex(initialPage)

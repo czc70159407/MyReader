@@ -106,6 +106,7 @@ class LibraryRepositoryImpl @Inject constructor(
     }
 
     override suspend fun addDocument(
+        id: Long?,
         folderId: Long?,
         title: String,
         relPath: String,
@@ -120,26 +121,28 @@ class LibraryRepositoryImpl @Inject constructor(
         needsPassword: Boolean,
     ): Long = withContext(dispatchers.io) {
         val ts = System.currentTimeMillis()
-        retryOnIdCollision { candidate ->
-            documentDao.insert(
-                DocumentEntity(
-                    id = candidate,
-                    folderId = folderId,
-                    title = title,
-                    relPath = relPath,
-                    fileType = fileType,
-                    mimeType = mimeType,
-                    sourceUri = sourceUri,
-                    fileSize = fileSize,
-                    contentHash = contentHash,
-                    needsPassword = needsPassword,
-                    pageCount = pageCount,
-                    progressType = progressType,
-                    thumbnailRelPath = thumbnailRelPath,
-                    lastReadAt = null,
-                    addedAt = ts,
-                )
-            )
+        fun buildEntity(candidate: Long) = DocumentEntity(
+            id = candidate,
+            folderId = folderId,
+            title = title,
+            relPath = relPath,
+            fileType = fileType,
+            mimeType = mimeType,
+            sourceUri = sourceUri,
+            fileSize = fileSize,
+            contentHash = contentHash,
+            needsPassword = needsPassword,
+            pageCount = pageCount,
+            progressType = progressType,
+            thumbnailRelPath = thumbnailRelPath,
+            lastReadAt = null,
+            addedAt = ts,
+        )
+        // 导入流程已按外部 id 复制物理文件（relPath 含该 id），插入必须沿用同一 id
+        if (id != null) {
+            documentDao.insert(buildEntity(id))
+        } else {
+            retryOnIdCollision { candidate -> documentDao.insert(buildEntity(candidate)) }
         }
     }
 
@@ -186,8 +189,11 @@ class LibraryRepositoryImpl @Inject constructor(
 
 // ---- 内部工具 ----
 
-/** 实体 ID：时间戳毫秒左移 20 位 + nanoTime 低 20 位，避免自增冲突便于移动 */
-internal fun newEntityId(): Long =
+/**
+ * 实体 ID：时间戳毫秒左移 20 位 + nanoTime 低 20 位，避免自增冲突便于移动。
+ * public：导入流程需先按此 id 复制物理文件（relPath = "<id>.<ext>"）再入库，两者必须同 id。
+ */
+fun newEntityId(): Long =
     System.currentTimeMillis() shl 20 or (System.nanoTime() and 0xFFFFF)
 
 /**

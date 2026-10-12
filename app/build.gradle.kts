@@ -87,6 +87,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.activity.compose)
+    implementation(libs.navigation.compose)
     implementation(libs.coroutines.android)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -96,10 +97,12 @@ dependencies {
     api(project(":core:data"))
     api(project(":core:model"))
     api(project(":core:common"))
+    api(project(":core:document"))
     implementation(project(":core:storage"))
 
-    debugImplementation(libs.compose.ui.tooling)
+    // M3：书架 + MuPDF 引擎桥接（:app 仅做 DI 多绑定，不接触 MuPDF 具体类）
+    implementation(project(":feature:library"))
+    implementation(project(":feature:viewer-mupdf"))
 
-    // M1 临时验收依赖：demo 直接打开 assets PDF；M4 起由 :feature:viewer-mupdf 承接，:app 不再直接依赖
-    implementation(project(":third-party:mupdf"))
+    debugImplementation(libs.compose.ui.tooling)
 }

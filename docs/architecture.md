@@ -143,6 +143,8 @@ room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }   # 纯 JVM 模块（core:common）用
 coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
+javax-inject = { group = "javax.inject", name = "javax.inject", version = "1" }   # @FileTypeKey 限定符契约（Hilt 多绑定要求，微小纯规范包）
+dagger = { group = "com.google.dagger", name = "dagger", version.ref = "hilt" }   # @MapKey（@FileTypeKey 作为 IntoMap 自定义 key 的元注解契约）
 documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }

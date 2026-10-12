@@ -26,6 +26,7 @@ interface LibraryRepository {
     suspend fun findByHash(hash: String): LibraryItem?      // 重复导入检测
 
     suspend fun addDocument(
+        id: Long? = null,
         folderId: Long?,
         title: String,
         relPath: String,

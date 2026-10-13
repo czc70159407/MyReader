@@ -3,6 +3,7 @@ package com.myreader.feature.library
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.room.Room
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.Composable
@@ -73,11 +74,12 @@ class DocumentImporterTest {
                 Behavior.PASSWORD -> throw PasswordRequiredException("encrypted")
                 Behavior.OK -> {}
             }
-            return FakeDocument()
+            // epub 视为流式重排（pageCount 不落库 → 恒 -1），其余页码式
+            return FakeDocument(reflowable = fileType == "epub")
         }
     }
 
-    private class FakeDocument : Document {
+    private class FakeDocument(override val reflowable: Boolean = false) : Document {
         override val pageCount: Int = 3
         override fun gotoPage(page: Int) {}
         override suspend fun pageSize(page: Int): androidx.compose.ui.geometry.Size =
@@ -114,8 +116,18 @@ class DocumentImporterTest {
         repository = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), storage, dispatchers)
         engine = FakeEngine(FakeEngine.Behavior.OK)
         val router = SimpleDocumentEngineRouter(
-            engines = mapOf("pdf" to engine),
-            viewers = mapOf("pdf" to FakeViewer()),
+            engines = mapOf(
+                "pdf" to engine,
+                "epub" to engine,
+                "cbz" to engine,
+                "xps" to engine,
+            ),
+            viewers = mapOf(
+                "pdf" to FakeViewer(),
+                "epub" to FakeViewer(),
+                "cbz" to FakeViewer(),
+                "xps" to FakeViewer(),
+            ),
         )
         importer = DocumentImporter(context, router, storage, repository, dispatchers)
     }
@@ -126,6 +138,13 @@ class DocumentImporterTest {
     private fun registerPdf(name: String = "book.pdf", bytes: ByteArray = pdfBytes): Uri {
         val uri = Uri.parse("content://test/$name")
         shadowOf(context.contentResolver).registerInputStream(uri, ByteArrayInputStream(bytes))
+        // 真实 SAF 提供 DISPLAY_NAME/SIZE 两列；Robolectric 的 registerInputStream 不填元数据，
+        // 故用 setCursor 显式喂一行，使 FileTypes.normalize 走「显示名后缀优先」的真实路径。
+        val cursor = org.robolectric.fakes.RoboCursor().apply {
+            setColumnNames(listOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE))
+            setResults(arrayOf(arrayOf<Any?>(name, bytes.size.toLong())))
+        }
+        shadowOf(context.contentResolver).setCursor(uri, cursor)
         return uri
     }
 
@@ -192,6 +211,53 @@ class DocumentImporterTest {
         assertEquals(-1, record.pageCount)
         assertNull(record.thumbnailRelPath)
         assertTrue(storage.documentExists(record.relPath))   // 加密文档文件保留，首开兜底
+    }
+
+    // ---- M9：多格式分流 ----
+
+    @Test
+    fun import_epub_routesCfiProgress() = runTest {
+        val result = importer.import(registerPdf("book.epub", "PK\u0003\u0004 fake-epub".toByteArray()))
+
+        assertEquals(DocumentImporter.Status.IMPORTED, result.status)
+        val record = db.documentDao().findById(result.documentId!!)!!
+        assertEquals("epub", record.fileType)
+        assertEquals("cfi", record.progressType)          // 流式默认 cfi
+        assertEquals("${record.id}.epub", record.relPath)  // 物理扩展名随 fileType
+        assertEquals(-1, record.pageCount)                // 流式重排 pageCount 恒 -1 不落库
+    }
+
+    @Test
+    fun import_cbz_routesPageProgress() = runTest {
+        val result = importer.import(registerPdf("comic.cbz", "PK\u0003\u0004 fake-cbz".toByteArray()))
+
+        assertEquals(DocumentImporter.Status.IMPORTED, result.status)
+        val record = db.documentDao().findById(result.documentId!!)!!
+        assertEquals("cbz", record.fileType)
+        assertEquals("page", record.progressType)          // 页码式
+    }
+
+    @Test
+    fun import_xps_viaOxpsExtension_routesXps() = runTest {
+        // .oxps 扩展名应归一为 fileType=xps
+        val result = importer.import(registerPdf("doc.oxps", "PK\u0003\u0004 fake-oxps".toByteArray()))
+
+        assertEquals(DocumentImporter.Status.IMPORTED, result.status)
+        val record = db.documentDao().findById(result.documentId!!)!!
+        assertEquals("xps", record.fileType)
+        assertEquals("page", record.progressType)
+    }
+
+    @Test
+    fun import_unsupported_rejectedNoCopyNoRecord() = runTest {
+        // 未注册格式：导入前归一化即拒收，不复制、不入库、不调引擎
+        val result = importer.import(registerPdf("evil.docx", "PK\u0003\u0004 fake-docx".toByteArray()))
+
+        assertEquals(DocumentImporter.Status.UNSUPPORTED, result.status)
+        assertNull(result.documentId)
+        assertNull(engine.lastOpenedPath)                       // 未触达引擎
+        assertTrue(libraryDir.listFiles()!!.isEmpty())          // 无物理副本
+        assertNull(repository.findByHash(sha256Of("PK\u0003\u0004 fake-docx".toByteArray())))
     }
 
     private fun sha256Of(bytes: ByteArray): String =

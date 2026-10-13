@@ -40,9 +40,10 @@ def print_snapshot(tag, snap):
     print(f"[documents] 共 {len(snap['documents'])} 条")
     for d in snap["documents"]:
         print(f"  id={d.get('id')} title={d.get('title')!r} folderId={d.get('folderId')} "
-              f"relPath={d.get('relPath')} needsPassword={d.get('needsPassword')} "
+              f"relPath={d.get('relPath')} fileType={d.get('fileType')} needsPassword={d.get('needsPassword')} "
               f"pageCount={d.get('pageCount')} currentPage={d.get('currentPage')} "
               f"scrollOffsetY={d.get('scrollOffsetY')} lastReadAt={d.get('lastReadAt')} "
+              f"progressType={d.get('progressType')} progressPayload={d.get('progressPayload')} "
               f"thumb={d.get('thumbnailRelPath')}")
     print()
 
@@ -54,8 +55,9 @@ def diff(before, after):
     adocs = {d["id"]: d for d in after["documents"]}
     if set(bdocs) != set(adocs):
         problems.append(f"文档 ID 集合不一致: before={set(bdocs)} after={set(adocs)}")
-    fields = ["folderId", "title", "relPath", "needsPassword", "pageCount",
-              "currentPage", "scrollOffsetY", "lastReadAt", "thumbnailRelPath"]
+    fields = ["folderId", "title", "relPath", "fileType", "needsPassword", "pageCount",
+              "currentPage", "scrollOffsetY", "lastReadAt", "thumbnailRelPath",
+              "progressType", "progressPayload"]
     for did in sorted(set(bdocs) & set(adocs)):
         for fld in fields:
             if bdocs[did].get(fld) != adocs[did].get(fld):
@@ -86,7 +88,7 @@ if __name__ == "__main__":
         probs = diff(before, after)
         print("===== 对比结果 =====")
         if not probs:
-            print("PASS: 目录树/文档/进度/加密/页数 全部一致 [OK]")
+            print("PASS: 目录树/文档/进度/加密/页数/格式/进度载荷 全部一致 [OK]")
         else:
             print(f"FAIL: 发现 {len(probs)} 处差异:")
             for p in probs:

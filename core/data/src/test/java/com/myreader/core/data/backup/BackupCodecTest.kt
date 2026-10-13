@@ -41,6 +41,31 @@ class BackupCodecTest {
     }
 
     @Test
+    fun roundTrip_preservesEpubCfiFields() {
+        // M9：epub 记录的 fileType/progressType="cfi"/progressPayload 必须完整往返
+        val epub = DocumentEntity(
+            id = 7, folderId = null, title = "book.epub", relPath = "7.epub", fileType = "epub",
+            mimeType = "application/epub+zip", sourceUri = null, fileSize = 2048L, contentHash = "h7",
+            needsPassword = false, pageCount = -1, progressType = "cfi",
+            currentPage = 5, scrollOffsetY = 0,
+            progressPayload = """{"v":1,"loc":"987654","page":5,"chapter":"Chapter 3"}""",
+            thumbnailRelPath = "thumb/7.png", lastReadAt = 1234L, addedAt = 500L,
+        )
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(epub.toDto()),
+        )
+        val back = BackupCodec.decode(BackupCodec.encode(manifest))
+
+        val restored = back.documents.single().toEntity()
+        assertEquals(epub, restored)
+        assertEquals("epub", restored.fileType)
+        assertEquals("cfi", restored.progressType)
+        assertEquals(epub.progressPayload, restored.progressPayload)
+        assertEquals(-1, restored.pageCount)
+    }
+
+    @Test
     fun decode_rejectsMismatchedSchemaVersion() {
         val manifest = BackupCodec.BackupManifest(
             schemaVersion = 999, exportedAt = 1L, appVersion = "t",

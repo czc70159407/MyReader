@@ -53,5 +53,6 @@ dependencies {
     // 插桩测试（androidTest）：libmupdf_java.so 无法在 JVM 加载，引擎行为只能真机/模拟器验证
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.runner)   // AndroidJUnitRunner（testInstrumentationRunner 指定，须显式引入）
     androidTestImplementation(libs.junit)
 }

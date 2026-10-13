@@ -289,6 +289,7 @@ class LibraryViewModel @Inject constructor(
                 var imported = 0
                 var passwordMarked = 0
                 var rejected = 0
+                var unsupported = 0
                 var failed = 0
                 for (uri in uris) {
                     var r = importer.import(uri, targetFolderId = targetFolderId)
@@ -303,6 +304,7 @@ class LibraryViewModel @Inject constructor(
                         DocumentImporter.Status.IMPORTED_PASSWORD_MARKED -> passwordMarked++
                         DocumentImporter.Status.DUPLICATE_SKIPPED -> Unit
                         DocumentImporter.Status.CORRUPT_REJECTED -> rejected++
+                        DocumentImporter.Status.UNSUPPORTED -> unsupported++
                         DocumentImporter.Status.FAILED -> failed++
                     }
                 }
@@ -310,6 +312,7 @@ class LibraryViewModel @Inject constructor(
                     if (imported > 0) add("导入 $imported 个")
                     if (passwordMarked > 0) add("$passwordMarked 个已加密（打开时需密码）")
                     if (rejected > 0) add("$rejected 个损坏被拒收")
+                    if (unsupported > 0) add("$unsupported 个暂不支持的文件类型")
                     if (failed > 0) add("$failed 个失败")
                 }
                 _messages.send(

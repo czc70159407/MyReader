@@ -105,12 +105,15 @@ def make_outline(out: str) -> str:
 
 
 def make_corrupt(out: str) -> str:
-    """写一段截断/无效的 PDF（无合法 EOF，pypdf 无法解析）。"""
+    """不可恢复的损坏 PDF：有 %PDF 头但无任何对象/xref/trailer。
+    早期版本含 `1 0 obj<<>>endobj`，fitz 1.28.2 的 repair 会据此重建出文档而"打开成功"，
+    导致「损坏拒收」与插桩用例 open_corruptPdf_throwsCorruptDocument 不符预期（M9 真机验收暴露）。
+    改为纯高字节填充（不含 obj/xref/trailer 等 ASCII 令牌）——pypdf 与 fitz 均无法解析/修复。"""
     p = os.path.join(out, "corrupt_test.pdf")
     with open(p, "wb") as f:
         f.write(b"%PDF-1.4\n")
-        f.write(b"1 0 obj<<>>endobj\n")  # 不完整的对象，且无 xref/EOT
-        f.write(b"this file is intentionally truncated and corrupt\n")
+        f.write(b"% intentionally corrupt: no objects / xref / trailer\n")
+        f.write(b"\x80\xff" * 200)   # 高字节填充，规避 fitz repair 的对象扫描
     return p
 
 

@@ -35,7 +35,7 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         modifier: Modifier,
     ) {
         val muDoc = doc as MuPdfDocument
-        val progress = (initialProgress as? ProgressPayload.Page) ?: ProgressPayload.Page(0)
+        val reflowable = muDoc.reflowable
         if (muDoc.pageCount <= 0) {
             // 空文档/页数未知：ReaderView 依赖 adapter count，兜底不进桥接
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -47,16 +47,17 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
             // M4 水平分页：AndroidView 桥接上游 ReaderView（瓦片渲染 + BitmapPool）
             ReaderMode.HORIZONTAL -> MuPdfReaderView(
                 core = muDoc.core,
-                initialPage = progress.page,
+                reflowable = reflowable,
+                initialProgress = initialProgress,
                 onProgressChanged = onProgressChanged,
                 modifier = modifier,
             )
             // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）
             ReaderMode.VERTICAL -> MuPdfVerticalView(
                 doc = doc,
-                initialPage = progress.page,
-                initialOffsetY = progress.scrollOffsetY,
-                onProgressChanged = { payload -> onProgressChanged(payload) },
+                reflowable = reflowable,
+                initialProgress = initialProgress,
+                onProgressChanged = onProgressChanged,
                 modifier = modifier,
             )
         }

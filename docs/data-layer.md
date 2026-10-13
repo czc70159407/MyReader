@@ -164,27 +164,37 @@ interface DocumentDao {
 
 ## 进度记忆实现时机（防频繁写库）
 
-1. `ReaderViewModel` 持有 `MutableStateFlow<ProgressPayload.Page?> currentProgress`（页码 + 垂直偏移，M7 从单一 Int 页码扩展；流式 Cfi 进度 M9 按同型扩展）
-2. `DocumentViewerProvider.Content` 的 `onProgressChanged` 回调更新该状态（引擎无关，统一类型；水平路径 offset 恒 0，垂直路径含像素偏移）
-3. 防抖写库（按 `ProgressPayload` 类型分发，对应 Repository 的 `savePageProgress` / `saveCfiProgress`；M4 已落地为 Job 版防抖，`PROGRESS_DEBOUNCE_MS = 600`）：
+1. `ReaderViewModel` 持有 `MutableStateFlow<ProgressPayload?> currentProgress`（M9 统一为 sealed：`ProgressPayload.Page(page, scrollOffsetY)` 页码式 / `ProgressPayload.Cfi(cfi)` 流式；null = 尚未回调）
+2. `DocumentViewerProvider.Content` 的 `onProgressChanged` 回调更新该状态（引擎无关，统一类型；页码式水平 offset 恒 0、垂直含像素偏移；流式 epub 由 viewer 回调 `Cfi(bookmark 串)`）
+3. 防抖写库（按 `ProgressPayload` 类型分发到 Repository 的 `savePageProgress` / `saveCfiProgress`；M4 落地 Job 版防抖，`PROGRESS_DEBOUNCE_MS = 600`）：
    ```kotlin
-   fun onPageChanged(page: Int, scrollOffsetY: Int = 0) {
-       currentProgress.value = ProgressPayload.Page(page, scrollOffsetY)
+   fun onProgress(payload: ProgressPayload) {
+       if (currentProgress.value == payload) return
+       currentProgress.value = payload
        progressJob?.cancel()                    // 静止期后仅写最新值：翻页/滚动重置计时
        progressJob = viewModelScope.launch(io) {
            delay(PROGRESS_DEBOUNCE_MS)
-           repo.savePageProgress(docId, page, scrollOffsetY)   // 流式文档走 saveCfiProgress
+           when (payload) {                     // 按类型分发（M9）
+               is ProgressPayload.Page -> repo.savePageProgress(docId, payload.page, payload.scrollOffsetY)
+               is ProgressPayload.Cfi  -> repo.saveCfiProgress(docId, payload.cfi)
+           }
        }
    }
    ```
 4. **保底写入**：`ReaderScreen` 的 `LifecycleEventObserver` 在 `ON_PAUSE` / `ON_STOP` 与 `DisposableEffect.onDispose` 时调 `flushProgress()`——取消防抖 Job 立即按当前进度整体写库（幂等，重复 flush 只多写同值），保证离开时进度已落盘
-5. `pageCount` 只在首次（`-1`→实际值，页码式）写一次（首开兜底 `backfillAfterOpen`），不进入防抖流；流式文档跳过
-6. `scrollOffsetY` 语义（M7 启用）：垂直模式由渲染端回写实测像素偏移，水平模式恒 0；恢复时 `Ready.initialScrollOffsetY` 透传 `item.scrollOffsetY.coerceAtLeast(0)`，垂直实现 `scrollToItem(page, offset)` 一次性锚定（跨宽度恢复有近似误差，见 ui-design.md）
+5. `pageCount` 只在首次（`-1`→实际值，页码式）写一次（首开兜底 `backfillAfterOpen`），不进入防抖流；**流式文档（`doc.reflowable`）跳过**（页数随排版变化，恒 -1）
+6. `scrollOffsetY` 语义（M7 启用）：垂直模式由渲染端回写实测像素偏移，水平模式恒 0；恢复时 `Ready.initialProgress` 透传（页码式取 `item.scrollOffsetY.coerceAtLeast(0)`，流式取 `item.progressPayload` 组 `Cfi`），垂直实现 `scrollToItem(page, offset)` 一次性锚定（跨宽度恢复有近似误差，见 ui-design.md）
 
 ```
-进度变化 → onPageChanged  ─debounce 600ms─→  savePageProgress / saveCfiProgress（按 payload 类型分发）
+进度变化 → onProgress(payload)  ─debounce 600ms─→  savePageProgress / saveCfiProgress（按 payload 类型分发）
 退出    → ON_PAUSE/ON_STOP/onDispose ─flush 立即写库─→ finish
 ```
+
+## 流式（EPUB）CFI 进度锚点（M9）
+
+- `progressType="cfi"` 时进度写 `progressPayload`（JSON），由 `core:document` 的 `EpubProgressCodec`（纯逻辑）编解码：`{"v":1,"loc":"<bookmark>","page":N,"chapter":"..."}`，带 `version` 门禁与脏输入拒绝（解码失败返回 null，调用方回落安全默认）。
+- **锚点** `loc` = fitz `makeBookmark` 返回的 long bookmark 十进制串，经 `MuPDFCore.pageToBookmark/bookmarkToPage` 往返——**跨重排稳定**（epub 排版随视口变化、页码漂移，故以 bookmark 为权威锚）。恢复时 `bookmarkToPage(loc)` 得当前排版页码再跳转；无 `loc` 时回落 payload 内 `page`（L3）。
+- `pageCount` 对流式恒 -1（不落库）；书架卡片显示格式标签（EPUB）而非页数，最近阅读显示「继续阅读」而非「第 N 页」。
 
 ## 轻量偏好持久化（DataStore，M6 排序 / M7 设置）
 

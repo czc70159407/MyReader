@@ -27,4 +27,5 @@ tools/acceptance/*.zip
 tools/acceptance/*.tar
 tools/acceptance/*.xml
 tools/acceptance/**/*.db*
+tools/acceptance/m9/
 

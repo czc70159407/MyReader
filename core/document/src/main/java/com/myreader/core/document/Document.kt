@@ -11,6 +11,13 @@ interface Document : Closeable {
     /** 页数；页码式文档有效，流式重排文档（如 epub）返回 -1 */
     val pageCount: Int
 
+    /**
+     * 是否流式重排格式（M9，如 epub）：排版随视口变化，页码不稳定，
+     * 进度走 CFI 锚点、pageCount 不落库。默认 false（pdf/cbz/xps 等固定版式）。
+     * provider/渲染层据此选择重排/CFI 路径；VM 据此豁免 pageCount 回写。
+     */
+    val reflowable: Boolean get() = false
+
     /** 定位到指定页（渲染前调用；页码越界由实现钳制） */
     fun gotoPage(page: Int)
 

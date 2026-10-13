@@ -15,6 +15,9 @@ class MuPdfDocument(val core: MuPDFCore) : Document {
 
     override val pageCount: Int = core.countPages()
 
+    /** 流式重排格式（epub）：进度走 CFI 锚点、pageCount 不落库（M9）。 */
+    override val reflowable: Boolean get() = core.isReflowable()
+
     override fun gotoPage(page: Int) {
         // MuPDFCore.gotoPage 为 private；getPageSize 内部触发同逻辑（loadPage + bounds）
         core.getPageSize(page)

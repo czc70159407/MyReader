@@ -41,6 +41,7 @@ include(":feature:library")
 include(":feature:reader")
 include(":feature:settings")
 include(":feature:viewer-mupdf")
+include(":feature:viewer-txt")   // M9-F 扩展点验证：纯 Compose 文本阅读器（不依赖 MuPDF）
 
 // MuPDF viewer 库（git submodule，锁定 1.28.x commit；其 jni/ 子模块刻意不初始化 → lib 走官方 Maven fitz 预编译分支）
 include(":third-party:mupdf")

@@ -129,7 +129,7 @@ class ReaderViewModelTest {
 
         val state = vm.state.value as ReaderUiState.Ready
         assertEquals(5, state.pageCount)
-        assertEquals(2, state.initialPage)
+        assertEquals(2, (state.initialProgress as ProgressPayload.Page).page)
         assertEquals("测试文档", state.title)
     }
 
@@ -243,8 +243,8 @@ class ReaderViewModelTest {
         val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
         advanceUntilIdle()
 
-        vm.onPageChanged(3)
-        vm.onPageChanged(4)
+        vm.onProgress(ProgressPayload.Page(3))
+        vm.onProgress(ProgressPayload.Page(4))
         advanceTimeBy(ReaderViewModel.PROGRESS_DEBOUNCE_MS - 1)
         runCurrent()   // 只跑当前时刻任务，不推进虚拟时间（advanceUntilIdle 会把防抖期跑完）
         assertTrue(repo.savedProgress.isEmpty())
@@ -261,7 +261,7 @@ class ReaderViewModelTest {
         val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
         advanceUntilIdle()
 
-        vm.onPageChanged(7)
+        vm.onProgress(ProgressPayload.Page(7))
         vm.flushProgress()
         advanceUntilIdle()
 
@@ -337,8 +337,8 @@ class ReaderViewModelTest {
         val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
         advanceUntilIdle()
 
-        vm.onPageChanged(3, 250)
-        vm.onPageChanged(3, 400)   // 同页滚动只更新偏移，防抖重置
+        vm.onProgress(ProgressPayload.Page(3, 250))
+        vm.onProgress(ProgressPayload.Page(3, 400))   // 同页滚动只更新偏移，防抖重置
         advanceTimeBy(ReaderViewModel.PROGRESS_DEBOUNCE_MS)
         runCurrent()
         val saved = repo.savedProgress.single()
@@ -352,7 +352,7 @@ class ReaderViewModelTest {
         val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
         advanceUntilIdle()
 
-        vm.onPageChanged(4)   // 默认参数 = 水平回调路径
+        vm.onProgress(ProgressPayload.Page(4))   // offset 默认 0 = 水平回调路径
         advanceTimeBy(ReaderViewModel.PROGRESS_DEBOUNCE_MS)
         runCurrent()
         assertEquals(0, repo.savedProgress.single().third)
@@ -364,7 +364,7 @@ class ReaderViewModelTest {
         val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
         advanceUntilIdle()
 
-        vm.onPageChanged(7, 120)
+        vm.onProgress(ProgressPayload.Page(7, 120))
         vm.flushProgress()
         advanceUntilIdle()
 
@@ -383,8 +383,123 @@ class ReaderViewModelTest {
         advanceUntilIdle()
 
         val state = vm.state.value as ReaderUiState.Ready
-        assertEquals(2, state.initialPage)
-        assertEquals(400, state.initialScrollOffsetY)
+        assertEquals(2, (state.initialProgress as ProgressPayload.Page).page)
+        assertEquals(400, (state.initialProgress as ProgressPayload.Page).scrollOffsetY)
+    }
+
+    // ---- M9：流式 CFI 进度 + 重排 ----
+
+    private fun epubItem(
+        id: Long = 1L,
+        progressType: String = "cfi",
+        progressPayload: String? = null,
+    ) = item(id = id, pageCount = -1).copy(
+        relPath = "$id.epub",
+        fileType = "epub",
+        mimeType = "application/epub+zip",
+        progressType = progressType,
+        currentPage = 0,
+        progressPayload = progressPayload,
+        thumbnailRelPath = null,
+    )
+
+    @Test
+    fun `epub 会话初值强制垂直 忽略水平偏好`() = runTest(dispatcher) {
+        writeFile("1.epub")
+        val prefs = newSettingsPrefs()
+        prefs.setDefaultReaderMode(ReaderMode.HORIZONTAL)
+        val vm = newViewModel(
+            ScriptedEngine { FakeDocument(pageCount = 20, reflowable = true) },
+            epubItem(),
+            prefs,
+        )
+        advanceUntilIdle()
+
+        // 重排文档强制 VERTICAL（顶栏仍可临时切水平）；不跟随用户的水平默认偏好
+        assertEquals(ReaderMode.VERTICAL, vm.mode.value)
+    }
+
+    @Test
+    fun `epub Ready 透传库中 cfi 进度`() = runTest(dispatcher) {
+        writeFile("1.epub")
+        val payload = com.myreader.core.document.EpubProgressCodec.encode(loc = "987654", page = 5)
+        val vm = newViewModel(
+            ScriptedEngine { FakeDocument(pageCount = 20, reflowable = true) },
+            epubItem(progressType = "cfi", progressPayload = payload),
+        )
+        advanceUntilIdle()
+
+        val ready = vm.state.value as ReaderUiState.Ready
+        assertTrue(ready.reflowable)
+        assertTrue(ready.initialProgress is ProgressPayload.Cfi)
+        assertEquals(payload, (ready.initialProgress as ProgressPayload.Cfi).cfi)
+    }
+
+    @Test
+    fun `cfi 进度防抖落库走 saveCfiProgress`() = runTest(dispatcher) {
+        writeFile("1.epub")
+        val vm = newViewModel(
+            ScriptedEngine { FakeDocument(pageCount = 20, reflowable = true) },
+            epubItem(),
+        )
+        advanceUntilIdle()
+
+        val cfi = com.myreader.core.document.EpubProgressCodec.encode(loc = "111", page = 3)
+        vm.onProgress(ProgressPayload.Cfi(cfi))
+        vm.onProgress(ProgressPayload.Cfi(com.myreader.core.document.EpubProgressCodec.encode(loc = "222", page = 4)))
+        advanceTimeBy(ReaderViewModel.PROGRESS_DEBOUNCE_MS - 1)
+        runCurrent()
+        assertTrue(repo.savedCfi.isEmpty())
+
+        advanceTimeBy(1)
+        runCurrent()
+        // 仅落最新一条，且走 cfi 通道（不写页码进度）
+        assertEquals(1, repo.savedCfi.size)
+        assertTrue(repo.savedProgress.isEmpty())
+        assertTrue(repo.savedCfi.single().contains("222"))
+    }
+
+    @Test
+    fun `flush 立即落 cfi`() = runTest(dispatcher) {
+        writeFile("1.epub")
+        val vm = newViewModel(
+            ScriptedEngine { FakeDocument(pageCount = 20, reflowable = true) },
+            epubItem(),
+        )
+        advanceUntilIdle()
+
+        val cfi = com.myreader.core.document.EpubProgressCodec.encode(loc = "555", page = 8)
+        vm.onProgress(ProgressPayload.Cfi(cfi))
+        vm.flushProgress()
+        advanceUntilIdle()
+
+        assertEquals(cfi, repo.savedCfi.single())
+    }
+
+    @Test
+    fun `epub 豁免 pageCount 回写`() = runTest(dispatcher) {
+        writeFile("1.epub")
+        val vm = newViewModel(
+            ScriptedEngine { FakeDocument(pageCount = 20, reflowable = true) },
+            epubItem(),   // 库中 pageCount=-1，运行期 doc.pageCount=20
+        )
+        advanceUntilIdle()
+
+        assertTrue(vm.state.value is ReaderUiState.Ready)
+        // 流式文档页数随排版变化、不落库：backfill 不得写 pageCount（G9）
+        assertTrue(repo.pageCountWrites.isEmpty())
+    }
+
+    @Test
+    fun `页码式文档仍回写 pageCount`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(
+            ScriptedEngine { FakeDocument(pageCount = 9, reflowable = false) },
+            item(pageCount = -1),   // 库中未知，运行期 9 → 应回写
+        )
+        advanceUntilIdle()
+
+        assertEquals(1L to 9, repo.pageCountWrites.single())
     }
 
     // ---- fakes ----
@@ -407,7 +522,10 @@ class ReaderViewModelTest {
         override fun open(path: String, fileType: String, password: String?): Document = onOpen(password)
     }
 
-    private class FakeDocument(override val pageCount: Int = 5) : Document {
+    private class FakeDocument(
+        override val pageCount: Int = 5,
+        override val reflowable: Boolean = false,
+    ) : Document {
         override fun gotoPage(page: Int) {}
         override suspend fun pageSize(page: Int): androidx.compose.ui.geometry.Size =
             androidx.compose.ui.geometry.Size(595f, 842f)
@@ -427,6 +545,7 @@ class ReaderViewModelTest {
     private class FakeRepository : LibraryRepository {
         var docItem: LibraryItem? = null
         val savedProgress = mutableListOf<Triple<Long, Int, Int>>()
+        val savedCfi = mutableListOf<String>()
         val pageCountWrites = mutableListOf<Pair<Long, Int>>()
         val passwordWrites = mutableListOf<Pair<Long, Boolean>>()
         val thumbnailWrites = mutableListOf<Pair<Long, String?>>()
@@ -455,7 +574,9 @@ class ReaderViewModelTest {
         override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) {
             savedProgress += Triple(id, page, scrollOffsetY)
         }
-        override suspend fun saveCfiProgress(id: Long, payload: String) = TODO()
+        override suspend fun saveCfiProgress(id: Long, payload: String) {
+            savedCfi += payload
+        }
         override suspend fun setPageCount(id: Long, pageCount: Int) {
             pageCountWrites += id to pageCount
             docItem = docItem?.copy(pageCount = pageCount)

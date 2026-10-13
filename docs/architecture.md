@@ -46,7 +46,8 @@ MyReader/
 │   ├── library/                      # :feature:library    书架+目录树+文件夹增删改移+搜索/排序/文档长按操作(强耦合合并)
 │   ├── reader/                       # :feature:reader     阅读器 UI(顶部栏/跳页框/大纲导航/模式切换)，依赖 :feature:viewer-mupdf(经接口)
 │   ├── settings/                     # :feature:settings   设置页(阅读模式/主题/书架排序偏好，DataStore 持久化)
-│   └── viewer-mupdf/                # :feature:viewer-mupdf  MuPDF 渲染桥接，按引擎拆分以为多格式预留
+│   ├── viewer-mupdf/                # :feature:viewer-mupdf  MuPDF 渲染桥接，按引擎拆分以为多格式预留
+│   └── viewer-txt/                  # :feature:viewer-txt    纯 Compose 文本阅读器（M9-F 扩展点验证，不依赖 MuPDF）
 └── third-party/
     └── mupdf-android-viewer/          # git submodule，其 lib/ 作为 :third-party:mupdf 模块
 ```
@@ -60,7 +61,8 @@ app ──► feature:reader ──► core:document (接口：DocumentEngine + 
    ├──► feature:settings ──► core:data + core:model（DataStore 偏好读写；不依赖 core:document 与 MuPDF）
    │                          │  (app 的 DocumentEngineModule 用 @IntoMap 多绑定，按 fileType 路由)
    └──► feature:viewer-mupdf ──► third-party:mupdf   (MuPDF 边界止于此)
-            feature:viewer-mupdf 实现 DocumentEngine/Document/DocumentViewerProvider，@FileTypeKey("pdf") 注册
+            feature:viewer-mupdf 实现 DocumentEngine/Document/DocumentViewerProvider，@FileTypeKey("pdf"/"epub"/"cbz"/"xps") 注册（M9）
+   └──► feature:viewer-txt ──► core:document   (M9-F：纯 Compose 文本引擎，@FileTypeKey("txt") 注册，不依赖 MuPDF——验证扩展点)
             feature:reader 不依赖任何 viewer-*，经 core:document 接口 + DI Map 按 doc.fileType 路由到对应引擎
    core:data ──► core:storage + datastore-preferences   (独立链路；双偏好文件：library_prefs 书架排序 M6 / settings_prefs 阅读模式+主题 M7，
                                                           实例由 app DI 以 @LibraryPrefsStore/@SettingsPrefsStore 限定符分别提供，单文件单实例)
@@ -70,13 +72,13 @@ app ──► feature:reader ──► core:document (接口：DocumentEngine + 
 - `feature:settings` 依赖 `core:data`（而非原计划的 core:designsystem）：书架排序偏好 M6 已落 `core:data` 的 `LibraryPrefs`，设置页与书架 SortMenu 同源读写同一 DataStore 流，天然双向同步、避免双存储不一致与同步代码（M7 落地时的实际选型修订；MuPDF 边界不受影响）
 - `core:document` 定义抽象（依赖 Compose，但不依赖 MuPDF）：
   - `DocumentEngine`：工厂，`fun open(path: String, fileType: String, password: String? = null): Document`，纯 Kotlin 接口
-  - `Document`：文档句柄，`val pageCount: Int`（页码式有效；流式重排文档返回 -1）/ `fun gotoPage(page: Int)` / `suspend fun pageSize(page: Int): Size`（页点尺寸，M7 垂直模式布局占位与等比渲染用；实现内部可兼做页面预热）/ `fun drawPage(...)` / `suspend fun outline(): List<OutlineEntry>`（文档大纲/目录，无大纲返回空表）/ `fun close()`，`Closeable`；`ReaderViewModel` 持有此接口而非 native 具体句柄，配置变更时 ViewModel 不销毁、句柄复用，避免 native 资源反复重建
+  - `Document`：文档句柄，`val pageCount: Int`（页码式有效；流式重排文档返回 -1）/ `val reflowable: Boolean get() = false`（M9：流式重排格式如 epub 返回 true，provider/渲染层据此选重排+CFI 路径、VM 据此豁免 pageCount 回写）/ `fun gotoPage(page: Int)` / `suspend fun pageSize(page: Int): Size`（页点尺寸，M7 垂直模式布局占位与等比渲染用；实现内部可兼做页面预热）/ `fun drawPage(...)` / `suspend fun outline(): List<OutlineEntry>`（文档大纲/目录，无大纲返回空表）/ `fun close()`，`Closeable`；`ReaderViewModel` 持有此接口而非 native 具体句柄，配置变更时 ViewModel 不销毁、句柄复用，避免 native 资源反复重建
   - `DocumentException`：sealed 异常（`PasswordRequiredException` / `CorruptDocumentException`），`DocumentEngine.open` 抛出，导入验证据此分流「加密→入库标记」与「损坏→拒收」
   - `DocumentViewerProvider`：渲染 Composable 提供者，`@Composable fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit)` + `suspend fun thumbnail(doc: Document): ImageBitmap`
   - `ProgressPayload`：sealed 进度模型，`Page(page: Int, scrollOffsetY: Int)`（页码式：pdf/cbz/xps）/ `Cfi(cfi: String)`（流式：epub）；`ReaderMode` 枚举归属 `core:model`（M7 迁移：偏好层 core:data 需类型化暴露 `Flow<ReaderMode>` 而不依赖 core:document 的 Compose 传递依赖；`core:document` 以 `api(project(":core:model"))` 引用，与 `DocSort` 同处惯例）
 - **多绑定路由（核心扩展点）**：自定义 Hilt 限定符 `@FileTypeKey(fileType: String)` + `@IntoMap`，把各引擎的 `DocumentEngine`、`DocumentViewerProvider` 注册成 `Map<String, DocumentEngine>` / `Map<String, DocumentViewerProvider>`；`ReaderViewModel` 注入 `DocumentEngineRouter`（封装两个 Map），按 `doc.fileType` 取对应实现。**加新格式 = 新建 `feature:viewer-xxx` + 注册 `@FileTypeKey("xxx")`，reader/库表/schema 不改。**
 - **注入与调用细节**：Hilt 不能直接注入 `@Composable` 函数，故 `DocumentViewerProvider` 是普通接口、方法带 `@Composable` 注解；`ReaderScreen` 经 `router.viewerFor(doc.fileType)` 拿到 provider 后在 Compose 上下文调 `provider.Content(doc, ...)` 即可渲染
-- 当前仅 `feature:viewer-mupdf` 一个引擎实现（`MuPdfDocumentEngine` / `MuPdfDocument` / `MuPdfViewerProvider`，`@FileTypeKey("pdf")` 注册；`MuPdfDocumentEngine` 把 MuPDF 的密码/损坏 native 异常映射为 `DocumentException` 子类，`MuPdfDocument` 转发大纲读取；MuPDF 实际也覆盖 epub/cbz/xps，v1 先只开放 pdf 导入）；换引擎或加格式只动 viewer-* 与 `DocumentEngineModule`，`feature:reader` 一行不改
+- 当前有两个引擎实现：`feature:viewer-mupdf`（`MuPdfDocumentEngine` / `MuPdfDocument` / `MuPdfViewerProvider`，以四个 `@FileTypeKey` 复用同一实现注册 `"pdf"`/`"epub"`/`"cbz"`/`"xps"`；fitz 原生解析这四类，`MuPdfDocumentEngine.open` 以 `FileTypes.magicOf(fileType)`（规范 MIME，如 `application/epub+zip`）作 fitz 打开 magic（规避裸扩展名的识别不确定性，S0-4）；epub 进度锚点经 `MuPDFCore.pageToBookmark/bookmarkToPage`，M9 加在 third-party:mupdf 的 MuPDFCore.java 内，属 MuPDF 边界内）与 `feature:viewer-txt`（`TxtDocumentEngine` / `TxtDocument` / `TxtViewerProvider`，`@FileTypeKey("txt")`，**纯 Compose 文本分页、不依赖 MuPDF**——M9-F 用它验证「加新格式 = 新模块 + 两个 @IntoMap 绑定，reader/library/schema 一行不改」的扩展点承诺）。格式契约（扩展名/mime/magic 归一、导入白名单、默认进度类型）集中在 `core:document` 的 `FileTypes`；换引擎或加格式只动 viewer-* 与 `DocumentEngineModule`
 - `core:model` 是纯 Kotlin，被 `core:data`（加 Room 注解的 Entity）和 feature 层共用，避免 UI 层直接碰 Entity
 
 ### 为何这样拆
@@ -150,7 +152,7 @@ dagger = { group = "com.google.dagger", name = "dagger", version.ref = "hilt" } 
 documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }   # 书架排序偏好（M6）：core:data + app DI + feature:library 测试
-kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3" }   # M8 备份快照序列化（类型安全；Kotlin 2.0.21 兼容；AGPL 兼容，无闭源风险）
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3" }   # M8 备份快照 + M9 EpubProgressCodec（cfi 进度 payload）序列化；core:data 与 core:document 均引入（类型安全；Kotlin 2.0.21 兼容；AGPL 兼容，无闭源风险）
 # ---- 测试（对应「测试策略」各层）----
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }

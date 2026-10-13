@@ -30,12 +30,15 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
@@ -69,6 +72,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
@@ -80,6 +84,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.myreader.core.document.FileTypes
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
@@ -216,10 +221,10 @@ fun LibraryScreen(
                             Icon(imageVector = Icons.Filled.CreateNewFolder, contentDescription = "新建文件夹")
                         }
                         IconButton(
-                            onClick = { importLauncher.launch(arrayOf("application/pdf")) },
+                            onClick = { importLauncher.launch(FileTypes.mimeFilters()) },
                             enabled = !importing,
                         ) {
-                            Icon(imageVector = Icons.Filled.Add, contentDescription = "导入 PDF")
+                            Icon(imageVector = Icons.Filled.Add, contentDescription = "导入文档")
                         }
                         IconButton(onClick = viewModel::openSearch) {
                             Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
@@ -302,7 +307,7 @@ fun LibraryScreen(
                         tint = MaterialTheme.colorScheme.outline,
                     )
                     Text(
-                        text = if (viewModel.isRoot) "书架还是空的\n点右上角 + 导入 PDF" else "此文件夹为空",
+                        text = if (viewModel.isRoot) "书架还是空的\n点右上角 + 导入文档" else "此文件夹为空",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.outline,
                         modifier = Modifier.padding(top = 16.dp),
@@ -598,7 +603,11 @@ private fun DocumentCard(
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         ) {
             Box(modifier = Modifier.aspectRatio(1f)) {
-                ThumbnailImage(relPath = item.thumbnailRelPath, modifier = Modifier.fillMaxSize())
+                ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
+                // M9：非 PDF 格式在左上角显示格式角标（EPUB / CBZ / XPS）
+                if (item.fileType != FileTypes.PDF) {
+                    FormatBadge(label = formatLabel(item.fileType), modifier = Modifier.align(Alignment.TopStart))
+                }
                 // 状态角标：加密 / 损坏
                 when {
                     item.needsPassword -> StatusBadge(
@@ -619,9 +628,16 @@ private fun DocumentCard(
                     overflow = TextOverflow.Ellipsis,
                     color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                 )
+                // 页码式文档显示「N 页」；流式/未知页数（epub 恒 -1、加密未开）显示格式标签
                 if (item.pageCount > 0) {
                     Text(
                         text = "${item.pageCount} 页",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.outline,
+                    )
+                } else {
+                    Text(
+                        text = formatLabel(item.fileType),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.outline,
                     )
@@ -647,15 +663,46 @@ private fun StatusBadge(icon: @Composable () -> Unit, modifier: Modifier) {
     ) { icon() }
 }
 
+/** M9：格式文字角标（左上角，标识 EPUB / CBZ / XPS） */
 @Composable
-private fun ThumbnailImage(relPath: String?, modifier: Modifier = Modifier) {
+private fun FormatBadge(label: String, modifier: Modifier) {
+    Box(
+        modifier = modifier
+            .padding(6.dp)
+            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text = label, color = Color.White, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** fileType → 展示用格式标签 */
+private fun formatLabel(fileType: String): String = when (fileType) {
+    FileTypes.EPUB -> "EPUB"
+    FileTypes.CBZ -> "CBZ"
+    FileTypes.XPS -> "XPS"
+    FileTypes.TXT -> "TXT"
+    else -> "PDF"
+}
+
+/** fileType → 无缩略图时的占位图标 */
+private fun formatIcon(fileType: String): ImageVector = when (fileType) {
+    FileTypes.EPUB -> Icons.Filled.Book
+    FileTypes.CBZ -> Icons.Filled.Image
+    FileTypes.TXT -> Icons.AutoMirrored.Filled.Article
+    else -> Icons.Filled.Description   // pdf / xps / 未知
+}
+
+@Composable
+private fun ThumbnailImage(relPath: String?, fileType: String, modifier: Modifier = Modifier) {
     if (relPath == null) {
         Box(
             modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
-                imageVector = Icons.Filled.Description,
+                imageVector = formatIcon(fileType),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.outline,
                 modifier = Modifier.size(36.dp),
@@ -758,7 +805,7 @@ internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)) {
-            ThumbnailImage(relPath = item.thumbnailRelPath, modifier = Modifier.fillMaxSize())
+            ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
             // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）
             if (item.needsPassword) {
                 StatusBadge(
@@ -774,10 +821,15 @@ internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            // 页码进度仅对页码式文档有意义（cfi 流式无页概念，M9 前不会有）
-            if (item.progressType == "page") {
-                Text(
+            // 页码式显示「第 N 页」；流式（cfi，如 epub）无固定页概念，显示「继续阅读」
+            when (item.progressType) {
+                "page" -> Text(
                     text = "第 ${item.currentPage + 1} 页",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+                "cfi" -> Text(
+                    text = "继续阅读",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline,
                 )

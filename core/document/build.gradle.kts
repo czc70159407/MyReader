@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.kotlin.serialization)   // M9 EpubProgressCodec（cfi 进度 payload 序列化）
 }
 
 android {
@@ -30,4 +31,8 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.javax.inject)    // FileTypeKey @Qualifier
     implementation(libs.dagger)          // FileTypeKey @MapKey
+    implementation(libs.kotlinx.serialization.json)   // M9 EpubProgressCodec（纯逻辑 payload 编解码）
+
+    // FileTypesTest 等纯逻辑单测（无 Android/Robolectric 依赖）
+    testImplementation(libs.junit)
 }

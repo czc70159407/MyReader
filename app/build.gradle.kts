@@ -106,6 +106,7 @@ dependencies {
     implementation(project(":feature:reader"))
     implementation(project(":feature:settings"))
     implementation(project(":feature:viewer-mupdf"))
+    implementation(project(":feature:viewer-txt"))   // M9-F：TXT 引擎多绑定（app 仅 DI，不接触实现细节）
 
     debugImplementation(libs.compose.ui.tooling)
 }

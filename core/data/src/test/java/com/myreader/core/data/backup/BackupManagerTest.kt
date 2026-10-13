@@ -134,6 +134,44 @@ class BackupManagerTest {
     }
 
     @Test
+    fun exportThenRestore_preservesEpubCfiProgressAndFile() = runTest {
+        // M9：epub 记录（fileType/progressType=cfi/progressPayload）经导出→恢复全字段一致
+        db.documentDao().insert(
+            DocumentEntity(
+                id = 40, folderId = null, title = "book.epub", relPath = "40.epub", fileType = "epub",
+                mimeType = "application/epub+zip", sourceUri = null, fileSize = 9, contentHash = "h40",
+                needsPassword = false, pageCount = -1, progressType = "cfi",
+                currentPage = 5, scrollOffsetY = 0,
+                progressPayload = """{"v":1,"loc":"987654","page":5,"chapter":"Chapter 3"}""",
+                thumbnailRelPath = null, lastReadAt = 777, addedAt = 500,
+            )
+        )
+        storage.copyIn(ByteArrayInputStream("EPUBDATA-40".toByteArray()), 40, "epub")
+
+        val baos = ByteArrayOutputStream()
+        val exp = manager.export(baos, "test")
+        assertEquals(1, exp.documents)
+        assertEquals(1, exp.filesWritten)
+
+        // 清空后恢复
+        db.documentDao().delete(40)
+        storage.deleteDocument("40.epub")
+        val res = manager.restore(ByteArrayInputStream(baos.toByteArray()))
+        assertEquals(1, res.documents)
+        assertEquals(1, res.filesWritten)
+
+        val doc = db.documentDao().all().first()
+        assertEquals("epub", doc.fileType)
+        assertEquals("cfi", doc.progressType)
+        assertEquals("""{"v":1,"loc":"987654","page":5,"chapter":"Chapter 3"}""", doc.progressPayload)
+        assertEquals(-1, doc.pageCount)
+        assertEquals(5, doc.currentPage)
+        // 物理 epub 文件还原且内容一致
+        assertTrue(storage.documentExists("40.epub"))
+        assertEquals("EPUBDATA-40", File(storage.thumbDir().parentFile, "library/40.epub").readText())
+    }
+
+    @Test
     fun export_countsMissingFilesWhenPhysicalAbsent() = runTest {
         db.documentDao().insert(
             DocumentEntity(

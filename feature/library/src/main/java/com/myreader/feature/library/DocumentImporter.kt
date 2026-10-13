@@ -12,6 +12,7 @@ import com.myreader.core.data.repo.newEntityId
 import com.myreader.core.document.CorruptDocumentException
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngineRouter
+import com.myreader.core.document.FileTypes
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.storage.DocumentStorage
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -52,6 +53,9 @@ class DocumentImporter @Inject constructor(
         /** 损坏/无法读取：半成品已删，不入库 */
         CORRUPT_REJECTED,
 
+        /** 扩展名/mime 均未命中已注册格式：不复制、不入库（M9 集中归一化，防未注册格式流入 router 崩溃） */
+        UNSUPPORTED,
+
         /** 其他失败（空间不足/IO/插库异常），半成品已删 */
         FAILED,
     }
@@ -79,9 +83,13 @@ class DocumentImporter @Inject constructor(
             var copy: DocumentStorage.CopyResult? = null
             var thumbnailRelPath: String? = null
             try {
-                // 1. fileType/ext：M3 仅开放 pdf（扩展名优先，mime 兜底）
-                val ext = extOf(displayName, mimeType)
-                val fileType = ext
+                // 1. fileType 归一化（M9）：扩展名优先、mime 兜底；未命中已注册格式直接拒收，
+                //    不复制、不入库——防未注册格式流入 router 抛 IllegalArgumentException（G3）。
+                val fileType = FileTypes.normalize(displayName, mimeType)
+                    ?: return@withContext Result(uri, Status.UNSUPPORTED, title = displayName, reason = "暂不支持的文件类型")
+                // 物理扩展名统一取 fileType（pdf/epub/cbz/xps 均过 DocumentStorage 白名单；
+                // 打开经 router 按 fileType 路由并传 magic，与文件扩展名解耦，故 .oxps 等变体安全）
+                val ext = fileType
 
                 // 2. 空间检查（尺寸已知时）；复制前不写半文件
                 if (size != null && size > 0 && !storage.hasSpaceFor(size)) {
@@ -123,7 +131,9 @@ class DocumentImporter @Inject constructor(
                 var pageCount = -1
                 var needsPassword = false
                 if (doc != null) {
-                    pageCount = doc.pageCount
+                    // 流式重排（epub）pageCount 恒 -1 不落库（随排版变化，见 docs/m9-plan.md §2 / data-layer.md）；
+                    // 阅读器页数取运行时 doc.pageCount。页码式（pdf/cbz/xps/txt）取实际页数。
+                    pageCount = if (doc.reflowable) -1 else doc.pageCount
                     try {
                         val thumb = router.viewerFor(fileType).thumbnail(doc)
                         thumbnailRelPath = saveThumbnail(docId, thumb)
@@ -149,7 +159,7 @@ class DocumentImporter @Inject constructor(
                     fileSize = copy.fileSize,
                     contentHash = copy.contentHash,
                     pageCount = pageCount,
-                    progressType = "page",
+                    progressType = FileTypes.defaultProgressType(fileType),
                     thumbnailRelPath = thumbnailRelPath,
                     needsPassword = needsPassword,
                 )
@@ -167,20 +177,6 @@ class DocumentImporter @Inject constructor(
                 Result(uri, Status.FAILED, title = displayName, reason = t.message ?: t.javaClass.simpleName)
             }
         }
-
-    /** 扩展名解析：显示名后缀优先（小写），mime 映射兜底；copyIn 内再做白名单校验 */
-    private fun extOf(displayName: String?, mimeType: String?): String {
-        displayName?.takeIf { it.contains('.') }?.let {
-            val e = it.substringAfterLast('.', "").lowercase()
-            if (e.isNotEmpty()) return e
-        }
-        return when (mimeType) {
-            "application/epub+zip" -> "epub"
-            "image/vnd.comicbook+zip", "image/vnd.comicbook" -> "cbz"
-            "application/oxps" -> "oxps"
-            else -> "pdf"
-        }
-    }
 
     private fun queryDisplayName(uri: Uri): String? =
         queryMeta(uri).first

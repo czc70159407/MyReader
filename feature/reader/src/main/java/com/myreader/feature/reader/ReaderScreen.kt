@@ -40,6 +40,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.model.ReaderMode
 
@@ -112,10 +113,16 @@ fun ReaderScreen(
             // 先组合 Content、LaunchedEffect 帧后才补正值」的恢复竞态窗口：该窗口内垂直视图会
             // 恢复到第 1 页并回流 (0,0) 覆盖库中进度（M7 真机验收发现）。密码重试产生新 Ready
             // 实例 → key 变化 → 全套状态按新会话重置（弹窗态一并清零）
-            var uiPage by remember { mutableStateOf(s.initialPage) }
-            var uiOffsetY by remember { mutableStateOf(s.initialScrollOffsetY) }
+            // M9：进度统一为 ProgressPayload（页码式 Page / 流式 Cfi）；顶栏页码由 payload 派生。
+            var uiProgress by remember { mutableStateOf(s.initialProgress) }
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
+
+            // 顶栏/跳页用的当前页码：页码式取 page；流式 CFI 解出内嵌 page（展示近似值）
+            val uiPage: Int = when (val p = uiProgress) {
+                is ProgressPayload.Page -> p.page
+                is ProgressPayload.Cfi -> EpubProgressCodec.decode(p.cfi)?.page ?: 0
+            }
 
             Scaffold(
                 topBar = {
@@ -141,7 +148,7 @@ fun ReaderScreen(
                             IconButton(onClick = { showGoTo = true }) {
                                 Icon(imageVector = Icons.Filled.FindInPage, contentDescription = "跳页")
                             }
-                            // 阅读模式实时切换（M7）：会话内生效不回写偏好；当前页经 initialProgress 保持
+                            // 阅读模式实时切换（M7）：会话内生效不回写偏好；当前进度经 initialProgress 保持
                             IconButton(onClick = viewModel::toggleMode) {
                                 Icon(
                                     imageVector = Icons.Filled.SwapHoriz,
@@ -155,14 +162,11 @@ fun ReaderScreen(
                 Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                     s.viewer.Content(
                         doc = s.doc,
-                        initialProgress = ProgressPayload.Page(uiPage, uiOffsetY),
+                        initialProgress = uiProgress,
                         mode = mode,
                         onProgressChanged = { payload ->
-                            if (payload is ProgressPayload.Page) {
-                                uiPage = payload.page
-                                uiOffsetY = payload.scrollOffsetY
-                                viewModel.onPageChanged(payload.page, payload.scrollOffsetY)
-                            }
+                            uiProgress = payload
+                            viewModel.onProgress(payload)
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -175,12 +179,12 @@ fun ReaderScreen(
                     onDismiss = { showOutline = false },
                     // 跳页同步通知 VM：不依赖下一帧渲染回调，防同帧退出时 flush 落旧页；
                     // clamp 防损坏大纲越界页码落库（渲染端 setDisplayedViewIndex 对越界 no-op），
-                    // coerceAtLeast 与 ReaderViewModel.initialPage 处同款防御（pageCount=0 时上界不越 -1）
+                    // coerceAtLeast 与 ReaderViewModel.initialProgress 处同款防御（pageCount=0 时上界不越 -1）
                     onJump = { page ->
                         val target = page.coerceIn(0, (s.pageCount - 1).coerceAtLeast(0))
-                        uiPage = target
-                        uiOffsetY = 0   // 垂直模式跳页顶部对齐
-                        viewModel.onPageChanged(target)
+                        uiProgress = ProgressPayload.Page(target, 0)
+                        // 流式文档由渲染端 reposition 后回发 CFI 落库；页码式立即落库
+                        if (!s.reflowable) viewModel.onProgress(ProgressPayload.Page(target, 0))
                     },
                 )
             }
@@ -190,9 +194,8 @@ fun ReaderScreen(
                     pageCount = s.pageCount,
                     onDismiss = { showGoTo = false },
                     onJump = { page ->
-                        uiPage = page
-                        uiOffsetY = 0   // 垂直模式跳页顶部对齐
-                        viewModel.onPageChanged(page)
+                        uiProgress = ProgressPayload.Page(page, 0)
+                        if (!s.reflowable) viewModel.onProgress(ProgressPayload.Page(page, 0))
                         showGoTo = false
                     },
                 )

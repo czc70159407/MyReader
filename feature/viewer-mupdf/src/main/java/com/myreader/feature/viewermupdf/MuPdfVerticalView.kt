@@ -45,23 +45,38 @@ private const val PLACEHOLDER_RATIO = 4f / 3f
  * 进度：firstVisibleItemIndex + 项内像素偏移 → [ProgressPayload.Page] 回写（防抖落库由 VM 承担）。
  * 恢复：一次性 scrollToItem(initialPage, initialOffsetY)——LazyList 锚定「item 顶部 + 像素偏移」，
  * 后续占位高度收敛为实测高度不影响锚点；跨宽度的旧偏移存在近似误差（已知限制，见 docs/ui-design.md）。
- * 外部跳页（跳页框/大纲写 uiPage）：经 initialPage 差分触发 scrollToItem(page, 0)——
+ * 外部跳页（跳页框/大纲写 uiPage）：经 initialProgress 差分触发 scrollToItem(page, 0)——
  * [lastEmittedPage] 守卫区分「自身滚动回流」（page 相等 no-op）与「外部跳页」，防跳转回环。
+ *
+ * M9 重排（reflowable，如 epub）：进度回调改走 CFI 锚点（[EpubLocationResolver]）；
+ * 垂直模式沿用 MuPDFCore 默认固定排版（312×504pt）不 relayout，故 [Document.pageCount] 稳定、
+ * LazyColumn 项数不变——重排拟合由水平 ReaderView 承担（见 [MuPdfReaderView]）。
  */
 @Composable
 internal fun MuPdfVerticalView(
     doc: Document,
-    initialPage: Int,
-    initialOffsetY: Int,
-    onProgressChanged: (ProgressPayload.Page) -> Unit,
+    reflowable: Boolean,
+    initialProgress: ProgressPayload,
+    onProgressChanged: (ProgressPayload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val loader = remember(doc) { VerticalPageLoader(doc) }
     val latestCallback by rememberUpdatedState(onProgressChanged)
+    val resolver = remember(doc) { if (reflowable) EpubLocationResolver((doc as MuPdfDocument).core) else null }
+
+    // 初始恢复锚点：重排文档把 Cfi 解析为当前排版页码；页码式取 Page(page/offset)
+    val initPage = remember(initialProgress) {
+        when {
+            resolver != null -> resolver.pageForProgress(initialProgress)
+            initialProgress is ProgressPayload.Page -> initialProgress.page
+            else -> 0
+        }
+    }
+    val initOffsetY = (initialProgress as? ProgressPayload.Page)?.scrollOffsetY ?: 0
 
     // 滚动回流守卫：初始 = 恢复页；snapshotFlow 发射时同步更新（见下方 collect）
-    var lastEmittedPage by remember(doc) { mutableStateOf(initialPage) }
+    var lastEmittedPage by remember(doc) { mutableStateOf(initPage) }
 
     DisposableEffect(doc) {
         onDispose { loader.evictAll() }
@@ -69,13 +84,13 @@ internal fun MuPdfVerticalView(
 
     // 一次性恢复进度（doc 换新会话时重新锚定；模式切换是新组合，天然重执行）
     LaunchedEffect(doc) {
-        listState.scrollToItem(initialPage, initialOffsetY)
+        listState.scrollToItem(initPage, initOffsetY)
     }
 
-    // 外部跳页差分：initialPage 变化且非自身滚动回流时，滚到目标页顶部
-    LaunchedEffect(doc, initialPage) {
-        if (initialPage != lastEmittedPage) {
-            listState.scrollToItem(initialPage, 0)
+    // 外部跳页差分：initPage 变化且非自身滚动回流时，滚到目标页顶部
+    LaunchedEffect(doc, initPage) {
+        if (initPage != lastEmittedPage) {
+            listState.scrollToItem(initPage, 0)
         }
     }
 
@@ -85,7 +100,9 @@ internal fun MuPdfVerticalView(
             .distinctUntilChanged()
             .collect { (index, offset) ->
                 lastEmittedPage = index
-                latestCallback(ProgressPayload.Page(index, offset))
+                // 重排文档回调 CFI 锚点；页码式回调页码 + 项内像素偏移
+                val payload = resolver?.progressForPage(index) ?: ProgressPayload.Page(index, offset)
+                latestCallback(payload)
             }
     }
 

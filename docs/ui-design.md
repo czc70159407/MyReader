@@ -14,8 +14,9 @@
 @Composable
 fun MuPdfReaderView(
     core: MuPDFCore,
-    initialPage: Int,
-    onProgressChanged: (ProgressPayload.Page) -> Unit,
+    reflowable: Boolean,                                   // M9：流式重排（epub）→ relayout + CFI 进度
+    initialProgress: ProgressPayload,                      // M9：Page 或 Cfi 统一入口
+    onProgressChanged: (ProgressPayload) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val latestCallback by rememberUpdatedState(onProgressChanged)   // factory 只执行一次，经 State 转发最新回调
@@ -88,8 +89,16 @@ fun MuPdfReaderView(
 - 跳页（水平）：外部状态（GoToPageDialog / OutlineSheet）写入 `uiPage` → 经 `initialProgress` 传入渲染端，`update` 块与 `getDisplayedViewIndex()` 差分后调 `readerView.setDisplayedViewIndex(page)`
 - 跳页（垂直）：同一外部状态写入 `uiPage`（并置 `uiOffsetY = 0` 顶部对齐）→ `MuPdfVerticalView` 的 `LaunchedEffect(initialPage)` 经 `lastEmittedPage` 守卫差分后 `scrollToItem(page, 0)`（自身滚动回流 page 相等 no-op，防回环）
 - 当前页（水平）：覆写 `ReaderView.onMoveToChild(page)` 回调（1.28.2 无 ViewListener 接口）；当前页（垂直）：`snapshotFlow { firstVisibleItemIndex to firstVisibleItemScrollOffset }`
-- 进度回写：渲染回调 → `ReaderViewModel.onPageChanged(page, scrollOffsetY)` 防抖 600ms 落库（静止期后仅写最新值；水平路径 offset 恒 0，垂直含像素偏移）；`ON_PAUSE`/`ON_STOP`/离开组合时 `flushProgress()` 立即落库保底（见 docs/data-layer.md「进度记忆实现时机」）
+- 进度回写：渲染回调 → `ReaderViewModel.onProgress(payload)` 防抖 600ms 落库（静止期后仅写最新值；页码式 offset 水平恒 0/垂直含像素偏移，流式 epub 回调 `Cfi`）；按 `ProgressPayload` 类型分发 `savePageProgress`/`saveCfiProgress`；`ON_PAUSE`/`ON_STOP`/离开组合时 `flushProgress()` 立即落库保底（见 docs/data-layer.md「进度记忆实现时机」）
 - 大纲导航：`Document.outline()` 返回 `List<OutlineEntry>`（title/pageIndex/children）；顶部栏「目录」按钮弹出 `OutlineSheet`（ModalBottomSheet，打开时懒加载，展平缩进列表，复用目录树的扁平渲染模式），点击条目 `uiPage = entry.pageIndex` 经同一差分机制跳页（两模式通用）
+
+### 多格式与重排（M9）
+
+- **格式分支**：`MuPdfViewerProvider.Content` 读 `doc.reflowable`（`MuPdfDocument` 转发 `core.isReflowable()`）分流——页码式（pdf/cbz/xps）走原 `Page` 进度路径，行为零变化；流式（epub）走重排 + CFI 进度路径
+- **epub 排版与 relayout**：`MuPDFCore` 构造即 `doc.layout(312,504,10)` 固定排版（垂直模式沿用，`pageCount` 稳定）；水平 `MuPdfReaderView.onSizeChanged` 去抖块内对 reflowable 调 `core.layout(current, w*72/dpi, h*72/dpi, em)` 把当前页 remap 到新页码再 `refresh()`（复用 `lockedCurrent` 防误翻页；对齐上游 DocumentActivity），避免旋转/分屏白屏或回首页
+- **epub 进度锚点**：`EpubLocationResolver`（feature:viewer-mupdf）经 `core.pageToBookmark/bookmarkToPage` 把页码 ↔ 跨重排稳定的 bookmark 串互转，回调 `ProgressPayload.Cfi`；`ReaderScreen` 顶栏页码由 payload 解出（`Cfi` 走 `EpubProgressCodec.decode().page` 展示近似值）；大纲/跳页对 epub 写 `Page(target)` 驱动 reposition，落库由渲染端回发的 `Cfi` 承担（不写页码进度）
+- **epub 模式**：会话初值强制 `VERTICAL`（顶栏仍可临时切 `HORIZONTAL`），见 `ReaderViewModel.openDocument`
+- **书架卡片**：`DocumentCard`/`RecentCard` 按 `fileType` 分支——非 PDF 在缩略图左上角加格式角标（EPUB/CBZ/XPS），无缩略图占位图标按格式取（Book/Image/Description）；`pageCount>0` 显示「N 页」，流式/未知页数显示格式标签；最近阅读 `progressType=="cfi"` 显示「继续阅读」而非「第 N 页」
 
 ## UI 层架构
 
@@ -161,10 +170,11 @@ fun FolderTreeList(
 
 ### 导入流程
 
-1. `LibraryScreen` 工具栏"+"按钮 → `rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument())`，mime 数组按已注册引擎的 `fileType` 聚合（如 `application/pdf`, `application/epub+zip`, `image/vnd.comicbook`），支持多选
+1. `LibraryScreen` 工具栏"+"按钮 → `rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument())`，mime 数组取 `FileTypes.mimeFilters()`（6 项白名单：`application/pdf` / `application/epub+zip` / `application/x-cbz` / `application/vnd.comicbook+zip` / `application/oxps` / `application/vnd.ms-xpsdocument`；暂不含 `application/octet-stream` 以保持选择器干净），支持多选
 2. 选中后弹 `FolderPickerDialog`（默认当前目录，可选新建子目录）
 3. `LibraryViewModel.import(uris, targetFolderId)` 在 `Dispatchers.IO` 逐个处理：
-   - 复制到 `filesDir/library/<docId>.<ext>`（扁平，不建文件夹子目录；docId 为生成 ID，扩展名取自 Uri 或 mime 推断、经 `DocumentStorage` 白名单校验），复制时**流式计算 SHA-256 `contentHash`**
+   - **格式归一（M9）**：`FileTypes.normalize(displayName, mime)`（扩展名优先、mime 兜底；`.oxps` 归并 `xps`）→ 未命中已注册格式直接拒收（`Status.UNSUPPORTED`，**不复制、不入库**），snackbar 汇总「N 个暂不支持的文件类型」——防未注册格式流入 router 抛 `IllegalArgumentException` 崩溃
+   - 复制到 `filesDir/library/<docId>.<ext>`（扁平，不建文件夹子目录；docId 为生成 ID，`ext` 统一取 `fileType` 经 `DocumentStorage` 白名单校验，与路由 magic 解耦），复制时**流式计算 SHA-256 `contentHash`**
    - **重复检测**：`DocumentDao.findByHash` 命中 → 弹窗「已存在《title》，是否仍导入？」；用户跳过则删刚复制的文件，继续下一个
    - **打开验证**（异常分流见 `DocumentException`）：
      - `engine.open()` 成功 → 句柄顺带读 `pageCount`、渲染首页生成缩略图，然后 `close()`
@@ -180,6 +190,7 @@ fun FolderTreeList(
 | 场景 | 处理 |
 |---|---|
 | 损坏/非 PDF 文件 | 导入时 `engine.open()` 抛 `CorruptDocumentException` → 删半成品文件、不入库，提示「无法读取」；打开时读 `pageCount` 抛错 → 标记 `pageCount = -2`（错误标记，区别于 `-1` 未知），书架条目置灰显示「已损坏」，长按可删除记录（「重新导入」重选源文件替换为后续里程碑，M5 仅提供删除入口），不自动重试、不崩溃 |
+| 暂不支持的文件类型（M9） | 导入前 `FileTypes.normalize` 未命中已注册格式 → 直接拒收（不复制、不入库），snackbar「N 个暂不支持的文件类型」；打开已存在但 `fileType ∉ FileTypes.ALL` 的记录（如跨版本恢复出未知格式）→ `ReaderViewModel` 前置守卫转 `Failed`「暂不支持的文件类型（xxx）」，不流入 router 崩溃 |
 | 密码保护文档 | 导入时 `engine.open()` 抛 `PasswordRequiredException` → 照常入库置 `needsPassword = true`；打开时先弹密码对话框，`engine.open(path, fileType, password)` 成功后补 `pageCount`、**保留 `needsPassword`（加密标识常驻）**、**清除并不再生成缩略图（加密文档不保留内容预览）**；密码不持久化（v1 仅会话内），每次打开均重新弹密码框；取消密码弹窗先让弹窗离开组合再返回书架（避免弹窗残影悬于转场之上） |
 | 重复导入 | 导入时 `contentHash` 命中已有记录 → 弹窗「已存在《title》，是否仍导入」，可跳过（跳过则删刚复制的文件） |
 | 存储空间不足 | 复制前 `StatFs` 检查 `filesDir` 可用空间 ≥ 文件大小 + 余量，不足则提示并中止，不写半文件 |

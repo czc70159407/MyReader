@@ -11,6 +11,7 @@ import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngineRouter
 import com.myreader.core.document.DocumentException
 import com.myreader.core.document.DocumentViewerProvider
+import com.myreader.core.document.FileTypes
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
@@ -46,8 +47,8 @@ sealed interface ReaderUiState {
         val viewer: DocumentViewerProvider,
         val title: String,
         val pageCount: Int,
-        val initialPage: Int,
-        val initialScrollOffsetY: Int = 0,   // 垂直模式恢复用（M7；水平模式忽略）
+        val reflowable: Boolean,
+        val initialProgress: ProgressPayload,
     ) : ReaderUiState
 
     data class NeedsPassword(val title: String, val wrongPassword: Boolean) : ReaderUiState
@@ -93,23 +94,23 @@ class ReaderViewModel @Inject constructor(
         _mode.value = if (_mode.value == ReaderMode.HORIZONTAL) ReaderMode.VERTICAL else ReaderMode.HORIZONTAL
     }
 
-    /** 当前进度（0 基页 + 垂直偏移，回写事实源）；null = 尚未发生进度回调（沿用库中进度，flush 无需写） */
-    private val currentProgress = MutableStateFlow<ProgressPayload.Page?>(null)
+    /** 当前进度（回写事实源）：页码式 [ProgressPayload.Page] 或流式 [ProgressPayload.Cfi]；
+     *  null = 尚未发生进度回调（沿用库中进度，flush 无需写） */
+    private val currentProgress = MutableStateFlow<ProgressPayload?>(null)
     private var progressJob: Job? = null
 
     init {
         openDocument()
     }
 
-    /** 渲染端进度回调（水平：页码，offset 恒 0；垂直：页码 + 项内像素偏移，每帧发射由防抖吸收） */
-    fun onPageChanged(page: Int, scrollOffsetY: Int = 0) {
-        val current = currentProgress.value
-        if (current?.page == page && current.scrollOffsetY == scrollOffsetY) return
-        currentProgress.value = ProgressPayload.Page(page, scrollOffsetY)
+    /** 渲染端进度回调（页码式：页码+垂直偏移；流式 epub：CFI 锚点）。按类型防抖落库。 */
+    fun onProgress(payload: ProgressPayload) {
+        if (currentProgress.value == payload) return
+        currentProgress.value = payload
         progressJob?.cancel()
         progressJob = viewModelScope.launch(dispatchers.io) {
             delay(PROGRESS_DEBOUNCE_MS)
-            repository.savePageProgress(docId, page, scrollOffsetY)
+            persistProgress(payload)
         }
     }
 
@@ -117,8 +118,14 @@ class ReaderViewModel @Inject constructor(
     fun flushProgress() {
         val progress = currentProgress.value ?: return
         progressJob?.cancel()
-        viewModelScope.launch(dispatchers.io) {
-            repository.savePageProgress(docId, progress.page, progress.scrollOffsetY)
+        viewModelScope.launch(dispatchers.io) { persistProgress(progress) }
+    }
+
+    /** 按进度类型分发写库：页码式 savePageProgress，流式 saveCfiProgress */
+    private suspend fun persistProgress(payload: ProgressPayload) {
+        when (payload) {
+            is ProgressPayload.Page -> repository.savePageProgress(docId, payload.page, payload.scrollOffsetY)
+            is ProgressPayload.Cfi -> repository.saveCfiProgress(docId, payload.cfi)
         }
     }
 
@@ -135,21 +142,28 @@ class ReaderViewModel @Inject constructor(
 
     private fun openDocument(password: String? = null) {
         viewModelScope.launch {
-            // 会话内模式初值：仅首个打开流程取偏好（守卫防密码重试/重入把用户已切换的模式打回默认）；
-            // 放入口保证密码弹窗阶段模式已就位。读流内已 catch IO，失败回落 HORIZONTAL
-            if (!modeInitialized) {
-                _mode.value = settingsPrefs.defaultReaderMode.first()
-                modeInitialized = true
-            }
             _state.value = ReaderUiState.Loading
             val item = repository.getDocument(docId)
             if (item == null) {
                 _state.value = ReaderUiState.Failed(ReaderFailure.MISSING, "文档记录不存在，可能已被删除")
                 return@launch
             }
+            // 会话内模式初值：仅首个打开流程取偏好（守卫防密码重试/重入把用户已切换的模式打回默认）；
+            // 读流内已 catch IO，失败回落 HORIZONTAL。流式重排文档（epub）会话初值强制 VERTICAL
+            // （重排文档水平分页体验差；顶栏仍可临时切 HORIZONTAL，见 docs/m9-plan.md 决策）。
+            if (!modeInitialized) {
+                val pref = settingsPrefs.defaultReaderMode.first()
+                _mode.value = if (FileTypes.isReflowable(item.fileType)) ReaderMode.VERTICAL else pref
+                modeInitialized = true
+            }
             val file = storage.documentFile(item.relPath)
             if (!file.exists()) {
                 _state.value = ReaderUiState.Failed(ReaderFailure.MISSING, "文档文件已丢失，可删除记录后重新导入")
+                return@launch
+            }
+            // 未注册格式（如跨版本恢复出未来/未知 fileType）：友好降级，不流入 router 抛异常崩溃（M9-E）
+            if (!FileTypes.isKnown(item.fileType)) {
+                _state.value = ReaderUiState.Failed(ReaderFailure.OPEN_FAILED, "暂不支持的文件类型（${item.fileType}）")
                 return@launch
             }
 
@@ -194,13 +208,26 @@ class ReaderViewModel @Inject constructor(
                 doc.close()   // 取消时 Ready 未建立，onCleared 读不到 doc，必须就地释放 native 句柄
                 throw e
             }
+            // 初始进度：流式（epub）优先用库中 CFI 锚点；页码式用 currentPage + scrollOffsetY。
+            // epub 的 pageCount 不落库（恒 -1），此处 doc.pageCount 取运行时刻固定排版页数供 UI 展示。
+            val initialProgress: ProgressPayload = run {
+                val payload = item.progressPayload
+                if (item.progressType == "cfi" && !payload.isNullOrBlank()) {
+                    ProgressPayload.Cfi(payload)
+                } else {
+                    ProgressPayload.Page(
+                        item.currentPage.coerceIn(0, (doc.pageCount - 1).coerceAtLeast(0)),
+                        item.scrollOffsetY.coerceAtLeast(0),
+                    )
+                }
+            }
             _state.value = ReaderUiState.Ready(
                 doc = doc,
                 viewer = router.viewerFor(item.fileType),
                 title = item.title,
                 pageCount = doc.pageCount,
-                initialPage = item.currentPage.coerceIn(0, (doc.pageCount - 1).coerceAtLeast(0)),
-                initialScrollOffsetY = item.scrollOffsetY.coerceAtLeast(0),
+                reflowable = doc.reflowable,
+                initialProgress = initialProgress,
             )
         }
     }
@@ -213,7 +240,9 @@ class ReaderViewModel @Inject constructor(
      * 业务异常吞掉不影响阅读（各项下次打开重走自愈）；CancellationException 必须传播。 */
     private suspend fun backfillAfterOpen(item: LibraryItem, doc: Document) {
         try {
-            if (item.pageCount != doc.pageCount) {
+            // 流式重排文档（epub）pageCount 随排版变化、不落库：跳过 setPageCount 回写（G9），
+            // 避免每次打开反复写 -1/波动值。页码式文档维持原兜底。
+            if (!doc.reflowable && item.pageCount != doc.pageCount) {
                 repository.setPageCount(docId, doc.pageCount)
             }
             if (item.needsPassword) {

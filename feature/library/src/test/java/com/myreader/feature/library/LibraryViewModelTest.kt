@@ -148,6 +148,13 @@ class LibraryViewModelTest {
     private fun registerPdf(name: String, bytes: ByteArray = pdfBytes): Uri {
         val uri = Uri.parse("content://test/$name")
         shadowOf(context.contentResolver).registerInputStream(uri, ByteArrayInputStream(bytes))
+        // 真实 SAF 提供 DISPLAY_NAME/SIZE；Robolectric registerInputStream 不填元数据，
+        // 显式 setCursor 喂一行，使 DocumentImporter 的 FileTypes.normalize 走「显示名后缀优先」真实路径
+        val cursor = org.robolectric.fakes.RoboCursor().apply {
+            setColumnNames(listOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE))
+            setResults(arrayOf(arrayOf<Any?>(name, bytes.size.toLong())))
+        }
+        shadowOf(context.contentResolver).setCursor(uri, cursor)
         return uri
     }
 

@@ -1,0 +1,4 @@
+# 由 tools/test_pdfs.py generate 生成的验收夹具（二进制，可随时重建）
+# 保留本文件以维持目录结构，忽略其余内容
+*
+!.gitignore

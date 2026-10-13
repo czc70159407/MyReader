@@ -43,7 +43,8 @@ class DocumentStorage(private val libraryDir: File) {
      *  会误判空间不足，故不存在时回退到其父目录（filesDir，必存在）评估。 */
     fun hasSpaceFor(requiredBytes: Long): Boolean {
         val dir = if (libraryDir.exists()) libraryDir else (libraryDir.parentFile ?: libraryDir)
-        return dir.usableSpace >= requiredBytes + SPACE_MARGIN_BYTES
+        // 写成「可用 - 需求 >= 余量」而非「可用 >= 需求 + 余量」，避免 requiredBytes 极大时的 Long 溢出
+        return dir.usableSpace - requiredBytes >= SPACE_MARGIN_BYTES
     }
 
     /**

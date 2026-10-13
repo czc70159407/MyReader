@@ -7,6 +7,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.IOException
 
 class DocumentStorageTest {
@@ -88,6 +89,16 @@ class DocumentStorageTest {
         val s = storage()
         assertTrue(s.hasSpaceFor(1))
         assertFalse(s.hasSpaceFor(Long.MAX_VALUE / 2))
+    }
+
+    @Test
+    fun hasSpaceFor_libraryDirMissing_fallsBackToParent() {
+        // 回归（M8 真机验收 bug②）：全新安装时 library/ 子目录尚不存在，
+        // File.usableSpace 对不存在的路径返回 0L，若不回退父目录会误判「存储空间不足」。
+        // 此处 tmp.root 存在而其下 library 不存在，正是该场景。
+        val s = DocumentStorage(File(tmp.root, "library"))
+        assertFalse(s.documentExists("any.pdf") || File(tmp.root, "library").exists())
+        assertTrue(s.hasSpaceFor(1))
     }
 
     @Test

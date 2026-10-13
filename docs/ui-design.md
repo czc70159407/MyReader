@@ -104,6 +104,7 @@ routes:
                                 #   Routes.library(null) 必须返回 "library"——空参数串 LongType 解析也会崩）
   reader/{documentId}           # 阅读器（M4 水平；M7 增垂直滚动 + 顶栏实时切换）
   settings                      # 设置页（M7 已落地）：默认阅读模式/主题/书架排序三组单选，DataStore 持久化；
+                                #   M8 增设「备份与恢复」分区（导出 .zip / 从 .zip 恢复，经 SAF CreateDocument/OpenDocument）
                                 #   入口 = 书架顶栏 SortMenu 后的设置图标（LibraryScreen onOpenSettings）
   about                         # 关于页（AGPL 合规）：应用内展示开源许可 + MuPDF 来源 + AGPL-3.0 全文链接；
                                 #   入口 = 设置页「关于 → 开源许可与第三方声明」（SettingsScreen onOpenAbout）
@@ -185,3 +186,7 @@ fun FolderTreeList(
 | `countPages` 失败 | 进度页码保持 0，UI 提示「打开失败」并返回书架，标记 `pageCount = -2` 不重复尝试（书架引导删除/重导） |
 | 文件丢失（`relPath` 指向不存在） | 打开时 `File.exists()` 为 false → 书架该条目置「缺失」标记，引导删除记录（「重新导入」为后续里程碑，M5 仅提供删除入口） |
 | 大文件复制中断 | 导入流程事务 + 删半成品回滚；UI 显示进度 + 可取消 |
+| 备份缺物理文件 | 导出时 `openRead` 为 null → 计入 `missingFiles` 不阻断导出；恢复侧 zip 不含该文件，对应文档元数据仍还原（物理缺失由打开时既有「文件缺失」标记兜底） |
+| 备份空间不足 | 恢复前 `StatFs`（`hasSpaceFor`）校验，不足提示「存储空间不足，无法恢复」，不写半文件 |
+| 损坏/非法备份 | `BackupCodec.decode` 版本不符或 `relPath` 非法抛异常 → VM 转 snackbar；`restore` 解压遇 `../` 或未知 entry 一律拒收（防 zip slip） |
+| 备份导入取消 | SAF `OpenDocument`/`CreateDocument` 返回 null → 直接 return，无任何副作用 |

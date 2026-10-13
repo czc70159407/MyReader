@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     alias(libs.plugins.room)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android {
@@ -44,6 +45,7 @@ dependencies {
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
     implementation(libs.datastore.preferences)
+    implementation(libs.kotlinx.serialization.json)   // M8 备份快照序列化
     implementation(libs.javax.inject)    // PrefsStoreQualifiers @Qualifier（与 core:document FileTypeKey 同款）
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

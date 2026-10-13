@@ -3,6 +3,7 @@ package com.myreader.core.data.db.dao
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Upsert
 import com.myreader.core.data.db.entity.DocumentEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -35,7 +36,14 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE lastReadAt IS NOT NULL ORDER BY lastReadAt DESC LIMIT :limit")
     fun recent(limit: Int = 20): Flow<List<DocumentEntity>>
 
+    @Query("SELECT * FROM documents")
+    suspend fun all(): List<DocumentEntity>
+
     @Insert suspend fun insert(d: DocumentEntity): Long
+
+    @Upsert suspend fun upsert(d: DocumentEntity)
+
+    @Upsert suspend fun upsertAll(docs: List<DocumentEntity>)
 
     @Query("UPDATE documents SET title = :title WHERE id = :id")
     suspend fun rename(id: Long, title: String)             // 仅改展示名，不动 relPath/物理文件

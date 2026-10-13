@@ -15,6 +15,7 @@
 | PDF 文件存储 | **复制到 app 内部存储** `filesDir/library/` | SAF 持久化权限不可靠（用户撤销/换机即丢失），内部存储零权限烦恼；注意 `filesDir` 卸载/换机即丢，跨设备迁移需另提供导出/备份（见里程碑 M8） |
 | 进度记忆 | 合并到 Document 表（不单建 ReadProgress 表） | 单文档单进度，无历史需求，避免冗余 JOIN |
 | 默认阅读模式 | 水平分页滑动 | 单页清晰，页码即进度，记忆简单；垂直连续滚动作为 v1.1 可选 |
+| 备份与恢复（M8） | **单文件 `.zip` 备份包**（`library.json` 快照 + `files/` 物理文档 + `thumbs/` 缩略图）+ **`kotlinx-serialization-json`** 序列化；恢复按原 ID 合并 upsert（幂等） | 跨设备搬运只需一个文件、导入只选一个 Uri；JSON 快照跨 schema 版本可演进（优于直接复制 Room DB 文件，后者绑定 identity hash）；序列化库是 M8 唯一偏离选型的依赖，零运行时闭源风险、AGPL 兼容；纯逻辑下沉 `core:data` 做 JVM 单测，UI 仅提供 SAF 流 |
 | Compose 集成 | **AndroidView 桥接** `MuPDFReaderView` | MuPDF 内部已做瓦片分块 + Bitmap 池，重写代价高且易 OOM |
 
 ## 项目结构
@@ -149,6 +150,7 @@ dagger = { group = "com.google.dagger", name = "dagger", version.ref = "hilt" } 
 documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }   # 书架排序偏好（M6）：core:data + app DI + feature:library 测试
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3" }   # M8 备份快照序列化（类型安全；Kotlin 2.0.21 兼容；AGPL 兼容，无闭源风险）
 # ---- 测试（对应「测试策略」各层）----
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
@@ -169,6 +171,7 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version = "2.0.21-1.0.27" }
 room = { id = "androidx.room", version.ref = "room" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }   # M8 备份 JSON 序列化（与 kotlin-android 同版本对齐）
 ```
 
 > Kotlin 2.0 起用 compose-compiler 插件，不再手写 compose-compiler 版本。`activity-compose` 不在 Compose BOM 内，需单独声明版本。`accompanist-permissions` 不引入：SAF `OpenDocument` 与内部存储均无需运行时权限。MuPDF 官方不发布到 Maven Central，社区镜像版本陈旧且可能违反 AGPL 通告要求，源码子模块是最稳妥路径。以上为撰写时稳定档，M0 落地前统一刷新到当时最新稳定版并核对与 Gradle 8.14/JDK 21 兼容。

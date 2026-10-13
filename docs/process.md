@@ -59,9 +59,14 @@
 8. **M7 垂直滚动模式 + 设置**（v1.1）
    - 任务（M7 落地分解）：①`ReaderMode`/`ThemeMode` 枚举迁入/新建于 core:model（偏好层类型化暴露）；②`SettingsPrefs`（settings_prefs 文件，默认阅读模式+主题，双限定符 DI 与 LibraryPrefs 并列）；③`Document.pageSize` 接口（垂直布局定高 + 页面预热）；④垂直渲染 `VerticalPageLoader`（Mutex 串行 + Dispatchers.Default + 字节预算 LruCache）+ `MuPdfVerticalView`（LazyColumn，lastEmittedPage 防回环守卫）+ Provider 按 mode 分支；⑤阅读器接线（VM mode 会话态 + 顶栏切换 + scrollOffsetY 落库/恢复）；⑥`feature:settings` 模块（三组单选，排序与书架 SortMenu 同源双向同步）+ settings 路由 + 书架入口；⑦主题（MainActivity 动态 colorScheme + themes.xml DayNight 防首帧闪白）
    - 验收：长文档连续滚动流畅、滚动偏移可恢复；设置页偏好重启后保持（细化场景见根 AGENTS.md M7 验收证据）
-9. **M8 备份与导出**（v1.1，可选）
-   - 任务：导出 `library/` 目录 + 数据库 JSON 到用户指定 SAF 目录；导入恢复，解决 `filesDir` 换机/卸载即丢问题
-   - 验收：导出 → 卸载重装/换机 → 导入恢复，目录树、文档、进度完整
+9. **M8 备份与恢复**（v1.1）
+   - 任务：导出 `library/` 物理文档 + `thumb/` 缩略图 + `library.json` 全量快照到用户指定 SAF `.zip`；从备份 `.zip` 合并式恢复，解决 `filesDir` 换机/卸载即丢问题
+   - 分解：
+     ① `kotlinx-serialization-json` 引入（M8 唯一偏离选型的依赖，已更新 architecture.md「技术选型」+「依赖项清单」）；
+     ② `DocumentStorage` 新增导出读取/空间预检/恢复写回（白名单 + canonical 双闸、同分区 `renameTo` move）+ `newBackupTempDir`（见 data-layer.md「备份与恢复存储/DAO」）；
+     ③ `DocumentDao`/`FolderDao` 新增 `all()` 全量查询与 `@Upsert`（无 schema 变更，无 Migration）；`core:data` 新增 `BackupCodec`（DTO 编解码 + `schemaVersion` 门禁 + `relPath` 白名单）与 `BackupManager`（导出 zip / 恢复事务 + 目录拓扑序 upsert + 解压 entry 白名单防 zip slip + 失败回滚），纯逻辑下沉 `core:data` 做 JVM 单测；
+     ④ `feature:settings` 新增「备份与恢复」分区（`CreateDocument` 导出 / `OpenDocument` 恢复，进度环 + snackbar，依赖 `activity-compose`）
+   - 验收：单测 `BackupCodecTest`/`BackupManagerTest`（往返全字段一致、缺文件计数、幂等、zip slip 拒绝）全绿 + `.\gradlew.bat build` 通过；真机：造数据（父子目录 + 加密文档 + 阅读进度）→ 导出 `.zip` → `adb uninstall` 重装 → 从 `.zip` 恢复，目录树 `parentId`/文档/进度（`currentPage`/`scrollOffsetY`/`lastReadAt`/`pageCount`/`needsPassword`）逐字段一致，物理文件 SHA-256 一致
 10. **M9 多格式支持**（v1.2，可选）
    - 任务：`:feature:viewer-mupdf` 内为 epub/cbz/xps 注册 `@FileTypeKey`（同一 MuPDF 引擎多格式复用，MuPDF 核心本就解析这三类）；导入 mime 聚合开放对应类型（`application/epub+zip` / `image/vnd.comicbook` / `application/oxps`）；每格式样本回归——epub 进度为章节+页码（序列化至 `progressPayload`，`progressType="cfi"`），cbz/xps 沿用页码式；书架图标按 `fileType` 区分
    - 验收：三种格式均可导入（缩略图正常）→ 打开 → 退出重进进度恢复；加第四种自研格式（如 TXT）仅新增 `feature:viewer-txt` 模块即可跑通（验证扩展点，条目可选做）

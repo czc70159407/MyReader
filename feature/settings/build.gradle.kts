@@ -37,6 +37,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.compose.icons.extended)   // AutoMirrored.ArrowBack（release minify 时 R8 裁剪）
+    implementation(libs.activity.compose)   // 备份/恢复 SAF launcher（CreateDocument/OpenDocument）
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.hilt.android)
@@ -47,4 +48,10 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.datastore.preferences)   // 真 DataStore 构造 prefs（纯 JVM File 落盘）
+
+    // 备份测试需构造真实 BackupManager（inMemory Room + 临时 library 目录 + Robolectric 上下文）
+    testImplementation(project(":core:storage"))
+    testImplementation(libs.robolectric)
+    testImplementation(libs.room.runtime)
+    testImplementation(libs.androidx.test.core)
 }

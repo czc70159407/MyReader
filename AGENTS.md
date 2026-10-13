@@ -4,10 +4,11 @@
 
 ## 当前状态（会话开始必读 / 里程碑完成必更新）
 
-- **阶段**：M0~M7 均已完成——数据层（Room/Hilt）+ MuPDF viewer 模块 + 导入与书架 + 阅读器水平模式 + 目录树与文档管理 + 搜索/排序/最近阅读 + 垂直滚动与设置（v1.1：垂直连续滚动 + 阅读器顶栏实时切换 / 设置页阅读模式·主题·书架排序 / 深浅色主题全 APP），M7 真机验收全场景通过
+- **阶段**：M0~M7 均已完成——数据层（Room/Hilt）+ MuPDF viewer 模块 + 导入与书架 + 阅读器水平模式 + 目录树与文档管理 + 搜索/排序/最近阅读 + 垂直滚动与设置（v1.1：垂直连续滚动 + 阅读器顶栏实时切换 / 设置页阅读模式·主题·书架排序 / 深浅色主题全 APP），M7 真机验收全场景通过；M8 备份与恢复真机验收通过（导出→卸载重装→恢复，目录树/文档/进度/加密/页数 DB 级逐项一致 + 物理文件 SHA-256 一致）
 - **M7 后补齐（合规 / 测试 / 文档）**：①**About 页**（路由 `about`，入口=设置页「关于」）——补齐 AGPL 合规缺口：此前仅 README 有声明却写着「应用内 About 页同步展示」，应用内实无此页，现于应用内展示 MuPDF 来源 + AGPL-3.0 全文链接 + 本项目整体开源声明（工作规则 2）；②`feature:viewer-mupdf` 补 **`androidTest` 插桩测试** 5 例（`MuPdfDocumentEngineTest`：正常/加密/损坏 open、`pageCount`、`outline`、`drawPage`、句柄释放），样本 PDF 由 `tools/test_pdfs.py generate` 生成并置于 `src/androidTest/assets/`；③**文档修正**：移除文档中不存在的 `core:designsystem` 模块（主题实落在 `app`）、README 路线图 M3~M7 由「未开始」更正为「已完成」、M1 描述更正为「Maven fitz 预编译」；`docs/ui-design.md` 路由表增 `about`
   - 验收证据：`.\gradlew.bat :app:assembleDebug :feature:viewer-mupdf:assembleDebugAndroidTest` → `BUILD SUCCESSFUL in 13s`（224 tasks）；`.\gradlew.bat test` → `BUILD SUCCESSFUL`，全量单测 **0 失败**（27 个套件、含 debug/release 双变体共 222 次执行）。插桩测试**仅验证编译**，运行需真机：`.\gradlew.bat :feature:viewer-mupdf:connectedDebugAndroidTest`
-- **下一步**：M8 备份与导出（v1.1）
+- **M8 进展（v1.1）**：代码/单测/build 已落地——`kotlinx-serialization-json` 引入（architecture.md 技术选型+依赖清单已同步）；`core:data` 新增 `BackupCodec`（DTO 编解码 + `schemaVersion` 门禁 + `relPath` 白名单）与 `BackupManager`（导出 `files/`+`thumbs/`+`library.json` 的 `.zip`，恢复事务 + 目录拓扑序 upsert + 解压 entry 白名单防 zip slip + 失败回滚）；`DocumentStorage` 新增导出读取/空间预检/恢复写回（白名单 + canonical 双闸、同分区 move）+ `newBackupTempDir`；`DocumentDao`/`FolderDao` 新增 `all()` 全量查询与 `@Upsert`（**无 schema 变更，无 Migration**，符合工作规则 3）；`feature:settings` 新增「备份与恢复」分区（SAF `CreateDocument`/`OpenDocument`，进度环 + snackbar）。单测 `BackupCodecTest`/`BackupManagerTest` 全绿（含往返全字段一致/缺文件计数/幂等/zip slip 拒绝），`.\gradlew.bat build` BUILD SUCCESSFUL（1m36s）。**真机验收已通过**（一加 PKC110 / Android 16）：造数据（根→A→B→C 目录树 + 4 文档含加密 `encrypted_test.pdf` 密码 1234 + `outline` 第 8 页 / `long` 第 18 页 + 垂直偏移 831 进度）→ 设置页 SAF 导出 `myreader-backup.zip`（36,804 字节，10 条目 = 5 PDF + 4 缩略图 + `library.json`；5 文件 SHA-256 与基线 DB `contentHash` 全一致）→ `adb uninstall com.myreader` 重装 → 从 `.zip` 恢复 → 提取恢复后 DB 与基线逐项比对：**目录树 `parentId`/文档/`currentPage`/`scrollOffsetY`/`lastReadAt`/`pageCount`/`needsPassword`/`thumbnailRelPath` 全部一致（`tools/acceptance/verify_db.py` PASS）**，恢复后 `library/` 5 文件 SHA-256 与 `contentHash` 全一致、`thumb/` 4 张缩略图正确恢复（加密文档无缩略图）。**验收中发现 3 个真机 bug 并已修复**：①导出 zip 0 字节——`SettingsScreen` 用 `?.use{}` 在 `viewModelScope` 异步协程写完前就关闭 SAF 流（`ZipOutputStream` 链又叠加多余 `BufferedOutputStream` 使中央目录滞留缓冲层）；改为协程内 `finally` 关闭流、移除 `BufferedOutputStream`；②恢复报「存储空间不足」——`DocumentStorage.hasSpaceFor` 用 `libraryDir.usableSpace`，全新安装时 `library/` 子目录尚不存在导致 `File.usableSpace` 返回 0L 误判，改为不存在时回退父目录评估；③（①②叠加）均**无 schema 变更、无 Migration**（符合工作规则 3），`.\gradlew.bat build` 修复后 BUILD SUCCESSFUL（847 tasks，全模块单测绿），真机复验导出 36,804 字节 + 恢复 DB/文件全一致通过
+- **下一步**：提交门禁交用户决策（M8 代码含 3 个验收 bug 修复，待 review/commit/push）
 - **环境**：Windows / PowerShell 5 / JDK 21 / Gradle 8.14；Android SDK 位于 `D:\develop\Android\Sdk`（cmdline-tools + platform-tools + platforms android-33/35 + build-tools 35.0.0，`local.properties` 已指向，`ANDROID_HOME` 用户级已设）；git 位于 `D:\develop\Git`（不在 PATH，需全路径或临时加 PATH）；gradle 命令一律 `.\gradlew.bat`
 - **已知卡点**：①Java TLS 访问 services.gradle.org 被干扰（已预置 `D:\develop\gradle-repository\wrapper\dists\gradle-8.14-bin\38aieal9i53h9rfe7vjup95b9` 缓存绕过，勿删该目录）；②M1 上游已查证解卡：仓库在 GitHub（`ArtifexSoftware/mupdf-android-viewer`），fitz 官方 Maven `maven.ghostscript.com` 可达且 AAR 含全 4 ABI——NDK 与 native 源码编译不再需要
 - **M0 验收证据**：`.\gradlew.bat :app:assembleDebug` → `BUILD SUCCESSFUL in 53s`（35 tasks），产物 `app/build/outputs/apk/debug/app-debug.apk`（9.01MB）；Hello 界面目视已由 M1 真机验收覆盖闭环（同一 MainActivity 启动链路，M1 截图确认应用正常启动与渲染）
@@ -29,7 +30,7 @@
 | M5 | 目录树与文档管理 | 已完成 |
 | M6 | 搜索/排序/最近阅读 | 已完成 |
 | M7 | 垂直滚动 + 设置（v1.1） | 已完成 |
-| M8 | 备份与导出（v1.1） | 未开始 |
+| M8 | 备份与恢复（v1.1） | 已完成 |
 | M9 | 多格式支持（EPUB/CBZ/XPS，v1.2） | 未开始 |
 
 > 状态取值：未开始 / 进行中 / 已完成。标记「已完成」必须附验收证据（命令输出摘要），并同步更新「下一步」。里程碑任务与验收标准详见 docs/process.md。

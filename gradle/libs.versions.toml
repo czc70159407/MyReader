@@ -39,6 +39,7 @@ dagger = { group = "com.google.dagger", name = "dagger", version.ref = "hilt" } 
 documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
+kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version = "1.7.3" }   # M8 备份快照序列化（Kotlin 2.0.21 兼容；AGPL 兼容）
 # ---- 测试（对应「测试策略」各层）----
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExt" }
@@ -59,3 +60,4 @@ compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version = "2.0.21-1.0.27" }
 room = { id = "androidx.room", version.ref = "room" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }   # M8 备份 JSON 序列化

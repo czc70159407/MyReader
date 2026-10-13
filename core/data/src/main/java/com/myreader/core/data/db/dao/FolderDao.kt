@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Update
+import androidx.room.Upsert
 import com.myreader.core.data.db.entity.FolderEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -25,7 +26,14 @@ interface FolderDao {
     """)
     suspend fun subtree(rootId: Long): List<FolderEntity>   // 移动/删除/循环校验用
 
+    @Query("SELECT * FROM folders")
+    suspend fun all(): List<FolderEntity>
+
     @Insert suspend fun insert(f: FolderEntity): Long
+
+    @Upsert suspend fun upsert(f: FolderEntity)
+
+    @Upsert suspend fun upsertAll(folders: List<FolderEntity>)
 
     @Update suspend fun rename(f: FolderEntity)
 

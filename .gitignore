@@ -16,3 +16,15 @@ keystore.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Acceptance / verification runtime artifacts (generated, not source)
+# TRAE 自动生成的评审文档
+
+.trae/
+tools/acceptance/before/
+tools/acceptance/after/
+tools/acceptance/*.zip
+tools/acceptance/*.tar
+tools/acceptance/*.xml
+tools/acceptance/**/*.db*
+

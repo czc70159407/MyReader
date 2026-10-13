@@ -12,6 +12,7 @@ android {
 
     defaultConfig {
         minSdk = 26
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     compileOptions {
@@ -48,4 +49,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)          // VerticalPageLoaderTest（LruCache/Bitmap 需 Android 运行时）
     testImplementation(libs.coroutines.test)
+
+    // 插桩测试（androidTest）：libmupdf_java.so 无法在 JVM 加载，引擎行为只能真机/模拟器验证
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.junit)
 }

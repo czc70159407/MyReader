@@ -101,9 +101,8 @@
 - `core/storage/.../storage/DocumentStorage.kt` ← 复制/删除/缩略图 IO（按 fileType 调度）
 - `core/common/.../common/DispatcherProvider.kt`
 
-**设计系统：**
-- `core/designsystem/.../theme/Color.kt` / `Type.kt` / `Shape.kt` ← 含 light/dark 两套配色；Android 12+ 支持 `dynamicColor`（Material You 取壁纸取色），12 以下回落静态品牌色；深色模式随系统 `NightMode` 切换
-- `core/designsystem/.../component/AppButton.kt` / `AppTopBar.kt`
+**主题（不设 `core:designsystem` 模块）：**
+- 主题落在 `app`：`MainActivity` 动态 `colorScheme`（Material3 默认色板，不接 dynamicColor）+ `values/themes.xml` DayNight 防首帧闪白；细节见 docs/ui-design.md「主题（M7）」
 
 **书架 + 目录管理（合并模块）：**
 - `feature/library/.../ui/LibraryScreen.kt` ← 文档网格/列表 + 长按菜单(重命名/移动/删除) + 搜索框 + 排序切换

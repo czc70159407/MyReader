@@ -9,6 +9,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.myreader.feature.library.LibraryScreen
 import com.myreader.feature.reader.ReaderScreen
+import com.myreader.feature.settings.AboutScreen
 import com.myreader.feature.settings.SettingsScreen
 
 /**
@@ -22,6 +23,7 @@ object Routes {
     const val LIBRARY = "library?folderId={folderId}"
     const val READER = "reader/{documentId}"
     const val SETTINGS = "settings"
+    const val ABOUT = "about"          // 关于页（AGPL 合规：应用内开源/第三方声明）
 
     /** 根目录的哨兵值：NavType.LongType 不允许 nullable（运行时抛 IllegalArgumentException） */
     const val FOLDER_ID_NONE = -1L
@@ -62,6 +64,12 @@ fun MyReaderNavHost(modifier: Modifier = Modifier) {
         }
         composable(route = Routes.SETTINGS) {
             SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenAbout = { navController.navigate(Routes.ABOUT) },
+            )
+        }
+        composable(route = Routes.ABOUT) {
+            AboutScreen(
                 onBack = { navController.popBackStack() },
             )
         }

@@ -36,7 +36,6 @@ MyReader/
 │           ├── RepositoryModule.kt
 │           └── DocumentEngineModule.kt  # 多绑定：@IntoMap DocumentEngine/DocumentViewerProvider，按 fileType 路由
 ├── core/
-│   ├── designsystem/                  # :core:designsystem  主题(颜色/字体/形状)+原子组件(AppButton/AppTopBar)
 │   ├── model/                        # :core:model         纯领域模型(LibraryItem/Folder data class，无 Room 注解)
 │   ├── data/                          # :core:data          Repository 实现 + Room 数据源(实体/DAO/DB)
 │   ├── storage/                      # :core:storage       文件复制/删除/缩略图 IO（按 fileType 调度）
@@ -83,7 +82,7 @@ app ──► feature:reader ──► core:document (接口：DocumentEngine + 
 
 | 拆分 | 收益 | 取舍 |
 |---|---|---|
-| `core:designsystem` 独立 | feature 只依赖 designsystem 拿统一视觉，主题改动不牵连组件 | — |
+| 不设 `core:designsystem` | 主题实际落在 `app`（`MainActivity` 动态 colorScheme + `values/themes.xml` DayNight，见 docs/ui-design.md「主题（M7）」），避免无收益的模块膨胀 | — |
 | core 按职责拆成 model/data/storage/document/common（不设大杂烩 core:util） | 职责清晰，feature:library 不引入 MuPDF | 模块数增加，构建配置略多 |
 | `feature:reader` 拆出 `feature:viewer-mupdf` | 渲染桥接经 `core:document` 接口 + Map 多绑定注入 reader，viewer 对外只暴露接口，加格式/换引擎只动 viewer-* | `core:document` 多一个 `DocumentViewerProvider` Composable 抽象 + `@FileTypeKey` Map 路由，略有复杂度 |
 | `feature:foldermgmt` **合并进** `feature:library` | 目录管理是书架一部分，强耦合，拆了反而跨模块传数据 | — |

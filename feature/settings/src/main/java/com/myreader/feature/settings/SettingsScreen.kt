@@ -38,6 +38,7 @@ import com.myreader.core.model.ThemeMode
 @Composable
 fun SettingsScreen(
     onBack: () -> Unit,
+    onOpenAbout: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val defaultReaderMode by viewModel.defaultReaderMode.collectAsStateWithLifecycle()
@@ -113,6 +114,18 @@ fun SettingsScreen(
                     selected = docSort == DocSort.SIZE,
                     onClick = { viewModel.setDocSort(DocSort.SIZE) },
                 )
+            }
+            // AGPL 合规入口：开源与第三方声明必须在应用内可查（工作规则 2）
+            SettingsSection(title = "关于") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClick = onOpenAbout)
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text = "开源许可与第三方声明", style = MaterialTheme.typography.bodyLarge)
+                }
             }
         }
     }

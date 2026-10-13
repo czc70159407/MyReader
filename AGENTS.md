@@ -5,6 +5,8 @@
 ## 当前状态（会话开始必读 / 里程碑完成必更新）
 
 - **阶段**：M0~M7 均已完成——数据层（Room/Hilt）+ MuPDF viewer 模块 + 导入与书架 + 阅读器水平模式 + 目录树与文档管理 + 搜索/排序/最近阅读 + 垂直滚动与设置（v1.1：垂直连续滚动 + 阅读器顶栏实时切换 / 设置页阅读模式·主题·书架排序 / 深浅色主题全 APP），M7 真机验收全场景通过
+- **M7 后补齐（合规 / 测试 / 文档）**：①**About 页**（路由 `about`，入口=设置页「关于」）——补齐 AGPL 合规缺口：此前仅 README 有声明却写着「应用内 About 页同步展示」，应用内实无此页，现于应用内展示 MuPDF 来源 + AGPL-3.0 全文链接 + 本项目整体开源声明（工作规则 2）；②`feature:viewer-mupdf` 补 **`androidTest` 插桩测试** 5 例（`MuPdfDocumentEngineTest`：正常/加密/损坏 open、`pageCount`、`outline`、`drawPage`、句柄释放），样本 PDF 由 `tools/test_pdfs.py generate` 生成并置于 `src/androidTest/assets/`；③**文档修正**：移除文档中不存在的 `core:designsystem` 模块（主题实落在 `app`）、README 路线图 M3~M7 由「未开始」更正为「已完成」、M1 描述更正为「Maven fitz 预编译」；`docs/ui-design.md` 路由表增 `about`
+  - 验收证据：`.\gradlew.bat :app:assembleDebug :feature:viewer-mupdf:assembleDebugAndroidTest` → `BUILD SUCCESSFUL in 13s`（224 tasks）；`.\gradlew.bat test` → `BUILD SUCCESSFUL`，全量单测 **0 失败**（27 个套件、含 debug/release 双变体共 222 次执行）。插桩测试**仅验证编译**，运行需真机：`.\gradlew.bat :feature:viewer-mupdf:connectedDebugAndroidTest`
 - **下一步**：M8 备份与导出（v1.1）
 - **环境**：Windows / PowerShell 5 / JDK 21 / Gradle 8.14；Android SDK 位于 `D:\develop\Android\Sdk`（cmdline-tools + platform-tools + platforms android-33/35 + build-tools 35.0.0，`local.properties` 已指向，`ANDROID_HOME` 用户级已设）；git 位于 `D:\develop\Git`（不在 PATH，需全路径或临时加 PATH）；gradle 命令一律 `.\gradlew.bat`
 - **已知卡点**：①Java TLS 访问 services.gradle.org 被干扰（已预置 `D:\develop\gradle-repository\wrapper\dists\gradle-8.14-bin\38aieal9i53h9rfe7vjup95b9` 缓存绕过，勿删该目录）；②M1 上游已查证解卡：仓库在 GitHub（`ArtifexSoftware/mupdf-android-viewer`），fitz 官方 Maven `maven.ghostscript.com` 可达且 AAR 含全 4 ABI——NDK 与 native 源码编译不再需要

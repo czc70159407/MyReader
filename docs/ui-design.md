@@ -105,6 +105,8 @@ routes:
   reader/{documentId}           # 阅读器（M4 水平；M7 增垂直滚动 + 顶栏实时切换）
   settings                      # 设置页（M7 已落地）：默认阅读模式/主题/书架排序三组单选，DataStore 持久化；
                                 #   入口 = 书架顶栏 SortMenu 后的设置图标（LibraryScreen onOpenSettings）
+  about                         # 关于页（AGPL 合规）：应用内展示开源许可 + MuPDF 来源 + AGPL-3.0 全文链接；
+                                #   入口 = 设置页「关于 → 开源许可与第三方声明」（SettingsScreen onOpenAbout）
 ```
 
 > 「移动/导入选目录」用 **FolderPickerDialog**（M5 实现落定，原设计的 folderPicker 独立路由废弃）——弹窗内嵌目录树 + 新建子目录，避免为选目录增加路由栈层级。

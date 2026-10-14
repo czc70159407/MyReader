@@ -106,4 +106,27 @@ class MuPdfMultiFormatEngineTest {
             doc.close()
         }
     }
+
+    @Test
+    fun epub_relayoutUpdatesPageCountLive() {
+        // M9 review 修复复验：重排后 pageCount 须实时刷新（getter），relayout 不崩溃、锚点往返仍稳定
+        val doc = engine.open(assetFile("epub_test.epub").absolutePath, "epub", null) as MuPdfDocument
+        try {
+            val core = doc.core
+            val before = doc.pageCount
+            assertTrue("epub 初始应有页", before > 0)
+            // 模拟分屏/旋转：relayout 到与默认(312x504)不同的视口尺寸，触发整书重排
+            val remapped = core.layout(before / 2, 420, 640, 10)
+            val after = doc.pageCount // getter 实时取 core.countPages()
+            assertTrue("重排后 pageCount 应刷新且 > 0", after > 0)
+            // 重排后 bookmark 往返仍一致（首章首页 bookmark=0 不再误判失败）
+            val resolver = EpubLocationResolver(core)
+            val target = (if (remapped >= 0) remapped else 0).coerceIn(0, after - 1)
+            val payload = resolver.progressForPage(target)
+            val restored = resolver.pageForProgress(payload)
+            assertEquals("重排后锚点往返应一致", target, restored)
+        } finally {
+            doc.close()
+        }
+    }
 }

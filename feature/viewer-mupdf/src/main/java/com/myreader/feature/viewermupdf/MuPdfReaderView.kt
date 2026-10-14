@@ -12,6 +12,11 @@ import com.artifex.mupdf.viewer.MuPDFCore
 import com.artifex.mupdf.viewer.PageAdapter
 import com.artifex.mupdf.viewer.ReaderView
 import com.myreader.core.document.ProgressPayload
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 连续尺寸变化（分屏拖动分隔条等）静止该时长后才执行一次全量重建 */
 private const val SIZE_SETTLE_DELAY_MS = 150L
@@ -61,11 +66,7 @@ internal fun MuPdfReaderView(
             adapterRef.value = adapter
             object : ReaderView(ctx) {
                 private var refreshPending: Runnable? = null
-
-                /** 尺寸变化瞬间锁存的当前页：去抖窗口内 onLayout2 可能以「旧布局值 + 新屏宽」
-                 * 误判自动翻页（横屏居中页 left ≥ 竖屏半宽 → mCurrent--，ReaderView.java:631-640），
-                 * settle 后据此恢复，保证旋转/拖动不丢页 */
-                private var lockedCurrent = -1
+                private var layoutJob: Job? = null
 
                 override fun onMoveToChild(i: Int) {
                     super.onMoveToChild(i)
@@ -83,31 +84,48 @@ internal fun MuPdfReaderView(
                     if (w == oldw && h == oldh) return
                     // 非重排文档首次布局（oldw<=0）无需重建；重排文档需在首次真实尺寸时排版到视口
                     if (oldw <= 0 && !reflowable) return
-                    if (refreshPending == null) lockedCurrent = mCurrent // pending 期间不覆盖（拒绝误判拨动值）
+                    if (!isAttachedToWindow) return
                     refreshPending?.let(::removeCallbacks)
+                    layoutJob?.cancel()
                     refreshPending = Runnable {
                         refreshPending = null
-                        if (isAttachedToWindow) {
-                            var target = lockedCurrent
-                            if (reflowable && w > 0 && h > 0) {
-                                // relayout 到当前视口（pt = px * 72 / dpi），并把锁存页 remap 到新页码
-                                val dpi = resources.displayMetrics.densityDpi.coerceAtLeast(1)
-                                val remapped = core.layout(
-                                    if (target >= 0) target else mCurrent,
-                                    w * 72 / dpi, h * 72 / dpi, REFLOW_EM,
-                                )
-                                if (remapped >= 0) target = remapped
+                        if (!isAttachedToWindow) return@Runnable
+                        val target = mCurrent
+                        if (reflowable && w > 0 && h > 0) {
+                            // relayout 到当前视口（pt = px * 72 / dpi），并把当前页 remap 到新页码
+                            val dpi = resources.displayMetrics.densityDpi.coerceAtLeast(1)
+                            // 钳最小排版尺寸，防极小分屏导致页数爆炸/除零（M9 review S4）
+                            val lw = (w * 72 / dpi).coerceAtLeast(100)
+                            val lh = (h * 72 / dpi).coerceAtLeast(100)
+                            // 整书重排放后台线程执行，避免阻塞 UI（EPUB 整书秒级重排 → ANR 风险）；
+                            // 完成后再回主线程 remap 当前页并 refresh
+                            layoutJob = CoroutineScope(Dispatchers.Default).launch {
+                                val remapped = runCatching {
+                                    core.layout(target, lw, lh, REFLOW_EM)
+                                }.getOrDefault(target)
+                                withContext(Dispatchers.Main) {
+                                    if (!isAttachedToWindow) return@withContext
+                                    // 越界钳制，防止 layout 返回超界值导致整屏空白（M9 review M2）
+                                    val safe = remapped.coerceIn(0, core.countPages() - 1)
+                                    if (safe != mCurrent) {
+                                        onMoveOffChild(mCurrent)
+                                        mCurrent = safe
+                                        onMoveToChild(safe)
+                                    }
+                                    refresh()
+                                }
                             }
-                            if (target >= 0 && mCurrent != target) {
-                                // 恢复锁存页（同步回调链：uiPage/进度防抖随之复位为正确页）
-                                onMoveOffChild(mCurrent)
-                                mCurrent = target
-                                onMoveToChild(target)
-                            }
-                            lockedCurrent = -1
+                        } else {
                             refresh()
                         }
                     }.also { postDelayed(it, SIZE_SETTLE_DELAY_MS) }
+                }
+
+                override fun onDetachedFromWindow() {
+                    refreshPending?.let(::removeCallbacks)
+                    refreshPending = null
+                    layoutJob?.cancel()
+                    super.onDetachedFromWindow()
                 }
             }.apply {
                 setAdapter(adapter)

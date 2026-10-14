@@ -65,7 +65,10 @@ object FileTypes {
             ?.lowercase()
         if (!ext.isNullOrEmpty()) {
             fromExtension(ext)?.let { return it }
+            // 有扩展名但未登记（如 .log/.csv/.md）→ 拒收，不靠 mime 兜底误导入（M9 review M2）
+            return null
         }
+        // 无扩展名才用 mime 兜底（如 .txt 经 text/plain 导入）
         return fromMime(mimeType)
     }
 
@@ -77,7 +80,7 @@ object FileTypes {
         "application/vnd.comicbook+zip",
         "application/oxps",
         "application/vnd.ms-xpsdocument",
-        "text/plain",   // M9-F：.txt（normalize 仍按扩展名收敛，非 .txt 的 text/plain 也会当 txt 读取）
+        "text/plain",   // M9-F：仅「无扩展名且 mime=text/plain」按 txt 导入（有扩展名走 fromExtension 拒收）
     )
 
     /** fileType → 打开 magic（直传 fitz Document.openDocument；txt 不走 fitz，此值不被使用）。 */

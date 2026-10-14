@@ -128,7 +128,7 @@ class BackupManager @Inject constructor(
                             require(!rel.contains("..") && REL_PATH_PATTERN.matches(rel)) { "非法备份路径: $name" }
                             val out = File(tmp, "files/$rel")
                             out.parentFile?.mkdirs()
-                            zin.copyTo(out.outputStream())
+                            out.outputStream().use { zin.copyTo(it) }
                             fileEntries += rel
                         }
                         name.startsWith("thumbs/") -> {
@@ -137,7 +137,7 @@ class BackupManager @Inject constructor(
                             require(id != null && fn == "$id.png") { "非法备份缩略图: $name" }
                             val out = File(tmp, "thumbs/$fn")
                             out.parentFile?.mkdirs()
-                            zin.copyTo(out.outputStream())
+                            out.outputStream().use { zin.copyTo(it) }
                             thumbEntries += id
                         }
                         else -> throw IllegalArgumentException("备份包含未知条目: $name")
@@ -165,8 +165,15 @@ class BackupManager @Inject constructor(
             // 4) 提交成功后再把临时物理文件 move 进 library/thumb（同分区瞬时）
             var filesWritten = 0
             var bytesWritten = 0L
+            val manifestRelPaths = manifest.documents.map { it.relPath }.toSet()
+            var orphanCount = 0
             fileEntries.forEachIndexed { i, rel ->
                 onProgress(i.toFloat() / max(1, fileEntries.size), "恢复文档 $i/${fileEntries.size}")
+                // 仅搬清单中有记录的条目；清单外的 zip 条目视为孤儿跳过，避免库内遗留无引用文件（M9 review S2）
+                if (rel !in manifestRelPaths) {
+                    orphanCount++
+                    return@forEachIndexed
+                }
                 val src = File(tmp, "files/$rel")
                 if (src.exists()) {
                     bytesWritten += storage.moveIntoLibrary(src, rel)
@@ -186,7 +193,7 @@ class BackupManager @Inject constructor(
                 documents = manifest.documents.size,
                 filesWritten = filesWritten,
                 thumbnailsWritten = thumbnailsWritten,
-                missingFiles = (fileEntries.size - filesWritten) + (thumbEntries.size - thumbnailsWritten),
+                missingFiles = (fileEntries.size - filesWritten) + (thumbEntries.size - thumbnailsWritten) + orphanCount,
                 bytesWritten = bytesWritten,
             )
         } finally {

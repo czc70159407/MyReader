@@ -1,6 +1,7 @@
 package com.myreader.core.data.backup
 
 import com.myreader.core.data.db.entity.DocumentEntity
+import com.myreader.core.document.FileTypes
 import com.myreader.core.data.db.entity.FolderEntity
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -85,6 +86,8 @@ object BackupCodec {
         }
         m.documents.forEach { d ->
             require(REL_PATH_PATTERN.matches(d.relPath)) { "非法备份文档路径: ${d.relPath}" }
+            // 拒绝未知格式入库：导入期已拒收未登记格式，备份恢复不得绕过该约束（M9 review M3）
+            require(FileTypes.isKnown(d.fileType)) { "不支持的备份格式: ${d.fileType}" }
             if (d.thumbnailRelPath != null) {
                 require(THUMB_REL_PATTERN.matches(d.thumbnailRelPath)) { "非法备份缩略图路径: ${d.thumbnailRelPath}" }
             }

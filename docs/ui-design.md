@@ -170,7 +170,7 @@ fun FolderTreeList(
 
 ### 导入流程
 
-1. `LibraryScreen` 工具栏"+"按钮 → `rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument())`，mime 数组取 `FileTypes.mimeFilters()`（6 项白名单：`application/pdf` / `application/epub+zip` / `application/x-cbz` / `application/vnd.comicbook+zip` / `application/oxps` / `application/vnd.ms-xpsdocument`；暂不含 `application/octet-stream` 以保持选择器干净），支持多选
+1. `LibraryScreen` 工具栏"+"按钮 → `rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument())`，mime 数组取 `FileTypes.mimeFilters()`（7 项白名单：`application/pdf` / `application/epub+zip` / `application/x-cbz` / `application/vnd.comicbook+zip` / `application/oxps` / `application/vnd.ms-xpsdocument` / `text/plain`（仅「无扩展名且 mime=text/plain」按 txt 导入，有扩展名经 `FileTypes.fromExtension` 拒绝 `.log` 等）；暂不含 `application/octet-stream` 以保持选择器干净），支持多选
 2. 选中后弹 `FolderPickerDialog`（默认当前目录，可选新建子目录）
 3. `LibraryViewModel.import(uris, targetFolderId)` 在 `Dispatchers.IO` 逐个处理：
    - **格式归一（M9）**：`FileTypes.normalize(displayName, mime)`（扩展名优先、mime 兜底；`.oxps` 归并 `xps`）→ 未命中已注册格式直接拒收（`Status.UNSUPPORTED`，**不复制、不入库**），snackbar 汇总「N 个暂不支持的文件类型」——防未注册格式流入 router 抛 `IllegalArgumentException` 崩溃

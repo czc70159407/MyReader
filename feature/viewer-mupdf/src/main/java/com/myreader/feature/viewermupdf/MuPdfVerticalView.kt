@@ -91,6 +91,10 @@ internal fun MuPdfVerticalView(
     LaunchedEffect(doc, initPage) {
         if (initPage != lastEmittedPage) {
             listState.scrollToItem(initPage, 0)
+            // 跳页后即使目标页==当前页也强制回发一次，避免「跳后立刻退出」落旧进度（M9 review #9）
+            lastEmittedPage = initPage
+            val payload = resolver?.progressForPage(initPage) ?: ProgressPayload.Page(initPage, 0)
+            latestCallback(payload)
         }
     }
 

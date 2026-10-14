@@ -40,6 +40,7 @@ dependencies {
     api(project(":core:model"))
     api(project(":core:common"))
     implementation(project(":core:storage"))
+    implementation(project(":core:document"))   // M9 备份恢复需校验 fileType 白名单（单一事实源 = FileTypes）
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

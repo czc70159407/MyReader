@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,7 +37,8 @@ import javax.inject.Inject
 class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
 
     override suspend fun thumbnail(doc: Document): ImageBitmap =
-        (doc as TxtDocument).renderPageBitmap(page = 0, width = 480).asImageBitmap()
+        (doc as? TxtDocument)?.renderPageBitmap(page = 0, width = 480)?.asImageBitmap()
+            ?: ImageBitmap(1, 1)
 
     @Composable
     override fun Content(
@@ -46,16 +48,31 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         onProgressChanged: (ProgressPayload) -> Unit,
         modifier: Modifier,
     ) {
-        val txtDoc = doc as TxtDocument
+        val txtDoc = doc as? TxtDocument
+        if (txtDoc == null) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Text(
+                    "无法显示此文档",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+            return
+        }
         val start = (initialProgress as? ProgressPayload.Page) ?: ProgressPayload.Page(0)
         val listState = rememberLazyListState()
         val latestCallback by rememberUpdatedState(onProgressChanged)
 
         // 初始 = 恢复页；区分「自身滚动回流」与「外部跳页」
         var lastEmitted by remember(txtDoc) { mutableStateOf(start.page) }
+        // 恢复完成前抑制回写，避免首帧 (0,0) 覆盖恢复进度（M9 review M6）
+        var restored by remember(txtDoc) { mutableStateOf(false) }
 
         // 一次性恢复进度（组合期初值即就位，scrollToItem 锚定 item 顶部 + 像素偏移）
-        LaunchedEffect(txtDoc) { listState.scrollToItem(start.page, start.scrollOffsetY) }
+        LaunchedEffect(txtDoc) {
+            listState.scrollToItem(start.page, start.scrollOffsetY)
+            restored = true
+        }
 
         // 外部跳页差分：initialProgress.page 变化且非自身回流 → 滚到目标页顶部
         LaunchedEffect(txtDoc, start.page) {
@@ -67,6 +84,7 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
             snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
                 .distinctUntilChanged()
                 .collect { (index, offset) ->
+                    if (!restored) return@collect
                     lastEmitted = index
                     latestCallback(ProgressPayload.Page(index, offset))
                 }

@@ -153,7 +153,7 @@ def make_xps(out: str) -> str:
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         '<Default Extension="fdseq" ContentType="application/vnd.ms-package.xps-fixeddocumentsequence+xml"/>'
         '<Default Extension="fdoc" ContentType="application/vnd.ms-package.xps-fixeddocument+xml"/>'
-        '<Default Extension="fpage" ContentType="application/vnd.ms-xps.page+xml"/>'
+        '<Default Extension="fpage" ContentType="application/vnd.ms-package.xps-fixedpage+xml"/>'
         '</Types>'
     )
     root_rels = (

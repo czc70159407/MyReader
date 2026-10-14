@@ -70,7 +70,7 @@
 | epub 默认模式 | 会话初值强制 `VERTICAL`（顶栏仍可切 HORIZONTAL） | 重排文档水平分页体验差 |
 | `Document` 接口 | 新增 `val reflowable: Boolean get() = false`（默认实现，不破坏既有实现），`MuPdfDocument` 覆写 `core.isReflowable()` | provider / 渲染层需判断是否重排；同步更新 architecture.md 接口签名 |
 | 未知格式 | 导入期集中归一化 → 未命中即提示「暂不支持的文件类型」并跳过（不复制、不入库） | 修 G3 崩溃面，也是未来 TXT 扩展点前置 |
-| 导入 mime | 6 项白名单（见 §5.4）；**暂不加 `application/octet-stream`**，真机若选不到某格式再按记录追加 | 保持选择器干净；权衡记录进 AGENTS.md |
+| 导入 mime | 7 项白名单（见 §5.4；M9 修复：text/plain 仅「无扩展名」兜底，有扩展名经 `fromExtension` 拒收）；**暂不加 `application/octet-stream`**，真机若选不到某格式再按记录追加 | 保持选择器干净；权衡记录进 AGENTS.md |
 | 字号 / 字体设置 | **不做**（排版参数固定 em=10 + 视口自适应） | 避免进度漂移与范围膨胀；留 v1.3 |
 
 ---
@@ -165,7 +165,9 @@ application/x-cbz
 application/vnd.comicbook+zip
 application/oxps
 application/vnd.ms-xpsdocument
+text/plain
 ```
+> 注（M9 修复）：`text/plain` 仅对「无扩展名、mime=text/plain」的 SAF 条目兜底为 txt；带扩展名（如 `.log`/`.csv`/`.md`）经 `FileTypes.fromExtension` 未命中即拒收，不误导入。
 
 ---
 

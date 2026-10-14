@@ -43,11 +43,13 @@ class MuPdfDocumentEngine @Inject constructor() : DocumentEngine {
         }
 
         if (core.needsPassword()) {
-            val authed = password != null && core.authenticatePassword(password)
+            val authed = password != null && runCatching { core.authenticatePassword(password) }.getOrDefault(false)
             if (!authed) {
                 core.onDestroy()
                 throw PasswordRequiredException("文档已加密: ${file.name}")
             }
+            // 加密文档构造期延迟的 layout 在此补做（pageCount 由 0 还原为真实页数）
+            runCatching { core.layout(-1, 312, 504, 10) }
         }
         return MuPdfDocument(core)
     }

@@ -29,3 +29,5 @@ tools/acceptance/*.xml
 tools/acceptance/**/*.db*
 tools/acceptance/m9/
 
+*.keystore
+*.jks

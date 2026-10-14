@@ -25,6 +25,7 @@ import java.io.File
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -114,11 +115,14 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
-    /** onPause/onStop/onDispose 保底：取消防抖立即落库（幂等，重复 flush 只多写同值） */
+    /** onPause/onStop/onDispose 保底：取消防抖立即落库（幂等，重复 flush 只多写同值）。
+     * 用 NonCancellable 包裹，防止 onCleared() 取消 viewModelScope 导致最后一段进度丢失（M9 review S1） */
     fun flushProgress() {
         val progress = currentProgress.value ?: return
         progressJob?.cancel()
-        viewModelScope.launch(dispatchers.io) { persistProgress(progress) }
+        viewModelScope.launch {
+            withContext(NonCancellable) { persistProgress(progress) }
+        }
     }
 
     /** 按进度类型分发写库：页码式 savePageProgress，流式 saveCfiProgress */

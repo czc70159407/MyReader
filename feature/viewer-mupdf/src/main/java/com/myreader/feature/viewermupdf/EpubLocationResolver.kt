@@ -18,7 +18,8 @@ class EpubLocationResolver(private val core: MuPDFCore) {
     fun progressForPage(page: Int): ProgressPayload {
         val safePage = page.coerceAtLeast(0)
         val mark = core.pageToBookmark(safePage)
-        val loc = if (mark > 0L) mark.toString() else null
+        // 失败码为 Long.MIN_VALUE，合法 bookmark 0（首章首页）仍视为有效锚点
+        val loc = if (mark != Long.MIN_VALUE) mark.toString() else null
         return ProgressPayload.Cfi(EpubProgressCodec.encode(loc = loc, page = safePage))
     }
 

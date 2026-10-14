@@ -87,6 +87,18 @@ class BackupCodecTest {
     }
 
     @Test
+    fun decode_rejectsUnknownFileType() {
+        // M9 review M3：备份恢复不得绕过导入拒收，把未知格式（如 docx）入库
+        val doc = sampleDoc(1).toDto().copy(fileType = "docx", relPath = "1.docx")
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(doc),
+        )
+        val text = BackupCodec.encode(manifest)
+        assertThrows(IllegalArgumentException::class.java) { BackupCodec.decode(text) }
+    }
+
+    @Test
     fun decode_toleratesUnknownFields() {
         // 额外字段 extraUnknown 应被 ignoreUnknownKeys 忽略
         val json = """

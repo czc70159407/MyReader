@@ -13,7 +13,8 @@ import com.myreader.core.document.OutlineEntry
  */
 class MuPdfDocument(val core: MuPDFCore) : Document {
 
-    override val pageCount: Int = core.countPages()
+    /** getter：重排文档（epub）layout() 后页数会变化，必须每次取实时值（M9 review 修复 S1） */
+    override val pageCount: Int get() = core.countPages()
 
     /** 流式重排格式（epub）：进度走 CFI 锚点、pageCount 不落库（M9）。 */
     override val reflowable: Boolean get() = core.isReflowable()

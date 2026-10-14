@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 仅 debug：验收测试用 provider（release 变体不包含） -->
+    <application>
+        <provider
+            android:name=".TestFilesProvider"
+            android:authorities="com.myreader.testfiles"
+            android:exported="false" />
+    </application>
+</manifest>

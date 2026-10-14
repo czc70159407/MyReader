@@ -18,6 +18,7 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Release 签名占位：密钥从本地 keystore.properties 读取（不入仓）；
@@ -109,4 +110,11 @@ dependencies {
     implementation(project(":feature:viewer-txt"))   // M9-F：TXT 引擎多绑定（app 仅 DI，不接触实现细节）
 
     debugImplementation(libs.compose.ui.tooling)
+
+    // 真机验收插桩（M9 review）：业务层端到端，绕过 SAF UI 的稳定性复验
+    androidTestImplementation(libs.androidx.test.core)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.coroutines.test)
+    androidTestImplementation(libs.junit)
 }

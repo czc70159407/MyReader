@@ -243,4 +243,78 @@ class BackupManagerTest {
         val ex = runCatching { manager.restore(ByteArrayInputStream(baos.toByteArray())) }.exceptionOrNull()
         assertTrue("应拒绝 zip slip: $ex", ex is IllegalArgumentException)
     }
+
+    // ---- 安全审计 M2：恢复期资源上限（zip bomb 防护）----
+
+    private fun manifestJson(vararg relPaths: String): String {
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1, appVersion = "t",
+            folders = emptyList(),
+            documents = relPaths.map { rel ->
+                BackupCodec.DocumentDto(
+                    rel.substringBefore('.').toLong(), null, rel, rel, "pdf", null, null,
+                    1, null, false, 1, "page", 0, 0, null, null, null, 1,
+                )
+            },
+        )
+        return BackupCodec.encode(manifest)
+    }
+
+    private fun zipOf(build: ZipOutputStream.() -> Unit): ByteArrayInputStream =
+        ByteArrayOutputStream().also { baos ->
+            ZipOutputStream(baos).use(build)
+        }.let { ByteArrayInputStream(it.toByteArray()) }
+
+    private fun ZipOutputStream.putEntry(name: String, data: ByteArray) {
+        putNextEntry(ZipEntry(name))
+        write(data)
+        closeEntry()
+    }
+
+    @Test
+    fun restore_rejectsTooManyEntries() = runTest {
+        manager.limits = manager.limits.copy(maxEntries = 2)
+        val json = manifestJson("1.pdf")
+        val input = zipOf {
+            putEntry("library.json", json.toByteArray())
+            putEntry("files/1.pdf", "a".toByteArray())
+            putEntry("files/2.pdf", "b".toByteArray())
+            putEntry("files/3.pdf", "c".toByteArray())
+        }
+        val ex = runCatching { manager.restore(input) }.exceptionOrNull()
+        assertTrue("应拒绝条目数超限: $ex", ex is IllegalArgumentException && ex.message!!.contains("条目数"))
+    }
+
+    @Test
+    fun restore_rejectsOversizedEntry() = runTest {
+        manager.limits = manager.limits.copy(maxEntryBytes = 8)
+        val json = manifestJson("1.pdf")
+        val input = zipOf {
+            putEntry("library.json", json.toByteArray())
+            putEntry("files/1.pdf", ByteArray(64) { 'x'.code.toByte() })
+        }
+        val ex = runCatching { manager.restore(input) }.exceptionOrNull()
+        assertTrue("应拒绝单条目解压超限: $ex", ex is IllegalArgumentException && ex.message!!.contains("解压量"))
+    }
+
+    @Test
+    fun restore_rejectsOversizedJson() = runTest {
+        manager.limits = manager.limits.copy(maxJsonChars = 16)
+        val json = manifestJson("1.pdf")   // 远大于 16 字符
+        val input = zipOf { putEntry("library.json", json.toByteArray()) }
+        val ex = runCatching { manager.restore(input) }.exceptionOrNull()
+        assertTrue("应拒绝清单超限: $ex", ex is IllegalArgumentException && ex.message!!.contains("清单过大"))
+    }
+
+    @Test
+    fun restore_rejectsZipBombRatio() = runTest {
+        manager.limits = manager.limits.copy(maxRatio = 2, ratioFloorBytes = 1024)
+        val json = manifestJson("1.pdf")
+        val input = zipOf {
+            putEntry("library.json", json.toByteArray())
+            putEntry("files/1.pdf", ByteArray(64 * 1024))   // 全 0：deflate 压缩比 ~1000x
+        }
+        val ex = runCatching { manager.restore(input) }.exceptionOrNull()
+        assertTrue("应拒绝异常压缩比: $ex", ex is IllegalStateException && ex.message!!.contains("压缩比"))
+    }
 }

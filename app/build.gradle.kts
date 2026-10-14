@@ -33,6 +33,18 @@ android {
     val hasReleaseSigning = keystorePropertiesFile.exists() &&
         storeFilePath != null && rootProject.file(storeFilePath).exists()
 
+    // 安全审计 M5：无签名配置时本地仅警告（保持无密钥环境可构建）；
+    // CI/发布构建传 -Pmyreader.requireReleaseSigning=true 强制失败，防误发未签名包
+    if (!hasReleaseSigning) {
+        if (project.findProperty("myreader.requireReleaseSigning") == "true") {
+            throw GradleException(
+                "release 签名配置缺失：请在仓库根提供 keystore.properties" +
+                    "（storeFile/storePassword/keyAlias/keyPassword，不入仓）"
+            )
+        }
+        logger.warn("release 未配置签名，assembleRelease 将产出未签名 APK（CI 请传 -Pmyreader.requireReleaseSigning=true 强制校验）")
+    }
+
     signingConfigs {
         create("release") {
             if (hasReleaseSigning) {
@@ -52,7 +64,10 @@ android {
             }
         }
         release {
-            isMinifyEnabled = false
+            // 安全审计 M3：开启 R8 代码收缩 + 资源裁剪（此前 isMinifyEnabled=false，
+            // proguardFiles 声明不生效，发布包可被直接反编译）；keep 规则见 proguard-rules.pro
+            isMinifyEnabled = true
+            isShrinkResources = true
             // ABI 策略：release 限 arm64-v8a + armeabi-v7a（减体积）
             ndk {
                 abiFilters += setOf("arm64-v8a", "armeabi-v7a")

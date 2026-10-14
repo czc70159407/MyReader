@@ -23,3 +23,12 @@ subprojects {
         }
     }
 }
+
+// 安全审计 L5：third-party:mupdf（submodule）以 `androidx.appcompat:appcompat:1.1.+` 动态版本
+// 依赖 appcompat——构建不可复现且存在上游坐标投毒风险。在根工程统一 force 到确定版本
+// （不改 submodule 内容；appcompat 1.7.0 与上游 API 向后兼容，compileSdk 35 满足其要求）
+subprojects {
+    configurations.configureEach {
+        resolutionStrategy.force("androidx.appcompat:appcompat:1.7.0")
+    }
+}

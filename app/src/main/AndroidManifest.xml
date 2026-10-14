@@ -1,11 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 安全审计 H2：READ_EXTERNAL_STORAGE 由 third-party:mupdf 的 lib manifest 带入合并清单。
+         本应用全部经 SAF 读写文档，不需要该权限——manifest merger 显式移除 -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        tools:node="remove" />
 
     <application
         android:name=".MyReaderApp"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyReader">
+        android:theme="@style/Theme.MyReader"
+        android:allowBackup="false">
+
+        <!-- 安全审计 H1：三方 lib 合并的 DocumentActivity（exported + VIEW/BROWSABLE +
+             application/octet-stream，设备上任意应用可投递 Uri 触发 MuPDF native 解析）。
+             产品使用自有 Compose 阅读器，该 Activity 属死代码——manifest merger 显式移除，
+             收窄对外攻击面。OutlineActivity 本就非导出，无 intent-filter，不动 -->
+        <activity
+            android:name="com.artifex.mupdf.viewer.DocumentActivity"
+            tools:node="remove"
+            tools:ignore="MissingClass" />
 
         <activity
             android:name=".MainActivity"

@@ -81,7 +81,35 @@ class DocumentStorageTest {
     fun deleteThumbnail_handlesNullAndMissing() {
         val s = storage()
         assertTrue(s.deleteThumbnail(null))
-        assertTrue(s.deleteThumbnail("thumb/no-such.png"))
+        // 文件不存在的合法格式 relPath 仍返回 true（幂等）
+        assertTrue(s.deleteThumbnail("thumb/999.png"))
+    }
+
+    @Test
+    fun deleteThumbnail_rejectsNonWhitelistName() {
+        val s = storage()
+        // 安全审计 L3：非 thumb/<纯数字id>.png 的 relPath 一律拒绝，
+        // 即使 canonical 落在 filesDir 内（如 thumb/../library_prefs.preferences_pb）也不放行
+        listOf(
+            "thumb/no-such.png",
+            "thumb/../library_prefs.preferences_pb",
+            "thumb/1.png/../../x",
+            "other/1.png",
+            "thumb/1.txt",
+        ).forEach { rel ->
+            try {
+                s.deleteThumbnail(rel)
+                throw AssertionError("应当拒绝非法缩略图路径: $rel")
+            } catch (expected: IllegalArgumentException) {
+            }
+        }
+    }
+
+    @Test
+    fun openThumbnailRead_rejectsNonWhitelistName() {
+        val s = storage()
+        assertEquals(null, s.openThumbnailRead("thumb/../library_prefs.preferences_pb"))
+        assertEquals(null, s.openThumbnailRead("other/1.png"))
     }
 
     @Test

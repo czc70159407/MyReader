@@ -29,6 +29,9 @@ class DocumentStorage(private val libraryDir: File) {
 
         /** 备份恢复缩略图名：thumb/<纯数字id>.png 形态不做，仅接受 docId 数字，落 thumb/<id>.png */
         private val THUMB_ID_PATTERN = Regex("^[0-9]+$")
+
+        /** 缩略图 relPath 白名单：thumb/<纯数字id>.png（与 BackupCodec.THUMB_REL_PATTERN 同源，安全审计 L3） */
+        private val THUMB_REL_PATTERN = Regex("^${THUMB_DIR_NAME}/[0-9]+\\.png$")
     }
 
     /** 复制结果：relPath 相对 libraryDir，fileSize 字节数，contentHash SHA-256（十六进制小写） */
@@ -86,9 +89,14 @@ class DocumentStorage(private val libraryDir: File) {
         return !f.exists() || f.delete()
     }
 
-    /** 删除缩略图文件（相对 filesDir，如 "thumb/<id>.png"；null 直接成功）。 */
+    /** 删除缩略图文件（相对 filesDir，如 "thumb/<id>.png"；null 直接成功）。
+     *  先过整段白名单（安全审计 L3：canonical 包含校验只保证落在 filesDir 内，
+     *  不能阻止 thumb/../library_x 等目录内旁路），再做 canonical 包含校验双保险。 */
     fun deleteThumbnail(thumbnailRelPath: String?): Boolean {
         if (thumbnailRelPath == null) return true
+        require(THUMB_REL_PATTERN.matches(thumbnailRelPath)) {
+            "非法缩略图路径: $thumbnailRelPath"
+        }
         val base = libraryDir.parentFile ?: libraryDir
         val f = File(base, thumbnailRelPath)
         require(f.canonicalPath.startsWith(base.canonicalPath + File.separator)) {
@@ -118,9 +126,10 @@ class DocumentStorage(private val libraryDir: File) {
     /** 流式读取文档物理文件（导出用）；不存在返回 null（缺失文件由调用方计入 missing）。 */
     fun openRead(relPath: String): InputStream? = resolve(relPath).takeIf { it.exists() }?.inputStream()
 
-    /** 缩略图流式读取（导出用）；relPath 为 null 或文件不存在返回 null。 */
+    /** 缩略图流式读取（导出用）；relPath 为 null、不匹配白名单（安全审计 L3）或文件不存在返回 null。 */
     fun openThumbnailRead(thumbnailRelPath: String?): InputStream? {
         if (thumbnailRelPath == null) return null
+        if (!THUMB_REL_PATTERN.matches(thumbnailRelPath)) return null
         val base = libraryDir.parentFile ?: libraryDir
         val f = File(base, thumbnailRelPath)
         if (!f.canonicalPath.startsWith(base.canonicalPath + File.separator)) return null

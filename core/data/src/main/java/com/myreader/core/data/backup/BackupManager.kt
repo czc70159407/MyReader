@@ -11,6 +11,7 @@ import javax.inject.Inject
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.File
+import java.io.FilterInputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.util.zip.ZipEntry
@@ -34,6 +35,9 @@ class BackupManager @Inject constructor(
     private val storage: DocumentStorage,
     private val dispatchers: DispatcherProvider,
 ) {
+
+    /** 恢复期资源上限（防 zip bomb / 磁盘耗尽）；测试按需收窄以覆盖各闸门。 */
+    internal var limits: RestoreLimits = RestoreLimits()
 
     data class ExportResult(
         val folders: Int,
@@ -110,25 +114,36 @@ class BackupManager @Inject constructor(
     ): RestoreResult = withContext(dispatchers.io) {
         val tmp = storage.newBackupTempDir()
         try {
-            // 1) 解压到临时目录（entry name 严格白名单；任何其他/穿越条目一律拒绝）
+            // 1) 解压到临时目录（entry name 严格白名单；任何其他/穿越条目一律拒绝）。
+            //    防资源耗尽（zip bomb / 磁盘耗尽）：条目数、单条目解压量、累计解压量、压缩比全部有上限
             val fileEntries = mutableListOf<String>()   // relPath
             val thumbEntries = mutableListOf<Long>()     // docId
             var jsonText: String? = null
-            ZipInputStream(BufferedInputStream(input)).use { zin ->
+            var entryCount = 0
+            var totalUncompressed = 0L
+            val counting = CountingInputStream(BufferedInputStream(input))
+            ZipInputStream(counting).use { zin ->
                 while (true) {
                     val entry = zin.nextEntry ?: break
+                    // 目录条目也计数：恶意 zip 可用海量空目录条目拖慢恢复
+                    entryCount++
+                    require(entryCount <= limits.maxEntries) { "备份条目数超出上限（>${limits.maxEntries}），疑似恶意备份" }
                     if (entry.isDirectory) continue
+                    val compressedBefore = counting.count
                     val name = entry.name
+                    var written = 0L
                     when {
                         name == "library.json" -> {
-                            jsonText = zin.bufferedReader(Charsets.UTF_8).readText()
+                            val text = readBoundedText(zin, limits.maxJsonChars)
+                            written = text.length.toLong()   // 计入解压量，使其同样纳入压缩比检查
+                            jsonText = text
                         }
                         name.startsWith("files/") -> {
                             val rel = name.removePrefix("files/")
                             require(!rel.contains("..") && REL_PATH_PATTERN.matches(rel)) { "非法备份路径: $name" }
                             val out = File(tmp, "files/$rel")
                             out.parentFile?.mkdirs()
-                            out.outputStream().use { zin.copyTo(it) }
+                            out.outputStream().use { written = copyBounded(zin, it, limits.maxEntryBytes) }
                             fileEntries += rel
                         }
                         name.startsWith("thumbs/") -> {
@@ -137,10 +152,20 @@ class BackupManager @Inject constructor(
                             require(id != null && fn == "$id.png") { "非法备份缩略图: $name" }
                             val out = File(tmp, "thumbs/$fn")
                             out.parentFile?.mkdirs()
-                            out.outputStream().use { zin.copyTo(it) }
+                            out.outputStream().use { written = copyBounded(zin, it, limits.maxEntryBytes) }
                             thumbEntries += id
                         }
                         else -> throw IllegalArgumentException("备份包含未知条目: $name")
+                    }
+                    totalUncompressed += written
+                    val compressedDelta = counting.count - compressedBefore
+                    if (totalUncompressed > limits.maxTotalBytes) {
+                        throw IllegalStateException("备份累计解压量超出上限（>${limits.maxTotalBytes} 字节），疑似 zip bomb")
+                    }
+                    if (compressedDelta > 0 &&
+                        totalUncompressed > max(limits.ratioFloorBytes, compressedDelta * limits.maxRatio)
+                    ) {
+                        throw IllegalStateException("备份压缩比异常（解压 $written / 压缩 $compressedDelta），疑似 zip bomb")
                     }
                 }
             }
@@ -201,6 +226,34 @@ class BackupManager @Inject constructor(
         }
     }
 
+    /** 有界复制：单条目解压量超限抛异常（防 zip bomb）。返回写入字节数。 */
+    private fun copyBounded(input: InputStream, out: OutputStream, maxBytes: Long): Long {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val n = input.read(buffer)
+            if (n < 0) break
+            total += n
+            require(total <= maxBytes) { "备份条目解压量超出上限（>$maxBytes 字节），疑似 zip bomb" }
+            out.write(buffer, 0, n)
+        }
+        return total
+    }
+
+    /** 有界读取文本：library.json 超大直接拒绝（防内存耗尽）。 */
+    private fun readBoundedText(input: InputStream, maxChars: Int): String {
+        val sb = StringBuilder()
+        val reader = input.bufferedReader(Charsets.UTF_8)
+        val cb = CharArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val n = reader.read(cb)
+            if (n < 0) break
+            sb.append(cb, 0, n)
+            require(sb.length <= maxChars) { "备份清单过大（>$maxChars 字符），疑似恶意备份" }
+        }
+        return sb.toString()
+    }
+
     /**
      * 目录拓扑排序：父目录先于子目录（O(n²)，目录量小足够；检测到循环引用抛异常，不写库）。
      */
@@ -221,3 +274,36 @@ class BackupManager @Inject constructor(
 
 /** 进度回调：fraction ∈ [0,1] + 状态文案。导出/恢复期间在 IO 线程调用。 */
 typealias Progress = (fraction: Float, status: String) -> Unit
+
+/** 恢复期资源上限（防 zip bomb / 磁盘耗尽）。备份包属不可信输入，超限即中止恢复。 */
+data class RestoreLimits(
+    /** zip 条目数上限（library.json + files 与 thumbs 下的文档/缩略图条目） */
+    val maxEntries: Int = 512,
+    /** 单条目解压字节数上限 */
+    val maxEntryBytes: Long = 512L * 1024 * 1024,
+    /** 全部条目累计解压字节数上限 */
+    val maxTotalBytes: Long = 1L shl 30,
+    /** library.json 字符数上限 */
+    val maxJsonChars: Int = 4 * 1024 * 1024,
+    /** 压缩比上限（单条目 解压/压缩 倍数）；小包按 ratioFloorBytes 豁免，避免小文件误杀 */
+    val maxRatio: Long = 100,
+    val ratioFloorBytes: Long = 8L * 1024 * 1024,
+)
+
+/** 统计已读（压缩侧）字节，供压缩比检查；ZipInputStream 的原始输入经由此流。 */
+private class CountingInputStream(input: InputStream) : FilterInputStream(input) {
+    var count: Long = 0L
+        private set
+
+    override fun read(): Int {
+        val r = super.read()
+        if (r >= 0) count++
+        return r
+    }
+
+    override fun read(b: ByteArray, off: Int, len: Int): Int {
+        val r = super.read(b, off, len)
+        if (r > 0) count += r
+        return r
+    }
+}

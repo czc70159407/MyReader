@@ -1,0 +1,30 @@
+MyReader
+Copyright (C) 2026 MyReader contributors
+
+本程序为自由软件：你可以在遵守 GNU Affero 通用公共许可证（AGPL-3.0，或 FSF 发布的
+任何更新版本）的前提下再分发和/或修改它。许可证全文见仓库根目录 LICENSE；
+英文原文见 https://www.gnu.org/licenses/agpl-3.0.txt。
+本程序不附带任何担保；详情见许可证第 15、16 节。
+
+第三方组件
+==========
+
+MuPDF（PDF/EPUB/XPS/CBZ 渲染引擎）
+  - 构件：com.artifex.mupdf:fitz:1.28.2（官方 Maven 预编译 AAR）
+  - 源码：third-party/mupdf-android-viewer（git submodule，ArtifexSoftware/mupdf-android-viewer）
+  - 许可：AGPL-3.0（或 Artifex 商业双许可）；本仓库按 AGPL-3.0 整体开源使用
+  - 来源：https://github.com/ArtifexSoftware/mupdf-android-viewer
+          https://maven.ghostscript.com/
+
+AndroidX / Jetpack（Compose、Room、Hilt/Dagger、DataStore、Navigation、
+Lifecycle、Activity、DocumentFile、androidx.test 等）
+  - 许可：Apache License 2.0
+  - 来源：https://developer.android.com/jetpack（androidx Maven 仓库）
+
+Kotlin 标准库 / kotlinx.coroutines / kotlinx.serialization
+  - 许可：Apache License 2.0
+  - 来源：https://github.com/JetBrains/kotlin
+
+测试依赖（JUnit 4、Robolectric、Turbine、kotlinx-coroutines-test）
+  - 许可：Eclipse Public License 1.0（JUnit）/ MIT（Robolectric、Turbine）/
+    Apache License 2.0（coroutines-test）

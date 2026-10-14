@@ -157,9 +157,9 @@ interface DocumentDao {
 > 设计见 process.md M8 分解；完整代码为事实源，此处仅记关键新增与约束。
 
 - **DAO 新增（无 schema 变更，故无 Migration，遵守工作规则 3）**：`FolderDao`/`DocumentDao` 各增 `@Query("SELECT * FROM ...") all()`（一次性全量快照，供导出）与 `@Upsert upsert(...)` / `upsertAll(...)`（按原 ID 合并写回，冲突以备份为准 → 幂等，重复恢复不产生重复记录）。
-- **`DocumentStorage` 备份方法**：`openRead(relPath)` / `openThumbnailRead(...)` 流式读取（导出用，不存在返回 null 计入缺失）；`totalBytesOf(relPaths)` 恢复前空间预检；`restoreFile` / `restoreThumbnail`（保留原 `relPath` 的流式写回，先白名单后 canonical 双重防穿越）；`newBackupTempDir()` 在 `filesDir` 下创建与 `library/` 同分区临时目录；`moveIntoLibrary` / `moveIntoThumb`（同分区 `renameTo` 瞬时，跨设备回退复制）。
+- **`DocumentStorage` 备份方法**：`openRead(relPath)` / `openThumbnailRead(...)` 流式读取（导出用，不存在或 `thumbnailRelPath` 非 `thumb/<id>.png` 白名单返回 null 计入缺失）；`deleteThumbnail` 同样先白名单后 canonical（安全审计 L3）；`totalBytesOf(relPaths)` 恢复前空间预检；`restoreFile` / `restoreThumbnail`（保留原 `relPath` 的流式写回，先白名单后 canonical 双重防穿越）；`newBackupTempDir()` 在 `filesDir` 下创建与 `library/` 同分区临时目录；`moveIntoLibrary` / `moveIntoThumb`（同分区 `renameTo` 瞬时，跨设备回退复制）。
 - **`BackupCodec`（纯逻辑，JVM 可测，`core:data` 内）**：`library.json` 快照编解码（`BackupManifest { schemaVersion, exportedAt, appVersion, folders[], documents[] }`）；不可信边界处对 `relPath` / `thumbnailRelPath` 做白名单校验、对 `schemaVersion` 做版本门禁（当前 `=1`）。
-- **`BackupManager`**：导出 = 读全量 → 流式写 zip（`files/` 物理文档 + `thumbs/` 缩略图 + `library.json`）；恢复 = 整体解压到临时目录（`entry.name` 严格白名单，拒绝 `../` 与未知条目，防 zip slip）→ 校验清单 → 空间预检 → 事务内目录按拓扑序 upsert 再文档 upsert（满足 `folderId` 外键）→ 提交后把临时文件 move 进 `library/`/`thumb/`；失败临时目录由调用方 `deleteRecursively`，DB 因事务原子性保持未变。
+- **`BackupManager`**：导出 = 读全量 → 流式写 zip（`files/` 物理文档 + `thumbs/` 缩略图 + `library.json`）；恢复 = 整体解压到临时目录（`entry.name` 严格白名单，拒绝 `../` 与未知条目，防 zip slip；资源上限 `RestoreLimits`——条目数 ≤512 / 单条目解压 ≤512MB / 累计解压 ≤1GB / `library.json` ≤4M 字符 / 单条目压缩比 ≤100x（小包按 8MB 下限豁免），超限即中止，防 zip bomb 与磁盘耗尽，安全审计 M2）→ 校验清单 → 空间预检 → 事务内目录按拓扑序 upsert 再文档 upsert（满足 `folderId` 外键）→ 提交后把临时文件 move 进 `library/`/`thumb/`；失败临时目录由调用方 `deleteRecursively`，DB 因事务原子性保持未变。
 - **序列化选型**：`kotlinx-serialization-json` 1.7.3（M8 唯一偏离选型的依赖，见 architecture.md「技术选型」+「依赖项清单」），类型安全、跨 schema 版本可演进；零运行时闭源风险、AGPL 兼容。
 
 ## 进度记忆实现时机（防频繁写库）

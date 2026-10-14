@@ -14,6 +14,11 @@ android {
         minSdk = 26
     }
 
+    // 安全审计 L1：BuildConfig.DEBUG 用于导入日志脱敏（release 不打印文档 Uri/文件名）
+    buildFeatures {
+        buildConfig = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

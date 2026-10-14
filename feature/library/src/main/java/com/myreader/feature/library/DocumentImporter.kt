@@ -79,7 +79,10 @@ class DocumentImporter @Inject constructor(
             val displayName = queryDisplayName(uri)
             val mimeType = context.contentResolver.getType(uri)
             val size = querySize(uri)
-            android.util.Log.i(TAG, "import start: uri=$uri name=$displayName mime=$mimeType size=$size force=$force")
+            // 安全审计 L1：uri/展示名含用户隐私（文件名/来源路径），仅 debug 打印
+            if (BuildConfig.DEBUG) {
+                android.util.Log.i(TAG, "import start: uri=$uri name=$displayName mime=$mimeType size=$size force=$force")
+            }
             var copy: DocumentStorage.CopyResult? = null
             var thumbnailRelPath: String? = null
             try {
@@ -171,7 +174,12 @@ class DocumentImporter @Inject constructor(
                 throw e
             } catch (t: Throwable) {
                 // 任一步异常：删半成品回滚（文件已复制才有 relPath，缩略图已保存则一并删）
-                android.util.Log.e(TAG, "导入失败 uri=$uri", t)
+                // 安全审计 L1：release 不打印 uri（隐私），仅保留异常类型便于排查
+                if (BuildConfig.DEBUG) {
+                    android.util.Log.e(TAG, "导入失败 uri=$uri", t)
+                } else {
+                    android.util.Log.e(TAG, "导入失败: ${t.javaClass.simpleName}")
+                }
                 copy?.let { storage.deleteDocument(it.relPath) }
                 thumbnailRelPath?.let { storage.deleteThumbnail(it) }
                 Result(uri, Status.FAILED, title = displayName, reason = t.message ?: t.javaClass.simpleName)

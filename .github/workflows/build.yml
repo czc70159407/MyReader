@@ -19,11 +19,14 @@ jobs:
 
       - name: Apply MuPDF local patches
         # epub 进度锚点 + layout 异常保护（构建必需，见 third-party/patches/README.md）。
-        # runner 默认无 git 身份，git am 需要提交者信息才能执行
+        # runner 默认无 git 身份，git am 需要提交者信息才能执行。
+        # 补丁用 $GITHUB_WORKSPACE 绝对路径：bash 的相对通配符按 CWD（仓根）展开，而
+        # git -C 会把参数再按 submodule 目录解析——两层解析错位会让字面 * 传给 git am
+        # （run #2 瞬败根因：could not open '../../third-party/patches/*.patch'）
         run: |
           git config --global user.name "ci"
           git config --global user.email "ci@myreader.invalid"
-          git -C third-party/mupdf-android-viewer am ../../third-party/patches/*.patch
+          git -C third-party/mupdf-android-viewer am "$GITHUB_WORKSPACE"/third-party/patches/*.patch
 
       - name: Make gradlew executable
         # 仓库在 Windows 创建，gradlew（shell 脚本）可能无 executable bit

@@ -53,7 +53,10 @@ cd MyReader
 git submodule update --init
 
 # 应用 MuPDF submodule 本地补丁（epub 进度锚点 + layout 保护，构建必需）
-git -C third-party/mupdf-android-viewer am ../../third-party/patches/*.patch
+# 注意：PowerShell 不展开 *，git -C 的相对通配符另有解析错位——请按补丁显式文件名指定
+cd third-party/mupdf-android-viewer
+git am ../../third-party/patches/0001-feat-M9-MuPDFCore-pageToBookmark-bookmarkToPage.patch ../../third-party/patches/0002-fix-MuPDFCore-layout-bookmark.patch
+cd ../..
 
 # 装配 Debug APK
 .\gradlew.bat :app:assembleDebug

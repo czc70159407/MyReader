@@ -32,8 +32,12 @@
 # 1. 正常拉 submodule（注意：勿加 --recursive，原因见 README「构建」节）
 git submodule update --init
 
-# 2. 应用两个补丁（在 submodule 目录内执行）
-git -C third-party/mupdf-android-viewer am ../../third-party/patches/*.patch
+# 2. 应用两个补丁（先进入 submodule 目录再执行；补丁用显式文件名——PowerShell
+#    不会为原生命令展开 * 通配符，`git -C` 的相对通配符也会因「shell 按 CWD 展开、
+#    git 再按 submodule 目录解析」的双层错位而找不到文件，CI run #2 即栽在这里）
+cd third-party/mupdf-android-viewer
+git am ../../third-party/patches/0001-feat-M9-MuPDFCore-pageToBookmark-bookmarkToPage.patch ../../third-party/patches/0002-fix-MuPDFCore-layout-bookmark.patch
+# bash 下也可用通配符：git am ../../third-party/patches/*.patch
 
 # 3. 校验：submodule HEAD 应为 a5496f1（或其后代）
 git -C third-party/mupdf-android-viewer log --oneline -3

@@ -16,8 +16,9 @@ android {
         applicationId = "com.myreader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // 版本与功能里程碑对齐（v1.2 = M9 多格式）；versionCode 随内部分发递增（2 = 此前 debug 分发计数）
+        versionCode = 2
+        versionName = "1.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -1,0 +1,126 @@
+From a5496f1e0dcf805031a0280e166f1e1d31df840f Mon Sep 17 00:00:00 2001
+From: Acrosstar <70159407@qq.com>
+Date: Wed, 14 Oct 2026 17:48:47 +0800
+Subject: [PATCH 2/2] =?UTF-8?q?fix:=20MuPDFCore=20layout=20=E5=BC=82?=
+ =?UTF-8?q?=E5=B8=B8=E4=BF=9D=E6=8A=A4=20+=20bookmark=20=E5=A4=B1=E8=B4=A5?=
+ =?UTF-8?q?=E7=A0=81=E5=88=86=E7=A6=BB=20+=20=E5=90=8E=E5=8F=B0=E9=87=8D?=
+ =?UTF-8?q?=E6=8E=92=E9=80=82=E9=85=8D?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ .../com/artifex/mupdf/viewer/MuPDFCore.java   | 66 ++++++++++++++-----
+ 1 file changed, 49 insertions(+), 17 deletions(-)
+
+diff --git a/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java b/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java
+index d497b59..7014300 100644
+--- a/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java
++++ b/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java
+@@ -47,9 +47,22 @@ public class MuPDFCore
+ 
+ 	private MuPDFCore(Document doc) {
+ 		this.doc = doc;
+-		doc.layout(layoutW, layoutH, layoutEM);
+-		pageCount = doc.countPages();
+-		reflowable = doc.isReflowable();
++		// 加密文档（如加密 epub）认证前 layout/countPages 可能失败：延迟到认证后，
++		// 失败仅记 pageCount=0（引擎据此走 needsPassword 路径，而非误判损坏）
++		try {
++			doc.layout(layoutW, layoutH, layoutEM);
++			pageCount = doc.countPages();
++		} catch (Exception ex) {
++			pageCount = 0;
++			// 标记未排版，强制下次 layout() 执行重排（加密文档认证后补排路径）
++			layoutW = -1;
++			layoutH = -1;
++		}
++		try {
++			reflowable = doc.isReflowable();
++		} catch (Exception ex) {
++			reflowable = false;
++		}
+ 		resolution = 160;
+ 		currentPage = -1;
+ 	}
+@@ -79,13 +92,18 @@ public class MuPDFCore
+ 	 * 供流式文档（epub）以 bookmark 十进制串作为进度锚点（docs/m9-plan.md L1）。
+ 	 * 返回 0 表示失败（调用方据此回落页码式兜底）。
+ 	 */
++	/**
++	 * M9: 页码 -> 跨重排稳定的 bookmark（fitz makeBookmark(locationFromPageNumber(page))）。
++	 * 供流式文档（epub）以 bookmark 十进制串作为进度锚点。失败返回 Long.MIN_VALUE（与合法
++	 * bookmark 0 区分，避免首章首页被误判失败）。
++	 */
+ 	public synchronized long pageToBookmark(int pageNum) {
+ 		if (doc == null)
+-			return 0L;
++			return Long.MIN_VALUE;
+ 		try {
+ 			return doc.makeBookmark(doc.locationFromPageNumber(pageNum));
+ 		} catch (Exception ex) {
+-			return 0L;
++			return Long.MIN_VALUE;
+ 		}
+ 	}
+ 
+@@ -93,33 +111,47 @@ public class MuPDFCore
+ 	 * M9: bookmark -> 当前排版下的页码（fitz pageNumberFromLocation(findBookmark(mark))）。
+ 	 * mark 非法/越界时返回 -1（调用方据此钳制/回落）。
+ 	 */
++	/**
++	 * M9: bookmark -> 当前排版下的页码。失败（非法/失效 anchor，或 doc==null）返回 -2。
++	 * 通过「bookmark→page→bookmark」往返一致性校验区分「真实第 0 页」与「失效锚点」，
++	 * 失效锚点返回 -2 让调用方回落到 payload 内 page，避免静默跳回首页。
++	 */
+ 	public synchronized int bookmarkToPage(long mark) {
+ 		if (doc == null)
+-			return -1;
++			return -2;
+ 		try {
+-			return doc.pageNumberFromLocation(doc.findBookmark(mark));
++			int page = doc.pageNumberFromLocation(doc.findBookmark(mark));
++			long back = doc.makeBookmark(doc.locationFromPageNumber(page));
++			if (back != mark)
++				return -2;
++			return page;
+ 		} catch (Exception ex) {
+-			return -1;
++			return -2;
+ 		}
+ 	}
+ 
+ 	public synchronized int layout(int oldPage, int w, int h, int em) {
++		if (doc == null)
++			return oldPage;
+ 		if (w != layoutW || h != layoutH || em != layoutEM) {
+-			System.out.println("LAYOUT: " + w + "," + h);
+ 			layoutW = w;
+ 			layoutH = h;
+ 			layoutEM = em;
+-			long mark = doc.makeBookmark(doc.locationFromPageNumber(oldPage));
+-			doc.layout(layoutW, layoutH, layoutEM);
+-			currentPage = -1;
+-			pageCount = doc.countPages();
+-			outline = null;
+ 			try {
+-				outline = doc.loadOutline();
++				long mark = (oldPage >= 0) ? doc.makeBookmark(doc.locationFromPageNumber(oldPage)) : -1L;
++				doc.layout(layoutW, layoutH, layoutEM);
++				currentPage = -1;
++				pageCount = doc.countPages();
++				outline = null;
++				try {
++					outline = doc.loadOutline();
++				} catch (Exception ex) {
++					/* ignore error */
++				}
++				return (oldPage >= 0) ? doc.pageNumberFromLocation(doc.findBookmark(mark)) : 0;
+ 			} catch (Exception ex) {
+-				/* ignore error */
++				return (oldPage >= 0) ? oldPage : 0;
+ 			}
+-			return doc.pageNumberFromLocation(doc.findBookmark(mark));
+ 		}
+ 		return oldPage;
+ 	}

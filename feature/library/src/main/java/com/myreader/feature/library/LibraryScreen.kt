@@ -1,55 +1,34 @@
 package com.myreader.feature.library
 
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Book
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,10 +50,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -85,19 +60,21 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myreader.core.document.FileTypes
-import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
-import java.io.File
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * 书架页（M5）：单层目录浏览（子文件夹卡片 + 文档网格）+ SAF 导入（先选目标目录）
  * + 文件夹/文档长按菜单（重命名/移动/删除/新建子目录）+ 目录树选择弹窗。
  * 点击文件夹 → onFolderClick 进子目录（library?folderId=xx）；点击文档 → onDocumentClick 进阅读器。
+ *
+ * 本文件只保留屏幕级编排（工程优化 2026-10-16，原 37KB 单文件拆分为）：
+ * - 卡片与最近阅读条 → [LibraryCards.kt]（FolderCard / DocumentCard / RecentSection）
+ * - 缩略图与角标 → [LibraryThumbnails.kt]（ThumbnailImage / StatusBadge / FormatBadge）
+ * - 排序菜单 → [SortMenu.kt]
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+// ExperimentalFoundationApi 原为 combinedClickable 等卡片件所需，已随拆分移至 LibraryCards.kt
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onDocumentClick: (Long) -> Unit = {},
@@ -275,7 +252,7 @@ fun LibraryScreen(
                         LazyVerticalGrid(
                             columns = GridCells.Adaptive(minSize = 108.dp),
                             modifier = Modifier.fillMaxSize(),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                            contentPadding = PaddingValues(12.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
@@ -318,7 +295,7 @@ fun LibraryScreen(
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(minSize = 108.dp),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+                    contentPadding = PaddingValues(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -513,327 +490,5 @@ fun LibraryScreen(
                 TextButton(onClick = viewModel::dismissDuplicate) { Text(text = "跳过") }
             },
         )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun FolderCard(
-    folder: Folder,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    menuExpanded: Boolean,
-    onDismissMenu: () -> Unit,
-    onRename: () -> Unit,
-    onMove: () -> Unit,
-    onDelete: () -> Unit,
-    onNewSubFolder: () -> Unit,
-) {
-    Box {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        ) {
-            Box(
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Folder,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp),
-                )
-            }
-            Text(
-                text = folder.name,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-            )
-        }
-        FolderMenu(
-            expanded = menuExpanded,
-            onDismiss = onDismissMenu,
-            onRename = onRename,
-            onMove = onMove,
-            onDelete = onDelete,
-            onNewSubFolder = onNewSubFolder,
-        )
-    }
-}
-
-@Composable
-private fun FolderMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    onRename: () -> Unit,
-    onMove: () -> Unit,
-    onDelete: () -> Unit,
-    onNewSubFolder: () -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        DropdownMenuItem(text = { Text(text = "重命名") }, onClick = { onDismiss(); onRename() })
-        DropdownMenuItem(text = { Text(text = "移动") }, onClick = { onDismiss(); onMove() })
-        DropdownMenuItem(text = { Text(text = "删除") }, onClick = { onDismiss(); onDelete() })
-        DropdownMenuItem(text = { Text(text = "新建子目录") }, onClick = { onDismiss(); onNewSubFolder() })
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DocumentCard(
-    item: LibraryItem,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    menuExpanded: Boolean,
-    onDismissMenu: () -> Unit,
-    onRename: () -> Unit,
-    onMove: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    Box {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        ) {
-            Box(modifier = Modifier.aspectRatio(1f)) {
-                ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
-                // M9：非 PDF 格式在左上角显示格式角标（EPUB / CBZ / XPS）
-                if (item.fileType != FileTypes.PDF) {
-                    FormatBadge(label = formatLabel(item.fileType), modifier = Modifier.align(Alignment.TopStart))
-                }
-                // 状态角标：加密 / 损坏
-                when {
-                    item.needsPassword -> StatusBadge(
-                        icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) },
-                        modifier = Modifier.align(Alignment.TopEnd),
-                    )
-                    item.pageCount == -2 -> StatusBadge(
-                        icon = { Icon(Icons.Filled.Warning, contentDescription = "已损坏", tint = Color.White, modifier = Modifier.size(14.dp)) },
-                        modifier = Modifier.align(Alignment.TopEnd),
-                    )
-                }
-            }
-            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
-                )
-                // 页码式文档显示「N 页」；流式/未知页数（epub 恒 -1、加密未开）显示格式标签
-                if (item.pageCount > 0) {
-                    Text(
-                        text = "${item.pageCount} 页",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                } else {
-                    Text(
-                        text = formatLabel(item.fileType),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                }
-            }
-        }
-        DropdownMenu(expanded = menuExpanded, onDismissRequest = onDismissMenu) {
-            DropdownMenuItem(text = { Text(text = "重命名") }, onClick = { onDismissMenu(); onRename() })
-            DropdownMenuItem(text = { Text(text = "移动") }, onClick = { onDismissMenu(); onMove() })
-            DropdownMenuItem(text = { Text(text = "删除") }, onClick = { onDismissMenu(); onDelete() })
-        }
-    }
-}
-
-@Composable
-private fun StatusBadge(icon: @Composable () -> Unit, modifier: Modifier) {
-    Box(
-        modifier = modifier
-            .padding(6.dp)
-            .size(24.dp)
-            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
-    ) { icon() }
-}
-
-/** M9：格式文字角标（左上角，标识 EPUB / CBZ / XPS） */
-@Composable
-private fun FormatBadge(label: String, modifier: Modifier) {
-    Box(
-        modifier = modifier
-            .padding(6.dp)
-            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text = label, color = Color.White, style = MaterialTheme.typography.labelSmall)
-    }
-}
-
-/** fileType → 展示用格式标签 */
-private fun formatLabel(fileType: String): String = when (fileType) {
-    FileTypes.EPUB -> "EPUB"
-    FileTypes.CBZ -> "CBZ"
-    FileTypes.XPS -> "XPS"
-    FileTypes.TXT -> "TXT"
-    else -> "PDF"
-}
-
-/** fileType → 无缩略图时的占位图标 */
-private fun formatIcon(fileType: String): ImageVector = when (fileType) {
-    FileTypes.EPUB -> Icons.Filled.Book
-    FileTypes.CBZ -> Icons.Filled.Image
-    FileTypes.TXT -> Icons.AutoMirrored.Filled.Article
-    else -> Icons.Filled.Description   // pdf / xps / 未知
-}
-
-@Composable
-private fun ThumbnailImage(relPath: String?, fileType: String, modifier: Modifier = Modifier) {
-    if (relPath == null) {
-        Box(
-            modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = formatIcon(fileType),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
-                modifier = Modifier.size(36.dp),
-            )
-        }
-        return
-    }
-    val context = LocalContext.current
-    // 异步解码：避免组合期主线程做磁盘 IO + PNG 解码（网格滚动卡顿）
-    var bitmap by remember(relPath) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(relPath) {
-        bitmap = withContext(Dispatchers.IO) {
-            runCatching { BitmapFactory.decodeFile(File(context.filesDir, relPath).absolutePath) }.getOrNull()
-        }
-    }
-    val decoded = bitmap
-    if (decoded != null) {
-        androidx.compose.foundation.Image(
-            bitmap = decoded.asImageBitmap(),
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.Crop,
-        )
-    } else {
-        Box(modifier = modifier.background(MaterialTheme.colorScheme.surfaceVariant))
-    }
-}
-
-/**
- * 排序菜单（M6）：顶栏三点溢出，4 个选项当前项勾选，选中即写偏好并即时生效。
- * 搜索结果固定按标题排序（DocumentDao.search），故搜索态不展示此菜单。
- * internal：供 Compose UI 测试直接渲染（无 Room/VM 依赖）。
- */
-@Composable
-internal fun SortMenu(current: DocSort, onSelect: (DocSort) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { expanded = true }) {
-            Icon(imageVector = Icons.Filled.MoreVert, contentDescription = "排序")
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            DocSort.entries.forEach { sort ->
-                DropdownMenuItem(
-                    text = { Text(text = sortLabel(sort)) },
-                    trailingIcon = {
-                        if (sort == current) {
-                            Icon(imageVector = Icons.Filled.Check, contentDescription = "当前排序")
-                        }
-                    },
-                    onClick = {
-                        expanded = false
-                        onSelect(sort)
-                    },
-                )
-            }
-        }
-    }
-}
-
-private fun sortLabel(sort: DocSort): String = when (sort) {
-    DocSort.TITLE -> "标题"
-    DocSort.LAST_READ -> "最近阅读"
-    DocSort.ADDED -> "添加时间"
-    DocSort.SIZE -> "大小"
-}
-
-/** 最近阅读条（M6）：根书架网格首部横向滑动卡片，点击直达阅读器。internal 供 Compose UI 测试 */
-@Composable
-internal fun RecentSection(recent: List<LibraryItem>, onDocumentClick: (Long) -> Unit) {
-    val listState = rememberLazyListState()
-    // 阅读返回后最近条按 lastReadAt 重排（刚读的文档升到首位）：内容在保留的横向偏移下原地换卡，
-    // 视觉上像卡片跳变（M6 验收用户反馈）——首项变化时把横向滚动复位到最新项，跳变变更有意的展示
-    LaunchedEffect(recent.firstOrNull()?.id) {
-        if (listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0) {
-            listState.scrollToItem(0)
-        }
-    }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = "最近阅读",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        LazyRow(
-            state = listState,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(top = 4.dp),
-        ) {
-            rowItems(recent, key = { "r_${it.id}" }) { item ->
-                RecentCard(item = item, onClick = { onDocumentClick(item.id) })
-            }
-        }
-    }
-}
-
-@Composable
-internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.width(100.dp).clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-    ) {
-        Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)) {
-            ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
-            // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）
-            if (item.needsPassword) {
-                StatusBadge(
-                    icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) },
-                    modifier = Modifier.align(Alignment.TopEnd),
-                )
-            }
-        }
-        Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            // 页码式显示「第 N 页」；流式（cfi，如 epub）无固定页概念，显示「继续阅读」
-            when (item.progressType) {
-                "page" -> Text(
-                    text = "第 ${item.currentPage + 1} 页",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                "cfi" -> Text(
-                    text = "继续阅读",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-            }
-        }
     }
 }

@@ -1,0 +1,54 @@
+From 315ba6ccce9d649a4afe0a7b93206c0f03c6c93c Mon Sep 17 00:00:00 2001
+From: Acrosstar <70159407@qq.com>
+Date: Wed, 14 Oct 2026 01:42:12 +0800
+Subject: [PATCH 1/2] =?UTF-8?q?feat(M9):=20MuPDFCore=20=E5=A2=9E=20pageToB?=
+ =?UTF-8?q?ookmark/bookmarkToPage=20=E5=85=AC=E5=BC=80=E6=96=B9=E6=B3=95?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+epub 流式进度锚点：页码 <-> 跨重排稳定的 fitz bookmark 串互转（makeBookmark(locationFromPageNumber)/pageNumberFromLocation(findBookmark)）；供 feature:viewer-mupdf 的 EpubLocationResolver 使用。属 MyReader M9，MuPDF 边界内。
+---
+ .../com/artifex/mupdf/viewer/MuPDFCore.java   | 29 +++++++++++++++++++
+ 1 file changed, 29 insertions(+)
+
+diff --git a/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java b/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java
+index b31e653..d497b59 100644
+--- a/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java
++++ b/lib/src/main/java/com/artifex/mupdf/viewer/MuPDFCore.java
+@@ -74,6 +74,35 @@ public class MuPDFCore
+ 		return reflowable;
+ 	}
+ 
++	/**
++	 * M9: 页码 -> 跨重排稳定的 bookmark（fitz makeBookmark(locationFromPageNumber(page))）。
++	 * 供流式文档（epub）以 bookmark 十进制串作为进度锚点（docs/m9-plan.md L1）。
++	 * 返回 0 表示失败（调用方据此回落页码式兜底）。
++	 */
++	public synchronized long pageToBookmark(int pageNum) {
++		if (doc == null)
++			return 0L;
++		try {
++			return doc.makeBookmark(doc.locationFromPageNumber(pageNum));
++		} catch (Exception ex) {
++			return 0L;
++		}
++	}
++
++	/**
++	 * M9: bookmark -> 当前排版下的页码（fitz pageNumberFromLocation(findBookmark(mark))）。
++	 * mark 非法/越界时返回 -1（调用方据此钳制/回落）。
++	 */
++	public synchronized int bookmarkToPage(long mark) {
++		if (doc == null)
++			return -1;
++		try {
++			return doc.pageNumberFromLocation(doc.findBookmark(mark));
++		} catch (Exception ex) {
++			return -1;
++		}
++	}
++
+ 	public synchronized int layout(int oldPage, int w, int h, int em) {
+ 		if (w != layoutW || h != layoutH || em != layoutEM) {
+ 			System.out.println("LAYOUT: " + w + "," + h);

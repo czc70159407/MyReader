@@ -52,6 +52,9 @@ git clone <repository-url>
 cd MyReader
 git submodule update --init
 
+# 应用 MuPDF submodule 本地补丁（epub 进度锚点 + layout 保护，构建必需）
+git -C third-party/mupdf-android-viewer am ../../third-party/patches/*.patch
+
 # 装配 Debug APK
 .\gradlew.bat :app:assembleDebug
 
@@ -90,7 +93,10 @@ feature/
   ├── viewer-mupdf/     # MuPDF 渲染桥接（MuPDF 边界止于此）
   └── viewer-txt/       # TXT 渲染（扩展点验证，不依赖 MuPDF）
 third-party/
-  └── mupdf-android-viewer/   # MuPDF 官方 viewer（git submodule）
+  ├── mupdf-android-viewer/   # MuPDF 官方 viewer（git submodule）
+  └── patches/                # submodule 本地改动的补丁（epub 锚点 + layout 保护，构建必需）
+.github/
+  └── workflows/build.yml     # CI：全量构建 + 单测（push/PR 触发）
 LICENSE                 # AGPL-3.0 全文
 NOTICE                  # 第三方组件与许可来源
 ```

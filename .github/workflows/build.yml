@@ -1,0 +1,47 @@
+name: build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        # 注意：submodule 不走 recursive——viewer 的嵌套 jni 子模块刻意不初始化，
+        # native 层用官方 Maven 预编译 fitz AAR（见 README「构建」节）
+
+      - name: Init MuPDF submodule
+        run: git submodule update --init
+
+      - name: Apply MuPDF local patches
+        # epub 进度锚点 + layout 异常保护（构建必需，见 third-party/patches/README.md）。
+        # runner 默认无 git 身份，git am 需要提交者信息才能执行
+        run: |
+          git config --global user.name "ci"
+          git config --global user.email "ci@myreader.invalid"
+          git -C third-party/mupdf-android-viewer am ../../third-party/patches/*.patch
+
+      - name: Make gradlew executable
+        # 仓库在 Windows 创建，gradlew（shell 脚本）可能无 executable bit
+        run: chmod +x gradlew
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Build + unit tests (all variants)
+        run: ./gradlew build --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

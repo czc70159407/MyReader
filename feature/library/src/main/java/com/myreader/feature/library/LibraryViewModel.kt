@@ -40,6 +40,7 @@ class LibraryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: LibraryRepository,
     private val importer: DocumentImporter,
+    private val directoryImporter: DirectoryImporter,
     private val prefs: LibraryPrefs,
 ) : ViewModel() {
 
@@ -345,6 +346,64 @@ class LibraryViewModel @Inject constructor(
         _pendingDuplicate.value = null
         duplicateDecision?.complete(false)
         duplicateDecision = null
+    }
+
+    // ---- 目录导入（批量：SAF 目录树 → 镜像目录结构 + 逐文件导入 + 汇总反馈）----
+
+    /** SAF 选完目录待确认目标位置（复用 FolderPickerDialog，与单文件导入同交互） */
+    private val _pendingDirectoryUri = MutableStateFlow<Uri?>(null)
+    val pendingDirectoryUri: StateFlow<Uri?> = _pendingDirectoryUri
+
+    /** 目录导入进度（底部进度条文案：「正在扫描目录…」/「正在导入 3/42…」） */
+    private val _importProgress = MutableStateFlow<DirectoryImportProgress?>(null)
+    val importProgress: StateFlow<DirectoryImportProgress?> = _importProgress
+
+    /** 目录导入汇总（完成后弹对话框，含各类计数与逐条原因） */
+    private val _importSummary = MutableStateFlow<DirectoryImportSummary?>(null)
+    val importSummary: StateFlow<DirectoryImportSummary?> = _importSummary
+
+    fun onDirectoryPicked(uri: Uri?) {
+        if (uri == null || _importing.value) return
+        _pendingDirectoryUri.value = uri
+    }
+
+    fun cancelDirectoryPick() {
+        _pendingDirectoryUri.value = null
+    }
+
+    fun confirmDirectoryPick(targetFolderId: Long?) {
+        val uri = _pendingDirectoryUri.value ?: return
+        _pendingDirectoryUri.value = null
+        importDirectory(uri, targetFolderId)
+    }
+
+    fun importDirectory(uri: Uri, targetFolderId: Long?) {
+        if (_importing.value) return
+        viewModelScope.launch {
+            _importing.value = true
+            try {
+                val summary = directoryImporter.importDirectory(uri, targetFolderId) { progress ->
+                    _importProgress.value = progress
+                }
+                _importSummary.value = summary
+                if (summary.total == 0) {
+                    _messages.send("该目录中没有可导入的文档")
+                }
+            } catch (e: DirectoryAccessException) {
+                _messages.send("无法访问所选目录（权限可能已被撤销）")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _messages.send("目录导入失败：${e.message ?: "未知错误"}")
+            } finally {
+                _importing.value = false
+                _importProgress.value = null
+            }
+        }
+    }
+
+    fun dismissImportSummary() {
+        _importSummary.value = null
     }
 
     private companion object {

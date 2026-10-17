@@ -103,6 +103,7 @@ class LibraryViewModelTest {
     private lateinit var storage: DocumentStorage
     private lateinit var repository: LibraryRepositoryImpl
     private lateinit var importer: DocumentImporter
+    private lateinit var directoryImporter: DirectoryImporter
     private lateinit var prefs: LibraryPrefs
     private lateinit var viewModel: LibraryViewModel
 
@@ -169,13 +170,14 @@ class LibraryViewModelTest {
             viewers = mapOf("pdf" to FakeViewer()),
         )
         importer = DocumentImporter(context, router, storage, repository, dispatchers)
+        directoryImporter = DirectoryImporter(context, repository, importer, dispatchers)
         // DataStore 测试实例：scope 共享 testScheduler（无参 UnconfinedTestDispatcher 会新建独立调度器，
         // 虚拟时间推不动其内部协程）；每测试独立文件，避开同名多实例崩溃
         val dataStore: DataStore<Preferences> = PreferenceDataStoreFactory.create(
             scope = CoroutineScope(UnconfinedTestDispatcher(mainDispatcherRule.testScheduler) + Job()),
         ) { File(tmp.newFolder("prefs"), "library.preferences_pb") }
         prefs = LibraryPrefs(dataStore)
-        viewModel = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, prefs)   // 根目录
+        viewModel = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, directoryImporter, prefs)   // 根目录
     }
 
     @After
@@ -476,7 +478,7 @@ class LibraryViewModelTest {
     fun breadcrumb_showsAncestorChain_andFallsBackWhenFolderDeleted() = runTest(mainDispatcherRule.testScheduler) {
         val a = repository.createFolder(null, "A")
         val b = repository.createFolder(a, "B")
-        val vm = LibraryViewModel(SavedStateHandle(mapOf("folderId" to b)), repository, importer, prefs)
+        val vm = LibraryViewModel(SavedStateHandle(mapOf("folderId" to b)), repository, importer, directoryImporter, prefs)
 
         vm.breadcrumb.test {
             assertEquals(emptyList<String>(), awaitItem())          // stateIn 初始值
@@ -508,7 +510,7 @@ class LibraryViewModelTest {
         awaitPrefsSort(DocSort.SIZE)
 
         // 重建 VM（同偏好实例）：重启语义读回 SIZE
-        val vm2 = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, prefs)
+        val vm2 = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, directoryImporter, prefs)
         keepAlive(vm2.documents)
         awaitDocOrder(vm2) { it == listOf("b.pdf", "a.pdf") }
     }
@@ -580,7 +582,7 @@ class LibraryViewModelTest {
 
         // 非根目录 VM：recent 恒空（VM 层 gate，stateIn 初值即空）
         val fid = repository.createFolder(null, "F")
-        val vm2 = LibraryViewModel(SavedStateHandle(mapOf("folderId" to fid)), repository, importer, prefs)
+        val vm2 = LibraryViewModel(SavedStateHandle(mapOf("folderId" to fid)), repository, importer, directoryImporter, prefs)
         assertTrue(vm2.recent.value.isEmpty())
     }
 }

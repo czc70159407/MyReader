@@ -185,6 +185,19 @@ fun FolderTreeList(
 4. 完成后刷新当前目录列表
 5. 首次打开兜底：`pageCount == -1` 或缺缩略图时（如加密文档解密成功后），`ReaderViewModel` 经 `DocumentEngineRouter.engineFor(doc.fileType).open(...)` 补齐 `pageCount` 并触发缩略图生成；**`needsPassword` 保留不清**（文件始终加密、密码不持久化，每次打开仍需输入——该标记即加密常驻标识，清掉会让书架/最近条锁角标永久消失；M6 验收用户反馈修正，另在 `PasswordRequiredException` 路径自愈置 true 兜住存量数据）；**加密文档不保留内容预览**：不补生成缩略图，且清除历史遗留缩略图（锁角标卡片却展示第一页内容违背加密语义，M6 用户反馈修正）
 
+### 目录导入流程（2026-10-16 新增）
+
+1. `LibraryScreen` 工具栏「导入目录」按钮（`Icons.Filled.FolderOpen`）→ `rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree())`（SAF 目录树，**不声明任何存储权限**）；回调先 `takePersistableUriPermission(READ)`（导入异步耗时，防授权被回收），失败仅 runCatching 吞掉仍尝试导入
+2. 选中后复用 `FolderPickerDialog` 选目标位置（默认当前目录），确认后 `LibraryViewModel.importDirectory(treeUri, targetFolderId)`
+3. `DirectoryImporter.importTree` 在 `Dispatchers.IO` 执行：
+   - **扫描**：`DirectoryScanner` 以 BFS（非递归）遍历 `SafDirectoryTreeSource`（`DocumentsContract` child documents 查询）；`FileTypes.normalize` 过滤格式（未登记 → 计 `unsupported` 不复制）；上限 `maxFiles=500 / maxDepth=8 / maxFileBytes=200MB`，超限计入汇总而非中断；子目录不可访问（权限撤销/provider 异常）计 `inaccessibleDirs`
+   - **目录镜像**：`FolderCache` 按相对路径段创建目录，**同名目录复用（合并）**不建副本；只镜像含可导入文件的路径（空目录不创建）
+   - **逐文件导入**：直接复用 `DocumentImporter.import(uri, targetFolderId=镜像目录)`，与单文件导入同一验证/查重/缩略图/入库链路
+   - **冲突策略**：内容 hash 命中 → **跳过**（计入 `duplicateSkipped`，批量场景不弹逐个确认窗）；同目录同名不同内容 → `TitleCache` 自动 `name (k)` 递增重命名（`title→id集合` 判冲突，排除自身 id——单测抓出并修正的键碰撞缺陷）
+   - **进度反馈**：底部进度条「正在扫描目录…」/「正在导入 3/42…」（`importProgress`）
+4. 完成后弹 `ImportSummaryDialog`：导入成功 / 已加密 / 已跳过 / 损坏 / 不支持 / 过大 / 失败计数 + 目录新建复用数 + 重命名数 + 各类上限截断数 + 逐条 issue（路径+原因，上限 50 条）
+5. 单测：`DirectoryScannerTest`（7 例，纯遍历逻辑 + 内存源注入）+ `DirectoryImporterTest`（5 例，Robolectric + inMemory Room + Fake 引擎，覆盖结构镜像/重复跳过/重命名/损坏计数/空目录）；`LibraryViewModelTest` 构造参数随 `DirectoryImporter` 注入同步更新
+
 ## 错误处理与边界
 
 | 场景 | 处理 |

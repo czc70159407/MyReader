@@ -1,5 +1,6 @@
 package com.myreader.feature.library
 
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -50,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -95,7 +98,11 @@ fun LibraryScreen(
     val searchActive by viewModel.searchOpen.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val searchResults by viewModel.searchResults.collectAsStateWithLifecycle()
+    val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
+    val pendingDirectoryUri by viewModel.pendingDirectoryUri.collectAsStateWithLifecycle()
+    val importSummary by viewModel.importSummary.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
 
     // 系统返回手势：搜索态先收起搜索，不 pop 导航栈（searchActive 来自 VM，跨导航一致）
     BackHandler(enabled = searchActive) { viewModel.exitSearch() }
@@ -118,6 +125,21 @@ fun LibraryScreen(
         ActivityResultContracts.OpenMultipleDocuments(),
     ) { uris ->
         if (uris.isNotEmpty()) viewModel.onUrisPicked(uris)
+    }
+
+    // 目录导入：SAF 目录树选择器（无存储权限）。导入是异步耗时操作，回调里立即取持久读授权，
+    // 避免授权在导入完成前被回收；取权失败仍尝试导入（Uri 通常仍有单次读权限）。
+    val dirLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+        viewModel.onDirectoryPicked(uri)
     }
 
     LaunchedEffect(Unit) {
@@ -202,6 +224,12 @@ fun LibraryScreen(
                             enabled = !importing,
                         ) {
                             Icon(imageVector = Icons.Filled.Add, contentDescription = "导入文档")
+                        }
+                        IconButton(
+                            onClick = { dirLauncher.launch(null) },
+                            enabled = !importing,
+                        ) {
+                            Icon(imageVector = Icons.Filled.FolderOpen, contentDescription = "导入目录")
                         }
                         IconButton(onClick = viewModel::openSearch) {
                             Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
@@ -349,7 +377,15 @@ fun LibraryScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Text(text = "正在导入…", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = importProgress?.let { p ->
+                            when (p.phase) {
+                                DirectoryImportProgress.Phase.SCANNING -> "正在扫描目录…"
+                                DirectoryImportProgress.Phase.IMPORTING -> "正在导入 ${p.current}/${p.total}…"
+                            }
+                        } ?: "正在导入…",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                 }
             }
         }
@@ -433,6 +469,22 @@ fun LibraryScreen(
             onCreateSubFolder = viewModel::createFolderAndSelect,
             initialSelectedId = viewModel.currentFolderId,
         )
+    }
+
+    // 目录导入：选完目录弹目标位置选择（默认当前目录），结构镜像到该目录下
+    pendingDirectoryUri?.let {
+        FolderPickerDialog(
+            state = viewModel.folderTree,
+            onConfirm = { target -> viewModel.confirmDirectoryPick(target) },
+            onDismiss = viewModel::cancelDirectoryPick,
+            onCreateSubFolder = viewModel::createFolderAndSelect,
+            initialSelectedId = viewModel.currentFolderId,
+        )
+    }
+
+    // 目录导入汇总（成功/跳过/失败数量及原因）
+    importSummary?.let { summary ->
+        ImportSummaryDialog(summary = summary, onDismiss = viewModel::dismissImportSummary)
     }
 
     // 移动文档：任意目录（默认当前目录）

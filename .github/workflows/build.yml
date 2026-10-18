@@ -6,6 +6,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# 同分支并发构建互踩（run #7/#8 曾于 20s 内先后触发并发执行，后者失败于构建步骤）：
+# 新推送自动取消同分支仍在进行的旧构建
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -32,8 +38,18 @@ jobs:
         # 仓库在 Windows 创建，gradlew（shell 脚本）可能无 executable bit
         run: chmod +x gradlew
 
+      # Robolectric 运行时按需下载 android-all jar 至 ~/.m2/repository（setup-java 的
+      # cache: gradle 只覆盖 ~/.gradle，不覆盖此处）——每次冷下载百 MB 级，网络抖动即失败
+      # （run #8/#9 均失败于构建步骤、代码与通过的 #7 逐字节相同，环境抖动嫌疑最大）。
+      # 固定 key 常驻缓存：命中则跳过下载，未命中自动回填
+      - name: Cache Robolectric android-all (~/.m2)
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: robolectric-m2-${{ runner.os }}
+
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"

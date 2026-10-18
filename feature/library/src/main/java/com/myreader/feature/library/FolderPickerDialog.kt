@@ -45,7 +45,9 @@ fun FolderPickerDialog(
     excludedIds: Set<Long> = emptySet(),
     initialSelectedId: Long? = null,
 ) {
-    var selectedId by remember { mutableStateOf(initialSelectedId) }
+    // key 取 initialSelectedId：同一弹窗槽位为不同 item 连续打开时重置选中，
+    // 避免残留上次选中值（M10 review M2）
+    var selectedId by remember(initialSelectedId) { mutableStateOf(initialSelectedId) }
     var showNewFolder by remember { mutableStateOf(false) }
     val invalidSelection = selectedId != null && selectedId in excludedIds
 

@@ -5,6 +5,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -12,7 +13,6 @@ import com.artifex.mupdf.viewer.MuPDFCore
 import com.artifex.mupdf.viewer.PageAdapter
 import com.artifex.mupdf.viewer.ReaderView
 import com.myreader.core.document.ProgressPayload
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -50,8 +50,12 @@ internal fun MuPdfReaderView(
     val latestCallback by rememberUpdatedState(onProgressChanged)
     val adapterRef = remember { mutableStateOf<PageAdapter?>(null) }
     val resolver = remember(core) { if (reflowable) EpubLocationResolver(core) else null }
+    // 重排协程作用域：rememberCoroutineScope 与组合同生命周期，组合离开即取消——
+    // 不能用自建裸 CoroutineScope（M10 review H1：Composition 丢弃但 View 未 detach 时会操作失效 View）
+    val scope = rememberCoroutineScope()
 
     // 初始页：重排文档把 Cfi 锚点解析为当前排版页码；页码式取 Page.page
+    // （ProgressPayload 为 data class，remember 按结构相等判定，同内容 payload 不会重复解析）
     val initialPage = remember(initialProgress) {
         when {
             resolver != null -> resolver.pageForProgress(initialProgress)
@@ -98,8 +102,10 @@ internal fun MuPdfReaderView(
                             val lw = (w * 72 / dpi).coerceAtLeast(100)
                             val lh = (h * 72 / dpi).coerceAtLeast(100)
                             // 整书重排放后台线程执行，避免阻塞 UI（EPUB 整书秒级重排 → ANR 风险）；
-                            // 完成后再回主线程 remap 当前页并 refresh
-                            layoutJob = CoroutineScope(Dispatchers.Default).launch {
+                            // 完成后再回主线程 remap 当前页并 refresh。
+                            // 注意：rememberCoroutineScope 默认调度器是 Compose 主线程，必须显式指定
+                            // Default，否则重排会回到主线程（review 修正）
+                            layoutJob = scope.launch(Dispatchers.Default) {
                                 val remapped = runCatching {
                                     core.layout(target, lw, lh, REFLOW_EM)
                                 }.getOrDefault(target)

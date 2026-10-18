@@ -45,4 +45,7 @@ interface FolderDao {
 
     @Query("SELECT * FROM folders WHERE id = :id")
     suspend fun findById(id: Long): FolderEntity?
+
+    @Query("SELECT EXISTS(SELECT 1 FROM folders WHERE id = :id)")
+    suspend fun exists(id: Long): Boolean   // ID 碰撞预检（retryOnIdCollision）
 }

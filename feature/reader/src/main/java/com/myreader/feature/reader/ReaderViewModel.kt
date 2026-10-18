@@ -146,6 +146,9 @@ class ReaderViewModel @Inject constructor(
 
     private fun openDocument(password: String? = null) {
         viewModelScope.launch {
+            // 重入打开（如未来的恢复/重试路径）前就地释放上一轮 native 句柄：
+            // onCleared 只 close 最终 Ready 态，中间态残留的 doc 无人回收会泄漏 native 内存（M10 review H5）
+            (_state.value as? ReaderUiState.Ready)?.doc?.close()
             _state.value = ReaderUiState.Loading
             val item = repository.getDocument(docId)
             if (item == null) {

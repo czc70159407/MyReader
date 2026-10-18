@@ -65,6 +65,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myreader.core.document.FileTypes
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
+import kotlinx.coroutines.CancellationException
 
 /**
  * 书架页（M5）：单层目录浏览（子文件夹卡片 + 文档网格）+ SAF 导入（先选目标目录）
@@ -504,7 +505,29 @@ fun LibraryScreen(
     // 移动文件夹：先取自身+后代作禁选集（UI 前置防循环；业务层 moveFolder require 兜底）
     moveFolderTarget?.let { folder ->
         var excluded by remember(folder.id) { mutableStateOf<Set<Long>?>(null) }
-        LaunchedEffect(folder.id) { excluded = viewModel.subtreeIds(folder.id) }
+        var subtreeLoadFailed by remember(folder.id) { mutableStateOf(false) }
+        LaunchedEffect(folder.id) {
+            excluded = try {
+                viewModel.subtreeIds(folder.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // 读取失败不得静默无响应：保持 null 使 picker 不渲染，只弹失败提示
+                // （若给空集，用户会看到选择器并可能选到非法目标，到业务层才报错）（M10 review H2）
+                subtreeLoadFailed = true
+                null
+            }
+        }
+        if (subtreeLoadFailed) {
+            AlertDialog(
+                onDismissRequest = { moveFolderTarget = null },
+                title = { Text(text = "无法移动") },
+                text = { Text(text = "读取目录结构失败，请重试") },
+                confirmButton = {
+                    TextButton(onClick = { moveFolderTarget = null }) { Text(text = "知道了") }
+                },
+            )
+        }
         excluded?.let { excludedIds ->
             FolderPickerDialog(
                 state = viewModel.folderTree,

@@ -33,6 +33,9 @@ interface DocumentDao {
     @Query("SELECT * FROM documents WHERE id = :id")
     suspend fun findById(id: Long): DocumentEntity?
 
+    @Query("SELECT EXISTS(SELECT 1 FROM documents WHERE id = :id)")
+    suspend fun exists(id: Long): Boolean   // ID 碰撞预检（retryOnIdCollision）
+
     @Query("SELECT * FROM documents WHERE lastReadAt IS NOT NULL ORDER BY lastReadAt DESC LIMIT :limit")
     fun recent(limit: Int = 20): Flow<List<DocumentEntity>>
 

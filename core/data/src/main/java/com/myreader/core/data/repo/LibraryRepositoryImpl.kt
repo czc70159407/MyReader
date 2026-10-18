@@ -43,17 +43,20 @@ class LibraryRepositoryImpl @Inject constructor(
 
     override suspend fun createFolder(parentId: Long?, name: String): Long = withContext(dispatchers.io) {
         val ts = System.currentTimeMillis()
-        retryOnIdCollision { candidate ->
-            folderDao.insert(
-                FolderEntity(
-                    id = candidate,
-                    parentId = parentId,
-                    name = name,
-                    createdAt = ts,
-                    updatedAt = ts,
+        retryOnIdCollision(
+            exists = folderDao::exists,
+            insert = { candidate ->
+                folderDao.insert(
+                    FolderEntity(
+                        id = candidate,
+                        parentId = parentId,
+                        name = name,
+                        createdAt = ts,
+                        updatedAt = ts,
+                    )
                 )
-            )
-        }
+            },
+        )
     }
 
     override suspend fun renameFolder(id: Long, name: String) = withContext(dispatchers.io) {
@@ -153,7 +156,7 @@ class LibraryRepositoryImpl @Inject constructor(
         if (id != null) {
             documentDao.insert(buildEntity(id))
         } else {
-            retryOnIdCollision { candidate -> documentDao.insert(buildEntity(candidate)) }
+            retryOnIdCollision(exists = documentDao::exists, insert = { candidate -> documentDao.insert(buildEntity(candidate)) })
         }
     }
 
@@ -212,16 +215,25 @@ fun newEntityId(): Long =
     System.currentTimeMillis() shl 20 or (System.nanoTime() and 0xFFFFF)
 
 /**
- * 带 ID 碰撞重试的插入：仅对 PRIMARY KEY 冲突重试（同毫秒+纳秒低位相同，概率 ≈2⁻²⁰），
- * 其他约束异常（如 FK 违规）原样抛出。
+ * 带 ID 碰撞重试的插入（同毫秒+纳秒低位相同，概率 ≈2⁻²⁰）。
+ *
+ * 碰撞判定用**存在性预检**而非约束异常文案：SQLite 对 INTEGER PRIMARY KEY 重复的报错文案
+ * 随平台/版本变化（"UNIQUE constraint failed: …" 不一定含 "PRIMARY KEY"），字符串匹配
+ * 会把 PK 冲突误判为其他约束而直接抛出（M10 review M4）。仍保留异常路径兜底：
+ * 插入后冲突且该 id 确实已存在（并发插入抢先）才重试，FK 等其他约束原样抛出。
  */
-internal inline fun retryOnIdCollision(insert: (id: Long) -> Long): Long {
+internal suspend inline fun retryOnIdCollision(
+    exists: suspend (Long) -> Boolean,
+    insert: suspend (Long) -> Long,
+): Long {
     repeat(3) {
         val candidate = newEntityId()
-        try {
-            return insert(candidate)
-        } catch (e: SQLiteConstraintException) {
-            if (!e.message.orEmpty().contains("PRIMARY KEY", ignoreCase = true)) throw e
+        if (!exists(candidate)) {
+            try {
+                return insert(candidate)
+            } catch (e: SQLiteConstraintException) {
+                if (!exists(candidate)) throw e
+            }
         }
     }
     throw IllegalStateException("实体 ID 生成连续碰撞")

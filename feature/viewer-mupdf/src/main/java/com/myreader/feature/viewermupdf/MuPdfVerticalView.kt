@@ -66,6 +66,7 @@ internal fun MuPdfVerticalView(
     val resolver = remember(doc) { if (reflowable) EpubLocationResolver((doc as MuPdfDocument).core) else null }
 
     // 初始恢复锚点：重排文档把 Cfi 解析为当前排版页码；页码式取 Page(page/offset)
+    // （ProgressPayload 为 data class，remember 按结构相等判定，同内容 payload 不会重复解析）
     val initPage = remember(initialProgress) {
         when {
             resolver != null -> resolver.pageForProgress(initialProgress)

@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.myreader.core.document.OutlineEntry
+import kotlinx.coroutines.CancellationException
 
 /** 展平后的大纲行（目录树扁平渲染模式，按 depth 缩进，LazyColumn 复用） */
 private data class FlatOutline(val title: String, val pageIndex: Int, val depth: Int)
@@ -54,6 +55,9 @@ fun OutlineSheet(
             val flat = mutableListOf<FlatOutline>()
             load().flatten(0, flat)
             entries = flat
+        } catch (e: CancellationException) {
+            // 快速关闭 sheet 导致取消不是加载失败：传播取消，不显示「目录加载失败」（M10 review H4）
+            throw e
         } catch (_: Exception) {
             failed = true
         }

@@ -5,6 +5,7 @@ import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngine
 import java.io.File
 import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import javax.inject.Inject
@@ -58,8 +59,9 @@ class TxtDocumentEngine @Inject constructor() : DocumentEngine {
                 .onUnmappableCharacter(CodingErrorAction.REPORT)
                 .decode(ByteBuffer.wrap(bytes))
                 .toString()
-        } catch (_: Exception) {
-            // 回落常见中文编码
+        } catch (e: CharacterCodingException) {
+            // 仅「非法字节序列」才回落常见中文编码；OOM 等非编码原因必须传播，
+            // 否则会被误判为「非 UTF-8 编码」而产出乱码（M10 review H7）
             return runCatching { String(bytes, charset("GBK")) }
                 .getOrElse { runCatching { String(bytes, charset("Big5")) }.getOrDefault(String(bytes, Charsets.ISO_8859_1)) }
         }

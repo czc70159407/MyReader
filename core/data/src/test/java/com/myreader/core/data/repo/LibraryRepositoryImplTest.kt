@@ -2,18 +2,23 @@ package com.myreader.core.data.repo
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import android.database.sqlite.SQLiteConstraintException
 import app.cash.turbine.test
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.entity.DocumentEntity
+import com.myreader.core.data.db.entity.FolderEntity
 import com.myreader.core.model.DocSort
 import com.myreader.core.storage.DocumentStorage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -229,5 +234,67 @@ class LibraryRepositoryImplTest {
 
         repo.setThumbnail(id, "thumb/$id.png")
         assertEquals("thumb/$id.png", repo.getDocument(id)!!.thumbnailRelPath)
+    }
+
+    // ---- ID 碰撞重试（M10 review M4：存在性预检替代约束异常文案匹配）----
+
+    @Test
+    fun retryOnIdCollision_retriesWhenInsertedIdAlreadyExists() = runTest {
+        var firstAttempt = true
+
+        val newId = retryOnIdCollision(
+            exists = db.folderDao()::exists,
+            insert = { candidate ->
+                val name = if (firstAttempt) "first" else "retried"
+                db.folderDao().insert(
+                    FolderEntity(id = candidate, parentId = null, name = name, createdAt = 1L, updatedAt = 1L)
+                )
+                if (firstAttempt) {
+                    firstAttempt = false
+                    // 模拟并发插入抢先：同一候选 id 二次插入 → SQLiteConstraintException。
+                    // SQLite 报「UNIQUE constraint failed: folders.id」，旧实现按 message 匹配
+                    // "PRIMARY KEY" 会直接误抛——本用例即回归该缺陷（M10 review M4）
+                    db.folderDao().insert(
+                        FolderEntity(id = candidate, parentId = null, name = "dup", createdAt = 1L, updatedAt = 1L)
+                    )
+                }
+                candidate
+            },
+        )
+
+        assertFalse(firstAttempt)
+        // 首轮冲突行保留，重试轮以新候选 id 写入
+        assertEquals(listOf("first", "retried"), db.folderDao().all().map { it.name }.sorted())
+        assertEquals("retried", db.folderDao().findById(newId)!!.name)
+    }
+
+    @Test
+    fun retryOnIdCollision_rethrowsForeignKeyViolation() = runTest {
+        // FK 违约必须原样抛出：存在性预检不命中 → 不重试，防止把约束错误吞成无效重试后
+        // 以「连续碰撞」的 IllegalStateException 掩盖真实原因
+        assertThrows(SQLiteConstraintException::class.java) {
+            runBlocking {
+                retryOnIdCollision(
+                    exists = db.documentDao()::exists,
+                    insert = { candidate ->
+                        db.documentDao().insert(
+                            DocumentEntity(
+                                id = candidate,
+                                folderId = 999_999L,   // 不存在的目录 → FK 违约
+                                title = "fk",
+                                relPath = "1.pdf",
+                                fileType = "pdf",
+                                mimeType = null,
+                                sourceUri = null,
+                                fileSize = 1,
+                                thumbnailRelPath = null,
+                                lastReadAt = null,
+                                addedAt = 1L,
+                            )
+                        )
+                    },
+                )
+            }
+        }
     }
 }

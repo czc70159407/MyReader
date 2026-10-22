@@ -49,6 +49,22 @@ jobs:
       - name: Build + unit tests (all variants)
         run: ./gradlew build --stacktrace
 
+      # T7 第一轮「仅报告不阻断」：detekt 存量基线收集（--continue 跑完所有模块），
+      # 第二轮按报告清理后再移除 continue-on-error 收紧为门禁
+      - name: Static analysis + coverage (report-only)
+        continue-on-error: true
+        run: ./gradlew detekt koverHtmlReport --continue
+
+      - name: Upload quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: |
+            **/build/reports/detekt/detekt.html
+            **/build/reports/kover/html/*
+          if-no-files-found: ignore
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:

@@ -63,3 +63,6 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version = "2.0.21-1.0.27" }
 room = { id = "androidx.room", version.ref = "room" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }   # M8 备份 JSON 序列化
+# T7 质量工具链（构建期静态检查/覆盖率，非运行时依赖；AGPL 无关）
+detekt = { id = "io.gitlab.arturbosch.detekt", version = "1.23.8" }
+kover = { id = "org.jetbrains.kotlinx.kover", version = "0.9.11" }

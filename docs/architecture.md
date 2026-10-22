@@ -174,6 +174,8 @@ hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
 ksp = { id = "com.google.devtools.ksp", version = "2.0.21-1.0.27" }
 room = { id = "androidx.room", version.ref = "room" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }   # M8 备份 JSON 序列化（与 kotlin-android 同版本对齐）
+detekt = { id = "io.gitlab.arturbosch.detekt", version = "1.23.8" }     # T7 静态检查（构建期工具，非运行时依赖；第一轮 ignoreFailures 报告不阻断）
+kover = { id = "org.jetbrains.kotlinx.kover", version = "0.9.11" }     # T7 覆盖率报告（构建期工具）
 ```
 
 > Kotlin 2.0 起用 compose-compiler 插件，不再手写 compose-compiler 版本。`activity-compose` 不在 Compose BOM 内，需单独声明版本。`accompanist-permissions` 不引入：SAF `OpenDocument` 与内部存储均无需运行时权限。MuPDF 官方不发布到 Maven Central，社区镜像版本陈旧且可能违反 AGPL 通告要求，源码子模块是最稳妥路径。以上为撰写时稳定档，M0 落地前统一刷新到当时最新稳定版并核对与 Gradle 8.14/JDK 21 兼容。

@@ -4,6 +4,8 @@
 
 ## 当前状态（会话开始必读 / 里程碑完成必更新）
 
+- **阶段 3 可选包完成（本会话 2026-10-22，T6/T8/T7）**：**T6** 枚举持久化改 name 字符串（`LibraryPrefs.docSort` / `SettingsPrefs.defaultReaderMode+themeMode`：新 string key + 旧 int key 兼容读取（`getOrNull` 越界回落）+ 写时 `remove` 旧 key——单次写入即完成迁移，无独立迁移任务），消除「枚举中间插入新值时旧 ordinal 静默错位」隐患，旧「枚举不可重排」约束解除（仅要求 name 稳定），`docs/data-layer.md` 同步；测试 +5（legacy 迁移 / 未知 name 回落 / 写清旧 key），prefs 套件 6+5 全绿。**T8** 实体→模型映射收敛 `core/data/repo/EntityMappers.kt`（`LibraryRepositoryImpl` 尾部移除）+ `EntityMappersTest` 快照测试 2 例（全字段 named-args 构造逐项断言 = 字段穷尽性 checklist，新增字段按失败提示补映射）。**T7** 质量工具链第一轮「报告不阻断」：detekt `io.gitlab.arturbosch.detekt:1.23.8` + kover `org.jetbrains.kotlinx.kover:0.9.11`（Gradle Plugin Portal metadata 查证后登记）注册根工程（`third-party:mupdf` 排除，纪律同 lint 禁用），detekt 默认挂 check 故以 `ignoreFailures = true` 实现不阻断（第二轮清理存量后移除收紧）；CI 增报告步骤（continue-on-error + `quality-reports` artifact 留存），存量基线已产出（6 模块约 20 条，app 4 条均为典型 Compose 风格项 TooManyFunctions/MatchingDeclarationName/FunctionNaming/MagicNumber），`architecture.md` 依赖清单 / `AGENTS.md` 常用命令同步。验收：全量 build BUILD SUCCESSFUL（1033 tasks，detekt/kover 并入任务图不阻断）；core:data 单测全绿。
+
 - **VAL 真机验收轮（本会话 2026-10-22，一加 PKC110 / Android 16，阶段 1+2 出口验收）**：①**插桩 9/9**（`connectedDebugAndroidTest` BUILD SUCCESSFUL 1m6s，含 epub bookmark 往返——T2 `403f4c3` 注释清理后行为不变；过程坑：后台运行的 UTP gRPC 断链致设备端 instrumentation 僵死 + 结果目录 `.lck` 锁，`force-stop` 测试进程 + 清目录后前台重跑即恢复）；②**T3**：epub_test.epub 垂直 `1 / 12`（打开快照）→ 切水平 **`1 / 30`** → 横屏 **`1 / 63`** → 回竖屏 **`1 / 30`**——三次 relayout 顶栏分母实时随动（旧代码停留 12）；跳页弹窗「页码（1 - 30）」clamp 同步实时值；③**T4**：垂直滚至 5/12 → BACK 落库基线 `(currentPage=4, scrollOffsetY=609)` → 设置默认模式=垂直 → 重进**直接垂直恢复** → UI `5 / 12` + **DB 逐字段保持 `(4, 609)`**（`restored` 守卫抑制恢复期首帧 (0,0) 回流，旧行为 600ms 防抖后会被覆盖为 0）；另观测水平重进路径 offset 归 0 属既有预期语义（水平只记页码）；④**T5**：debug 堆栈日志为编译级 + 单测回归验证（真机不构造 DB 故障，跳过 logcat 抽查）；⑤**R8 冒烟**（release 20.4MB 签名包，卸 debug 后全新安装）：书架/设置渲染正常、outline_test.pdf 导入（12 页角标）+ 水平翻页 1/12→2/12、epub 导入（EPUB 角标）+ 垂直滚动 1/12→2/12、encrypted_test.pdf 密码弹窗 + 密码 1234 解密 **`1 / 3`**（fitz JNI keep 生效）、备份导出 **87,624 字节** zip 落盘（kotlinx.serialization keep 生效）；全程 logcat 无 FATAL/ANR——**安全审计 M3 遗留的「R8 runtime 待真机冒烟」正式关闭**。**驱动备注**：R8 包 run-as 不可用，DB 校验改 UI 佐证 + 备份 zip 落盘验证；软键盘弹出会顶移对话框按钮（tap 前需重新 dump）；验证数据为全新导入（设备 DB 此前为空）；设备已恢复自动旋转。
 
 - **T4+T5 防御性小修（本会话 2026-10-22，阶段 2 代码收尾）**：**T4** `MuPdfVerticalView` 进度回写补 `restored` 守卫（`scrollToItem` 锚定完成前抑制 snapshotFlow 回写，与 `TxtViewerProvider` 同型）——封堵首帧 (0,0) 覆盖恢复进度的竞态，此前 MuPDF 垂直仅靠 `lastEmittedPage` 初值 + 600ms 防抖间接兜底，与 TXT 视图封堵程度不一致；守卫窗口仅限恢复期，用户主动滚动不受影响。**T5** `LibraryViewModel.launchOp` 未知异常在 `BuildConfig.DEBUG` 下 `Log.e(TAG, …, e)` 记录堆栈——编程错误（NPE/状态 bug）不再完全静默为「操作失败：未知错误」；release 行为不变，日志仅异常对象不含 uri/文件名（L1 脱敏语义），用户可见文案零变化。验证：`.\gradlew.bat build` → BUILD SUCCESSFUL（956 tasks，129 executed 含两模块单测重跑全过）；T4 无 JVM 测试（MuPDF native 依赖），真机复跑 M7 场景②（垂直恢复进度不被覆盖）待 VAL 轮；T5 现有 `LibraryViewModelTest` 回归全过 + VAL 轮 debug 包 logcat 抽查。
@@ -76,6 +78,7 @@
 .\gradlew.bat :core:data:test                    # 数据层单测
 .\gradlew.bat :app:assembleDebug                 # 装配 APK
 .\gradlew.bat :third-party:mupdf:assembleDebug   # 构建 MuPDF viewer 库（fitz 走官方 Maven 预编译，无 native 编译）
+.\gradlew.bat detekt koverHtmlReport             # T7 质量报告（detekt 静态检查 + 覆盖率，第一轮 ignoreFailures 仅报告）
 ```
 
 ## Context

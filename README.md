@@ -49,15 +49,10 @@
 
 ```powershell
 # 克隆后拉起 submodule（注意：勿加 --recursive，原因见下）
+# submodule 指向自有 fork 的 myreader-patches 分支，epub 进度锚点 + layout 保护补丁已含在内，一步取全
 git clone <repository-url>
 cd MyReader
 git submodule update --init
-
-# 应用 MuPDF submodule 本地补丁（epub 进度锚点 + layout 保护，构建必需）
-# 注意：PowerShell 不展开 *，git -C 的相对通配符另有解析错位——请按补丁显式文件名指定
-cd third-party/mupdf-android-viewer
-git am ../../third-party/patches/0001-feat-M9-MuPDFCore-pageToBookmark-bookmarkToPage.patch ../../third-party/patches/0002-fix-MuPDFCore-layout-bookmark.patch
-cd ../..
 
 # 装配 Debug APK
 .\gradlew.bat :app:assembleDebug
@@ -97,8 +92,7 @@ feature/
   ├── viewer-mupdf/     # MuPDF 渲染桥接（MuPDF 边界止于此）
   └── viewer-txt/       # TXT 渲染（扩展点验证，不依赖 MuPDF）
 third-party/
-  ├── mupdf-android-viewer/   # MuPDF 官方 viewer（git submodule）
-  └── patches/                # submodule 本地改动的补丁（epub 锚点 + layout 保护，构建必需）
+  └── mupdf-android-viewer/   # MuPDF viewer（git submodule → 自有 fork czc70159407/mupdf-android-viewer，本地补丁在 myreader-patches 分支）
 .github/
   └── workflows/build.yml     # CI：全量构建 + 单测（push/PR 触发）
 LICENSE                 # AGPL-3.0 全文

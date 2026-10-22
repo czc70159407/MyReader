@@ -1,3 +1,5 @@
 [submodule "third-party/mupdf-android-viewer"]
 	path = third-party/mupdf-android-viewer
-	url = https://github.com/ArtifexSoftware/mupdf-android-viewer.git
+	# 自有 fork：master 跟随上游 ArtifexSoftware/mupdf-android-viewer，
+	# 本地补丁（epub 进度锚点 + layout 保护）在 myreader-patches 分支
+	url = https://github.com/czc70159407/mupdf-android-viewer.git

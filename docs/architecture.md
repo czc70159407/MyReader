@@ -93,7 +93,7 @@ app ──► feature:reader ──► core:document (接口：DocumentEngine + 
 
 ## MuPDF 集成方式
 
-1. `git submodule add https://github.com/ArtifexSoftware/mupdf-android-viewer.git third-party/mupdf-android-viewer`，锁定固定 commit（当前 `8407044` = 1.28.2a，1.28.x 发布线；上游已从旧 cgit 迁至 GitHub）；更新 submodule = 显式 checkout 新 commit 后提交
+1. `git submodule add https://github.com/czc70159407/mupdf-android-viewer.git third-party/mupdf-android-viewer`——**自有 fork**（2026-10-20 起替换上游直连 + patches 机制）：`master` 跟随上游 `ArtifexSoftware/mupdf-android-viewer`，本地两个补丁 commit（`315ba6c` epub 进度锚点 pageToBookmark/bookmarkToPage、`a5496f1` layout 异常保护）维护在 `myreader-patches` 分支，gitlink 锁定 `a5496f1`（补丁基线 `8407044` = 1.28.2a，**与 fitz AAR 1.28.2 匹配**；fork `master` 已在上游 1.28.5 `f2f7563`，勿单方面 rebase——升 viewer 必须同步升 fitz AAR，属独立引擎升级任务）。同步官方更新：fetch upstream → rebase `myreader-patches` → push fork（`--force-with-lease`）→ 主仓 gitlink 前移
 2. `settings.gradle.kts`：
    ```kotlin
    include(":third-party:mupdf")

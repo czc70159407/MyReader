@@ -132,5 +132,6 @@ NOTICE                  # 第三方组件与许可来源
 | M8 | 备份与恢复（v1.1） | 已完成 |
 | M9 | 多格式支持（EPUB / CBZ / XPS + TXT 扩展点，v1.2） | 已完成 |
 | 安全加固 | 导出面收窄、备份解压资源上限、release 混淆、LICENSE / NOTICE | 已完成 |
+| M10 | 书签（章节级）+ 首个 Room Migration（v1.3） | 未开始（已排期，见 [docs/m10-plan.md](docs/m10-plan.md)） |
 
 > 开发指南与任务分解见 [AGENTS.md](AGENTS.md)。

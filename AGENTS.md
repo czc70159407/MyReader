@@ -4,6 +4,8 @@
 
 ## 当前状态（会话开始必读 / 里程碑完成必更新）
 
+- **M10 排期（本会话 2026-10-22）**：书签（章节级）+ 首个 Room Migration（v1→v2）排期为 **M10（v1.3）**，执行计划落 **`docs/m10-plan.md`**：S0 锚点/表结构预研（epub 复用 bookmark 串思路）→ A schema v2 + 手写 `MIGRATION_1_2` + **MigrationTest 门禁先行**（补 `room-testing` 依赖，`2.json` 入库）→ B DAO/Repository/备份双版本兼容（`BackupCodec.schemaVersion=2`，v1 旧备份导入接受且书签空）→ C 阅读器书签 UI（复用 OutlineSheet 模式）→ D 真机验收（含**升级安装**数据保留验证 + 备份往返）；约 4 会话。候选评估结论：书签首选（纯新增表零列变更、Migration 复杂度最低、实练迁移纪律），高亮/笔记为 M11 候选（双轨锚点模型更重）。README 路线图、里程碑表、文档导航已同步。
+
 - **T7 第二轮收紧 + 遗留决策（本会话 2026-10-22）**：①**detekt 收紧完成**——`config/detekt/detekt.yml`（**规则集嵌套结构**，detekt 1.23.8 jar 内 default config 实证：FunctionNaming/MatchingDeclarationName 在 `naming`、MagicNumber 在 `style`——flat 顶层 key 会报 misspelled）豁免 Compose 惯例（@Composable 函数命名 / 属性与 @Composable 内魔数 / 路由同文件组织）；存量经 `detektBaseline` 渐进治理——**多模块各持独立 `detekt-baseline.xml`（模块目录）**，合并单文件会因并行写相互覆盖（实证踩坑，viewer-txt 覆盖后仅剩 12 条），9 模块共 **173 条**入库；`ignoreFailures = true` 已移除——detekt 挂 check 随 build 阻断（临时探针实验验证新违规即失败），`.\gradlew.bat build` 全绿（1033 tasks）。真问题类存量（`BackupManager.restore` LongMethod/CyclomaticComplexMethod、DAO TooManyFunctions、`addDocument` LongParameterList 等）不在本轮硬修——安全关键代码需专项+单测护航，按 baseline 逐条削减。②验收截图 `tools/acceptance/verify/` **决定不入库**（`.gitignore` 追加）。③T9 Room Migration 预案排期分析已完成（见会话记录：书签/高亮立项时 M10 形态执行，S0 schema 预研 → Migration + MigrationTest 前置门禁）。
 
 - **阶段 3 可选包完成（本会话 2026-10-22，T6/T8/T7）**：**T6** 枚举持久化改 name 字符串（`LibraryPrefs.docSort` / `SettingsPrefs.defaultReaderMode+themeMode`：新 string key + 旧 int key 兼容读取（`getOrNull` 越界回落）+ 写时 `remove` 旧 key——单次写入即完成迁移，无独立迁移任务），消除「枚举中间插入新值时旧 ordinal 静默错位」隐患，旧「枚举不可重排」约束解除（仅要求 name 稳定），`docs/data-layer.md` 同步；测试 +5（legacy 迁移 / 未知 name 回落 / 写清旧 key），prefs 套件 6+5 全绿。**T8** 实体→模型映射收敛 `core/data/repo/EntityMappers.kt`（`LibraryRepositoryImpl` 尾部移除）+ `EntityMappersTest` 快照测试 2 例（全字段 named-args 构造逐项断言 = 字段穷尽性 checklist，新增字段按失败提示补映射）。**T7** 质量工具链第一轮「报告不阻断」：detekt `io.gitlab.arturbosch.detekt:1.23.8` + kover `org.jetbrains.kotlinx.kover:0.9.11`（Gradle Plugin Portal metadata 查证后登记）注册根工程（`third-party:mupdf` 排除，纪律同 lint 禁用），detekt 默认挂 check 故以 `ignoreFailures = true` 实现不阻断（第二轮清理存量后移除收紧）；CI 增报告步骤（continue-on-error + `quality-reports` artifact 留存），存量基线已产出（6 模块约 20 条，app 4 条均为典型 Compose 风格项 TooManyFunctions/MatchingDeclarationName/FunctionNaming/MagicNumber），`architecture.md` 依赖清单 / `AGENTS.md` 常用命令同步。验收：全量 build BUILD SUCCESSFUL（1033 tasks，detekt/kover 并入任务图不阻断）；core:data 单测全绿。
@@ -57,7 +59,8 @@
 | M7 | 垂直滚动 + 设置（v1.1） | 已完成 |
 | M8 | 备份与恢复（v1.1） | 已完成 |
 | M9 | 多格式支持（EPUB/CBZ/XPS + TXT 扩展点，v1.2） | 已完成（代码/单测/build/真机验收全过；插桩 9/9，A1/B1/M9-D/M9-F 真机通过，修 2 bug；XPS 正向渲染按 R3 待真实样本） |
-| 安全审计与加固 | 全仓 code 安全审查 + 按清单修复（见「当前状态」首条） | 已完成（build SUCCESSFUL in 1m29s、双变体单测 322 用例 0 失败、合并清单复验通过；R8 runtime 待真机冒烟） |
+| 安全审计与加固 | 全仓 code 安全审查 + 按清单修复（见「当前状态」首条） | 已完成（build SUCCESSFUL in 1m29s、双变体单测 322 用例 0 失败、合并清单复验通过；~~R8 runtime 待真机冒烟~~ 已于 2026-10-22 VAL 轮关闭） |
+| M10 | 书签（章节级）+ 首个 Room Migration（v1.3） | 已排期未开始（执行计划见 docs/m10-plan.md：S0 预研 → A schema/Migration/MigrationTest 门禁 → B DAO/备份兼容 → C UI → D 真机；约 4 会话） |
 
 > 状态取值：未开始 / 进行中 / 已完成。标记「已完成」必须附验收证据（命令输出摘要），并同步更新「下一步」。里程碑任务与验收标准详见 docs/process.md。
 
@@ -102,5 +105,6 @@ APP 整体开源（MuPDF AGPL 要求）。
 | 改阅读器渲染 / 路由 / 目录树 / 导入流程 / 错误边界 | [docs/ui-design.md](docs/ui-design.md)（Compose 集成、渲染与内存策略、UI 架构、导入流程、错误处理） |
 | 推进里程碑 / 写测试 / 排风险 / 查文件位置 | [docs/process.md](docs/process.md)（里程碑分解、测试策略、风险对策、关键文件清单） |
 | 执行 M9（多格式支持） | [docs/m9-plan.md](docs/m9-plan.md)（M9 执行计划与验收方案：缺口清单、技术决策、S0 预研门禁、阶段 A~G、夹具/测试矩阵、真机验收场景） |
+| 执行 M10（书签 + 首个 Room Migration） | [docs/m10-plan.md](docs/m10-plan.md)（M10 执行计划与验收方案：S0 锚点/表结构预研、阶段 A~D、MigrationTest 门禁、备份双版本兼容、真机验收场景） |
 
 > **分册纪律**：每份分册单一职责，同一内容禁止两处维护；状态与验收证据只进本文件，设计规范只进分册。

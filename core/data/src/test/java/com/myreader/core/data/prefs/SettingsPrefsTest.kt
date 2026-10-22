@@ -3,6 +3,7 @@ package com.myreader.core.data.prefs
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.myreader.core.model.ReaderMode
 import com.myreader.core.model.ThemeMode
 import java.io.File
@@ -60,6 +61,33 @@ class SettingsPrefsTest {
         dataStore.edit {
             it[intPreferencesKey("default_reader_mode")] = 99
             it[intPreferencesKey("theme_mode")] = -1
+        }
+        val prefs = SettingsPrefs(dataStore)
+        assertEquals(ReaderMode.HORIZONTAL, prefs.defaultReaderMode.first())
+        assertEquals(ThemeMode.SYSTEM, prefs.themeMode.first())
+    }
+
+    // ---- T6：name 存储迁移 ----
+
+    @Test
+    fun legacyOrdinals_migrateCorrectly() = runTest {
+        val dataStore = newDataStore(File(tmp.newFolder(), "legacy.preferences_pb"), testScheduler)
+        // 旧版本（M7 起）写入的 ordinal 数据：兼容读取还原正确语义
+        dataStore.edit {
+            it[intPreferencesKey("default_reader_mode")] = ReaderMode.VERTICAL.ordinal
+            it[intPreferencesKey("theme_mode")] = ThemeMode.DARK.ordinal
+        }
+        val prefs = SettingsPrefs(dataStore)
+        assertEquals(ReaderMode.VERTICAL, prefs.defaultReaderMode.first())
+        assertEquals(ThemeMode.DARK, prefs.themeMode.first())
+    }
+
+    @Test
+    fun unknownNames_fallBackToDefaults() = runTest {
+        val dataStore = newDataStore(File(tmp.newFolder(), "badname.preferences_pb"), testScheduler)
+        dataStore.edit {
+            it[stringPreferencesKey("default_reader_mode_name")] = "GARBAGE"
+            it[stringPreferencesKey("theme_mode_name")] = "GARBAGE"
         }
         val prefs = SettingsPrefs(dataStore)
         assertEquals(ReaderMode.HORIZONTAL, prefs.defaultReaderMode.first())

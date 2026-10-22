@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+private const val TAG = "LibraryViewModel"
+
 /**
  * 书架 ViewModel：目录浏览（M5 路由参数 folderId，null=根）+ 目录/文档管理操作 + SAF 导入编排
  * + M6 排序切换（LibraryPrefs 记忆）/ 全库搜索（防抖 300ms）/ 最近阅读。
@@ -242,6 +244,9 @@ class LibraryViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                // 编程错误（NPE/状态 bug 等）与业务失败同文案；debug 下记录堆栈便于排障（T5），
+                // release 维持旧行为静默——日志仅异常对象，不含文档 uri/文件名等隐私（L1 语义）
+                if (BuildConfig.DEBUG) android.util.Log.e(TAG, "launchOp 失败", e)
                 _messages.send("操作失败：${e.message ?: "未知错误"}")
             }
         }

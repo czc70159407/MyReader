@@ -78,6 +78,9 @@ internal fun MuPdfVerticalView(
 
     // 滚动回流守卫：初始 = 恢复页；snapshotFlow 发射时同步更新（见下方 collect）
     var lastEmittedPage by remember(doc) { mutableStateOf(initPage) }
+    // 恢复完成前抑制进度回写，避免首帧 (0,0) 覆盖库中进度（与 TxtViewerProvider 同款守卫，T4；
+    // 此前仅靠 lastEmittedPage 初值 + VM 600ms 防抖间接兜底，同类竞态两视图封堵程度不一致）
+    var restored by remember(doc) { mutableStateOf(false) }
 
     DisposableEffect(doc) {
         onDispose { loader.evictAll() }
@@ -86,6 +89,7 @@ internal fun MuPdfVerticalView(
     // 一次性恢复进度（doc 换新会话时重新锚定；模式切换是新组合，天然重执行）
     LaunchedEffect(doc) {
         listState.scrollToItem(initPage, initOffsetY)
+        restored = true   // 锚定完成后才放行 snapshotFlow 回写（T4）
     }
 
     // 外部跳页差分：initPage 变化且非自身滚动回流时，滚到目标页顶部
@@ -104,6 +108,7 @@ internal fun MuPdfVerticalView(
         snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
             .distinctUntilChanged()
             .collect { (index, offset) ->
+                if (!restored) return@collect   // 恢复期（含 scrollToItem 触发的中间帧）不回写（T4）
                 lastEmittedPage = index
                 // 重排文档回调 CFI 锚点；页码式回调页码 + 项内像素偏移
                 val payload = resolver?.progressForPage(index) ?: ProgressPayload.Page(index, offset)

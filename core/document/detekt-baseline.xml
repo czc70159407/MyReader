@@ -1,0 +1,12 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>FunctionNaming:DocumentViewerProvider.kt$DocumentViewerProvider$@Composable fun Content( doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -&gt; Unit, onPageCountChanged: (Int) -&gt; Unit, modifier: Modifier, )</ID>
+    <ID>LongParameterList:Document.kt$Document$( bitmap: android.graphics.Bitmap, page: Int, width: Int, height: Int, patchX: Int = 0, patchY: Int = 0, patchW: Int = width, patchH: Int = height, )</ID>
+    <ID>LongParameterList:DocumentViewerProvider.kt$DocumentViewerProvider$( doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -&gt; Unit, onPageCountChanged: (Int) -&gt; Unit, modifier: Modifier, )</ID>
+    <ID>MaxLineLength:EpubProgressCodec.kt$EpubProgressCodec$json.encodeToString(Payload.serializer(), Payload(v = VERSION, loc = loc, page = page.coerceAtLeast(0), chapter = chapter))</ID>
+    <ID>ReturnCount:EpubProgressCodec.kt$EpubProgressCodec$fun decode(payload: String?): EpubProgress?</ID>
+    <ID>ReturnCount:FileTypes.kt$FileTypes$fun normalize(displayName: String?, mimeType: String?): String?</ID>
+  </CurrentIssues>
+</SmellBaseline>

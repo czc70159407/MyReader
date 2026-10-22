@@ -25,11 +25,13 @@ subprojects {
 subprojects {
     if (path != ":third-party:mupdf") {
         extensions.configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
-            buildUponDefaultConfig = true   // 默认规则集之上运行（第一轮无自定义 config/baseline）
+            buildUponDefaultConfig = true
             parallel = true
-            // T7 第一轮报告不阻断：detekt 默认挂 check（build 连带），ignoreFailures 使违规仅落报告；
-            // CI 同时独立跑 detekt 步骤并上传报告 artifact。第二轮按报告清理存量后删除本行收紧为门禁
-            ignoreFailures = true
+            // T7 第二轮（已收紧）：自定义豁免 + baseline 渐进清理存量（新代码违规即失败，
+            // 挂 check 随 build 阻断）。多模块各持独立 baseline（官方惯例，合并单文件会相互覆盖）；
+            // 存量削减：修一条从模块 baseline.xml 删一条，`detektBaseline` 重新生成
+            config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
+            baseline = file("$projectDir/detekt-baseline.xml")
         }
     }
 }

@@ -1,0 +1,24 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>EmptyFunctionBlock:VerticalPageLoaderTest.kt$VerticalPageLoaderTest.RecordingDocument${}</ID>
+    <ID>FunctionNaming:MuPdfReaderView.kt$@Composable internal fun MuPdfReaderView( core: MuPDFCore, reflowable: Boolean, initialProgress: ProgressPayload, onProgressChanged: (ProgressPayload) -&gt; Unit, onPageCountChanged: (Int) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:MuPdfVerticalView.kt$@Composable internal fun MuPdfVerticalView( doc: Document, reflowable: Boolean, initialProgress: ProgressPayload, onProgressChanged: (ProgressPayload) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>FunctionNaming:MuPdfVerticalView.kt$@Composable private fun VerticalPageItem( loader: VerticalPageLoader, page: Int, widthPx: Int, )</ID>
+    <ID>LongParameterList:MuPdfReaderView.kt$( core: MuPDFCore, reflowable: Boolean, initialProgress: ProgressPayload, onProgressChanged: (ProgressPayload) -&gt; Unit, onPageCountChanged: (Int) -&gt; Unit, modifier: Modifier = Modifier, )</ID>
+    <ID>MagicNumber:MuPdfDocument.kt$MuPdfDocument$3</ID>
+    <ID>MagicNumber:MuPdfDocument.kt$MuPdfDocument$4</ID>
+    <ID>MagicNumber:MuPdfDocumentEngine.kt$MuPdfDocumentEngine$10</ID>
+    <ID>MagicNumber:MuPdfDocumentEngine.kt$MuPdfDocumentEngine$312</ID>
+    <ID>MagicNumber:MuPdfDocumentEngine.kt$MuPdfDocumentEngine$504</ID>
+    <ID>MagicNumber:MuPdfReaderView.kt$&lt;no name provided&gt;$100</ID>
+    <ID>MagicNumber:MuPdfReaderView.kt$&lt;no name provided&gt;$72</ID>
+    <ID>MagicNumber:VerticalPageLoader.kt$VerticalPageLoader$3</ID>
+    <ID>MagicNumber:VerticalPageLoader.kt$VerticalPageLoader$4</ID>
+    <ID>MagicNumber:VerticalPageLoader.kt$VerticalPageLoader.Companion$8L</ID>
+    <ID>ReturnCount:MuPdfReaderView.kt$&lt;no name provided&gt;$override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int)</ID>
+    <ID>ReturnCount:VerticalPageLoader.kt$VerticalPageLoader$suspend fun loadBitmap(page: Int, widthPx: Int): Bitmap</ID>
+    <ID>TooGenericExceptionCaught:MuPdfDocumentEngine.kt$MuPdfDocumentEngine$e: Exception</ID>
+  </CurrentIssues>
+</SmellBaseline>

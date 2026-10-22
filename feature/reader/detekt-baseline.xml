@@ -1,0 +1,27 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ReaderScreen( onBack: () -&gt; Unit, viewModel: ReaderViewModel = hiltViewModel(), )</ID>
+    <ID>CyclomaticComplexMethod:ReaderViewModel.kt$ReaderViewModel$private fun openDocument(password: String? = null)</ID>
+    <ID>EmptyFunctionBlock:ReaderViewModelTest.kt$ReaderViewModelTest.FakeDocument${}</ID>
+    <ID>FunctionNaming:GoToPageDialog.kt$@Composable fun GoToPageDialog( currentPage: Int, pageCount: Int, onDismiss: () -&gt; Unit, onJump: (Int) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:OutlineSheet.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun OutlineSheet( load: suspend () -&gt; List&lt;OutlineEntry&gt;, onDismiss: () -&gt; Unit, onJump: (Int) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ReaderScreen.kt$@Composable private fun PasswordDialog( wrongPassword: Boolean, onDismiss: () -&gt; Unit, onConfirm: (String) -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ReaderScreen( onBack: () -&gt; Unit, viewModel: ReaderViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:ReaderScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun ReaderScreen( onBack: () -&gt; Unit, viewModel: ReaderViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:ReaderViewModel.kt$ReaderViewModel$private fun openDocument(password: String? = null)</ID>
+    <ID>MagicNumber:ReaderViewModel.kt$ReaderViewModel$100</ID>
+    <ID>MagicNumber:ReaderViewModel.kt$ReaderViewModel$2</ID>
+    <ID>MaxLineLength:ReaderScreen.kt$is ReaderUiState.Failed</ID>
+    <ID>MaxLineLength:ReaderViewModel.kt$ReaderViewModel$_state.value = ReaderUiState.Failed(ReaderFailure.OPEN_FAILED, "打开失败：${e.message.orEmpty().ifEmpty { "未知错误" }}")</ID>
+    <ID>MaxLineLength:ReaderViewModelTest.kt$ReaderViewModelTest.FakeDocument$override</ID>
+    <ID>MaxLineLength:ReaderViewModelTest.kt$ReaderViewModelTest.ThrowingViewer$override</ID>
+    <ID>SwallowedException:ReaderViewModel.kt$ReaderViewModel$e: DocumentException</ID>
+    <ID>SwallowedException:ReaderViewModel.kt$ReaderViewModel$e: PasswordRequiredException</ID>
+    <ID>ThrowsCount:ReaderViewModel.kt$ReaderViewModel$private fun openDocument(password: String? = null)</ID>
+    <ID>TooGenericExceptionCaught:ReaderViewModel.kt$ReaderViewModel$e: Exception</ID>
+    <ID>TooManyFunctions:ReaderViewModel.kt$ReaderViewModel : ViewModel</ID>
+    <ID>UnusedPrivateProperty:ReaderViewModelTest.kt$ReaderViewModelTest$private lateinit var viewModel: ReaderViewModel</ID>
+  </CurrentIssues>
+</SmellBaseline>

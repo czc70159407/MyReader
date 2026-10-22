@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>NestedBlockDepth:DocumentStorage.kt$DocumentStorage$fun copyIn(source: InputStream, docId: Long, ext: String): CopyResult</ID>
+    <ID>NestedBlockDepth:DocumentStorage.kt$DocumentStorage$fun restoreFile(source: InputStream, relPath: String): Long</ID>
+    <ID>ReturnCount:DocumentStorage.kt$DocumentStorage$fun openThumbnailRead(thumbnailRelPath: String?): InputStream?</ID>
+    <ID>TooGenericExceptionCaught:DocumentStorage.kt$DocumentStorage$t: Throwable</ID>
+    <ID>TooManyFunctions:DocumentStorage.kt$DocumentStorage</ID>
+  </CurrentIssues>
+</SmellBaseline>

@@ -1,0 +1,79 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:DirectoryImporter.kt$DirectoryImporter$internal suspend fun importTree( source: DirectoryTreeSource, targetFolderId: Long?, limits: DirectoryScanLimits = DirectoryScanLimits(), onProgress: (DirectoryImportProgress) -&gt; Unit = {}, ): DirectoryImportSummary</ID>
+    <ID>CyclomaticComplexMethod:DirectoryScanner.kt$DirectoryScanner$fun scan( source: DirectoryTreeSource, limits: DirectoryScanLimits = DirectoryScanLimits(), ): DirectoryScanResult</ID>
+    <ID>CyclomaticComplexMethod:DocumentImporter.kt$DocumentImporter$suspend fun import(uri: Uri, targetFolderId: Long? = null, force: Boolean = false): Result</ID>
+    <ID>CyclomaticComplexMethod:LibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun LibraryScreen( onDocumentClick: (Long) -&gt; Unit = {}, onFolderClick: (Long?) -&gt; Unit = {}, onNavigateBack: () -&gt; Unit = {}, onOpenSettings: () -&gt; Unit = {}, viewModel: LibraryViewModel = hiltViewModel(), )</ID>
+    <ID>CyclomaticComplexMethod:LibraryViewModel.kt$LibraryViewModel$fun importUris(uris: List&lt;Uri&gt;, targetFolderId: Long?)</ID>
+    <ID>EmptyFunctionBlock:DirectoryImporterTest.kt$DirectoryImporterTest.FakeDocument${}</ID>
+    <ID>EmptyFunctionBlock:DocumentImporterTest.kt$DocumentImporterTest.FakeDocument${}</ID>
+    <ID>EmptyFunctionBlock:LibraryViewModelTest.kt$LibraryViewModelTest.FakeDocument${}</ID>
+    <ID>FunctionNaming:FolderPickerDialog.kt$@Composable fun FolderPickerDialog( state: FolderTreeState, onConfirm: (Long?) -&gt; Unit, onDismiss: () -&gt; Unit, onCreateSubFolder: (parentId: Long?, name: String, onCreated: (Long) -&gt; Unit) -&gt; Unit, excludedIds: Set&lt;Long&gt; = emptySet(), initialSelectedId: Long? = null, )</ID>
+    <ID>FunctionNaming:FolderPickerDialog.kt$@Composable private fun RootPickerRow(selected: Boolean, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:FolderTreeList.kt$@Composable fun FolderTreeList( state: FolderTreeState, onFolderClick: (Long?) -&gt; Unit, onFolderLongPress: (Long) -&gt; Unit, modifier: Modifier = Modifier, selectedId: Long? = null, )</ID>
+    <ID>FunctionNaming:FolderTreeList.kt$@Composable private fun ExpandToggle(hasChildren: Boolean, expanded: Boolean, onToggle: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:FolderTreeList.kt$@OptIn(ExperimentalFoundationApi::class) @Composable private fun FolderTreeItem( node: FolderNode, expanded: Boolean, selected: Boolean, onToggle: () -&gt; Unit, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:ImportSummaryDialog.kt$@Composable internal fun ImportSummaryDialog(summary: DirectoryImportSummary, onDismiss: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:ImportSummaryDialog.kt$@Composable private fun SummaryLine( label: String, count: Int?, value: String? = null, showWhenZero: Boolean = false, )</ID>
+    <ID>FunctionNaming:LibraryCards.kt$@Composable internal fun FolderMenu( expanded: Boolean, onDismiss: () -&gt; Unit, onRename: () -&gt; Unit, onMove: () -&gt; Unit, onDelete: () -&gt; Unit, onNewSubFolder: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:LibraryCards.kt$@Composable internal fun RecentCard(item: LibraryItem, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:LibraryCards.kt$@Composable internal fun RecentSection(recent: List&lt;LibraryItem&gt;, onDocumentClick: (Long) -&gt; Unit)</ID>
+    <ID>FunctionNaming:LibraryCards.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun DocumentCard( item: LibraryItem, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, menuExpanded: Boolean, onDismissMenu: () -&gt; Unit, onRename: () -&gt; Unit, onMove: () -&gt; Unit, onDelete: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:LibraryCards.kt$@OptIn(ExperimentalFoundationApi::class) @Composable internal fun FolderCard( folder: Folder, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, menuExpanded: Boolean, onDismissMenu: () -&gt; Unit, onRename: () -&gt; Unit, onMove: () -&gt; Unit, onDelete: () -&gt; Unit, onNewSubFolder: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:LibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun LibraryScreen( onDocumentClick: (Long) -&gt; Unit = {}, onFolderClick: (Long?) -&gt; Unit = {}, onNavigateBack: () -&gt; Unit = {}, onOpenSettings: () -&gt; Unit = {}, viewModel: LibraryViewModel = hiltViewModel(), )</ID>
+    <ID>FunctionNaming:LibraryThumbnails.kt$@Composable internal fun FormatBadge(label: String, modifier: Modifier)</ID>
+    <ID>FunctionNaming:LibraryThumbnails.kt$@Composable internal fun StatusBadge(icon: @Composable () -&gt; Unit, modifier: Modifier)</ID>
+    <ID>FunctionNaming:LibraryThumbnails.kt$@Composable internal fun ThumbnailImage(relPath: String?, fileType: String, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:NewFolderDialog.kt$@Composable fun NewFolderDialog( onConfirm: (String) -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:OperationDialogs.kt$@Composable fun DeleteConfirmDialog( title: String, message: String, onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:OperationDialogs.kt$@Composable fun RenameDialog( currentName: String, onConfirm: (String) -&gt; Unit, onDismiss: () -&gt; Unit, lockedExtension: String? = null, )</ID>
+    <ID>FunctionNaming:SortMenu.kt$@Composable internal fun SortMenu(current: DocSort, onSelect: (DocSort) -&gt; Unit)</ID>
+    <ID>LongMethod:DirectoryImporter.kt$DirectoryImporter$internal suspend fun importTree( source: DirectoryTreeSource, targetFolderId: Long?, limits: DirectoryScanLimits = DirectoryScanLimits(), onProgress: (DirectoryImportProgress) -&gt; Unit = {}, ): DirectoryImportSummary</ID>
+    <ID>LongMethod:DocumentImporter.kt$DocumentImporter$suspend fun import(uri: Uri, targetFolderId: Long? = null, force: Boolean = false): Result</ID>
+    <ID>LongMethod:LibraryScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun LibraryScreen( onDocumentClick: (Long) -&gt; Unit = {}, onFolderClick: (Long?) -&gt; Unit = {}, onNavigateBack: () -&gt; Unit = {}, onOpenSettings: () -&gt; Unit = {}, viewModel: LibraryViewModel = hiltViewModel(), )</ID>
+    <ID>LongParameterList:FolderPickerDialog.kt$( state: FolderTreeState, onConfirm: (Long?) -&gt; Unit, onDismiss: () -&gt; Unit, onCreateSubFolder: (parentId: Long?, name: String, onCreated: (Long) -&gt; Unit) -&gt; Unit, excludedIds: Set&lt;Long&gt; = emptySet(), initialSelectedId: Long? = null, )</ID>
+    <ID>LongParameterList:FolderTreeList.kt$( node: FolderNode, expanded: Boolean, selected: Boolean, onToggle: () -&gt; Unit, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:LibraryCards.kt$( expanded: Boolean, onDismiss: () -&gt; Unit, onRename: () -&gt; Unit, onMove: () -&gt; Unit, onDelete: () -&gt; Unit, onNewSubFolder: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:LibraryCards.kt$( folder: Folder, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, menuExpanded: Boolean, onDismissMenu: () -&gt; Unit, onRename: () -&gt; Unit, onMove: () -&gt; Unit, onDelete: () -&gt; Unit, onNewSubFolder: () -&gt; Unit, )</ID>
+    <ID>LongParameterList:LibraryCards.kt$( item: LibraryItem, onClick: () -&gt; Unit, onLongClick: () -&gt; Unit, menuExpanded: Boolean, onDismissMenu: () -&gt; Unit, onRename: () -&gt; Unit, onMove: () -&gt; Unit, onDelete: () -&gt; Unit, )</ID>
+    <ID>LoopWithTooManyJumpStatements:DirectoryScanner.kt$DirectoryScanner$for</ID>
+    <ID>MagicNumber:DirectoryImporter.kt$DirectoryImporter.TitleCache$1000</ID>
+    <ID>MagicNumber:DirectoryScanner.kt$DirectoryScanLimits$1024</ID>
+    <ID>MagicNumber:DirectoryScanner.kt$DirectoryScanLimits$200L</ID>
+    <ID>MagicNumber:DocumentImporter.kt$DocumentImporter$90</ID>
+    <ID>MagicNumber:LibraryCards.kt$0.75f</ID>
+    <ID>MagicNumber:LibraryCards.kt$2</ID>
+    <ID>MaxLineLength:DirectoryImporterTest.kt$DirectoryImporterTest$assertEquals("cfi", repository.docsIn(subFolder.id, com.myreader.core.model.DocSort.TITLE).first().single().progressType)</ID>
+    <ID>MaxLineLength:DirectoryImporterTest.kt$DirectoryImporterTest$assertEquals(listOf("book.pdf"), repository.docsIn(null, com.myreader.core.model.DocSort.TITLE).first().map { it.title })</ID>
+    <ID>MaxLineLength:DirectoryImporterTest.kt$DirectoryImporterTest$registerDoc("a.pdf")</ID>
+    <ID>MaxLineLength:DirectoryImporterTest.kt$DirectoryImporterTest.FakeDocument$override fun drawPage(bitmap: Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int)</ID>
+    <ID>MaxLineLength:DirectoryImporterTest.kt$DirectoryImporterTest.FakeViewer$override</ID>
+    <ID>MaxLineLength:DocumentImporter.kt$DocumentImporter$Result(uri, if (needsPassword) Status.IMPORTED_PASSWORD_MARKED else Status.IMPORTED, docId, title = title)</ID>
+    <ID>MaxLineLength:DocumentImporter.kt$DocumentImporter$android.util.Log.i(TAG, "import start: uri=$uri name=$displayName mime=$mimeType size=$size force=$force")</ID>
+    <ID>MaxLineLength:DocumentImporter.kt$DocumentImporter$android.util.Log.i(TAG, "验证通过: pageCount=$pageCount needsPassword=$needsPassword thumb=$thumbnailRelPath")</ID>
+    <ID>MaxLineLength:DocumentImporterTest.kt$DocumentImporterTest.FakeDocument$override fun drawPage(bitmap: android.graphics.Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int)</ID>
+    <ID>MaxLineLength:DocumentImporterTest.kt$DocumentImporterTest.FakeViewer$override</ID>
+    <ID>MaxLineLength:LibraryCards.kt$ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())</ID>
+    <ID>MaxLineLength:LibraryCards.kt$color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface</ID>
+    <ID>MaxLineLength:LibraryCards.kt$icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) }</ID>
+    <ID>MaxLineLength:LibraryCards.kt$icon = { Icon(Icons.Filled.Warning, contentDescription = "已损坏", tint = Color.White, modifier = Modifier.size(14.dp)) }</ID>
+    <ID>MaxLineLength:LibraryComponentsTest.kt$LibraryComponentsTest$composeRule.setContent { RecentSection(recent = listOf(item(7, "a.pdf", 0)), onDocumentClick = { clicked.add(it) }) }</ID>
+    <ID>MaxLineLength:LibraryScreen.kt$fontWeight = if (i == breadcrumb.lastIndex) FontWeight.Bold else FontWeight.Normal</ID>
+    <ID>MaxLineLength:LibraryViewModel.kt$LibraryViewModel$val duplicate = repository.docsIn(folderId, DocSort.TITLE).first().any { it.title == title &amp;&amp; it.id != excludeId }</ID>
+    <ID>MaxLineLength:LibraryViewModelTest.kt$LibraryViewModelTest$val vm = LibraryViewModel(SavedStateHandle(mapOf("folderId" to b)), repository, importer, directoryImporter, prefs)</ID>
+    <ID>MaxLineLength:LibraryViewModelTest.kt$LibraryViewModelTest$val vm2 = LibraryViewModel(SavedStateHandle(mapOf("folderId" to fid)), repository, importer, directoryImporter, prefs)</ID>
+    <ID>MaxLineLength:LibraryViewModelTest.kt$LibraryViewModelTest$viewModel = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, directoryImporter, prefs)</ID>
+    <ID>MaxLineLength:LibraryViewModelTest.kt$LibraryViewModelTest.FakeDocument$override fun drawPage(bitmap: Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int)</ID>
+    <ID>MaxLineLength:LibraryViewModelTest.kt$LibraryViewModelTest.FakeViewer$override</ID>
+    <ID>NestedBlockDepth:DirectoryScanner.kt$DirectoryScanner$fun scan( source: DirectoryTreeSource, limits: DirectoryScanLimits = DirectoryScanLimits(), ): DirectoryScanResult</ID>
+    <ID>SwallowedException:DocumentImporter.kt$DocumentImporter$e: PasswordRequiredException</ID>
+    <ID>SwallowedException:LibraryViewModel.kt$LibraryViewModel$e: DirectoryAccessException</ID>
+    <ID>TooGenericExceptionCaught:DocumentImporter.kt$DocumentImporter$t: Throwable</ID>
+    <ID>TooGenericExceptionCaught:LibraryViewModel.kt$LibraryViewModel$e: Exception</ID>
+    <ID>TooManyFunctions:LibraryViewModel.kt$LibraryViewModel : ViewModel</ID>
+    <ID>UseRequire:LibraryViewModel.kt$LibraryViewModel$throw IllegalArgumentException("该目录下已存在同名文件夹")</ID>
+    <ID>UseRequire:LibraryViewModel.kt$LibraryViewModel$throw IllegalArgumentException("该目录下已存在同名文档")</ID>
+  </CurrentIssues>
+</SmellBaseline>

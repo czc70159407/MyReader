@@ -28,6 +28,7 @@ tools/acceptance/*.tar
 tools/acceptance/*.xml
 tools/acceptance/**/*.db*
 tools/acceptance/m9/
+tools/acceptance/verify/
 
 *.keystore
 *.jks

@@ -1,0 +1,16 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>FunctionNaming:AboutScreen.kt$@Composable private fun AboutSection(title: String, content: @Composable ColumnScope.() -&gt; Unit)</ID>
+    <ID>FunctionNaming:AboutScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun AboutScreen( onBack: () -&gt; Unit, )</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun BackupRow(label: String, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun RadioRow(label: String, selected: Boolean, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun SettingsSection(title: String, content: @Composable ColumnScope.() -&gt; Unit)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( onBack: () -&gt; Unit, onOpenAbout: () -&gt; Unit, viewModel: SettingsViewModel = hiltViewModel(), )</ID>
+    <ID>LongMethod:SettingsScreen.kt$@OptIn(ExperimentalMaterial3Api::class) @Composable fun SettingsScreen( onBack: () -&gt; Unit, onOpenAbout: () -&gt; Unit, viewModel: SettingsViewModel = hiltViewModel(), )</ID>
+    <ID>MaxLineLength:SettingsViewModelTest.kt$SettingsViewModelTest$PreferenceDataStoreFactory.create(scope = scope) { File(tmp.root, "l-${System.nanoTime()}.preferences_pb") }</ID>
+    <ID>MaxLineLength:SettingsViewModelTest.kt$SettingsViewModelTest$PreferenceDataStoreFactory.create(scope = scope) { File(tmp.root, "s-${System.nanoTime()}.preferences_pb") }</ID>
+    <ID>TooGenericExceptionCaught:SettingsViewModel.kt$SettingsViewModel$e: Exception</ID>
+  </CurrentIssues>
+</SmellBaseline>

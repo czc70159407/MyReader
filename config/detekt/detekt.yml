@@ -1,0 +1,16 @@
+# T7 第二轮收紧配套（detekt 1.23.8，规则集嵌套结构）：仅豁免「规则未感知 Kotlin/Compose
+# 惯例」的类别。真实问题一律走 baseline 渐进清理（config/detekt/baseline.xml，由 detektBaseline
+# 任务生成，修复一条删一条），不在本文件压制——本文件只放「改了反而损害可读性/违背框架惯例」的豁免。
+# 注意：规则归属以本版本 default-detekt-config.yml 为准（如 MagicNumber 在 style 而非 naming/complexity）。
+naming:
+  FunctionNaming:
+    # Compose 惯例：@Composable 函数 PascalCase（Kotlin 官方 compose-api-guidelines）
+    ignoreAnnotated: ['@Composable']
+  MatchingDeclarationName:
+    # 路由常量 object 与 NavHost 同文件为刻意组织（docs/ui-design.md 路由节）
+    active: false
+style:
+  MagicNumber:
+    # 常量属性本就以具名承载语义；@Composable 内的布局/动画参数就地可读性优先
+    ignorePropertyDeclaration: true
+    ignoreAnnotated: ['@Composable']

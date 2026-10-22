@@ -49,9 +49,9 @@ jobs:
       - name: Build + unit tests (all variants)
         run: ./gradlew build --stacktrace
 
-      # T7 第一轮「仅报告不阻断」：detekt 存量基线收集（--continue 跑完所有模块），
-      # 第二轮按报告清理后再移除 continue-on-error 收紧为门禁
-      - name: Static analysis + coverage (report-only)
+      # T7 已收紧：detekt 挂 check（新违规即 build 失败，存量走 baseline 渐进清理），
+      # 此步骤产出完整报告 artifact 供审阅（continue-on-error 保证 kover 报告步骤独立完成）
+      - name: Static analysis + coverage (reports)
         continue-on-error: true
         run: ./gradlew detekt koverHtmlReport --continue
 

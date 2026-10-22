@@ -1,0 +1,18 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:TxtDocumentEngine.kt$TxtDocumentEngine$bytes.size &gt;= 3 &amp;&amp; bytes[0] == 0xEF.toByte() &amp;&amp; bytes[1] == 0xBB.toByte() &amp;&amp; bytes[2] == 0xBF.toByte()</ID>
+    <ID>MagicNumber:TxtDocument.kt$TxtDocument$0.06f</ID>
+    <ID>MagicNumber:TxtDocument.kt$TxtDocument$12f</ID>
+    <ID>MagicNumber:TxtDocument.kt$TxtDocument$40f</ID>
+    <ID>MagicNumber:TxtDocument.kt$TxtDocument$56f</ID>
+    <ID>MagicNumber:TxtDocument.kt$TxtDocument$8</ID>
+    <ID>MagicNumber:TxtDocumentEngine.kt$TxtDocumentEngine$3</ID>
+    <ID>MaxLineLength:TxtDocumentEngine.kt$TxtDocumentEngine$.</ID>
+    <ID>MaxLineLength:TxtDocumentEngine.kt$TxtDocumentEngine$if (bytes.size &gt;= 3 &amp;&amp; bytes[0] == 0xEF.toByte() &amp;&amp; bytes[1] == 0xBB.toByte() &amp;&amp; bytes[2] == 0xBF.toByte()) return "UTF-8"</ID>
+    <ID>ReturnCount:TxtDocumentEngine.kt$TxtDocumentEngine$private fun detectBom(bytes: ByteArray): String?</ID>
+    <ID>SwallowedException:TxtDocumentEngine.kt$TxtDocumentEngine$e: CharacterCodingException</ID>
+    <ID>TooGenericExceptionCaught:TxtDocumentEngine.kt$TxtDocumentEngine$e: Exception</ID>
+  </CurrentIssues>
+</SmellBaseline>

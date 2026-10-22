@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>FunctionNaming:MyReaderNavHost.kt$@Composable fun MyReaderNavHost(modifier: Modifier = Modifier)</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$300</ID>
+    <ID>TooManyFunctions:DocumentEngineModule.kt$DocumentEngineModule</ID>
+  </CurrentIssues>
+</SmellBaseline>

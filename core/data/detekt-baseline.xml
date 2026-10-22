@@ -1,0 +1,31 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:BackupManager.kt$BackupManager$suspend fun restore( input: InputStream, onProgress: Progress = { _, _ -&gt; }, ): RestoreResult</ID>
+    <ID>LongMethod:BackupManager.kt$BackupManager$suspend fun restore( input: InputStream, onProgress: Progress = { _, _ -&gt; }, ): RestoreResult</ID>
+    <ID>LongParameterList:DaosTest.kt$DocumentDaoTest$( id: Long, title: String, folderId: Long? = null, fileSize: Long = 0, addedAt: Long = 0, lastReadAt: Long? = null, hash: String? = null, )</ID>
+    <ID>LongParameterList:LibraryRepository.kt$LibraryRepository$( id: Long? = null, folderId: Long?, title: String, relPath: String, fileType: String, mimeType: String?, sourceUri: String?, fileSize: Long, contentHash: String?, pageCount: Int, progressType: String = "page", thumbnailRelPath: String? = null, needsPassword: Boolean = false, )</ID>
+    <ID>LoopWithTooManyJumpStatements:BackupManager.kt$BackupManager$while</ID>
+    <ID>MagicNumber:BackupManager.kt$BackupManager$0.95f</ID>
+    <ID>MagicNumber:BackupManager.kt$RestoreLimits$1024</ID>
+    <ID>MagicNumber:BackupManager.kt$RestoreLimits$30</ID>
+    <ID>MagicNumber:BackupManager.kt$RestoreLimits$4</ID>
+    <ID>MagicNumber:BackupManager.kt$RestoreLimits$512L</ID>
+    <ID>MagicNumber:BackupManager.kt$RestoreLimits$8L</ID>
+    <ID>MagicNumber:LibraryRepositoryImpl.kt$0xFFFFF</ID>
+    <ID>MagicNumber:LibraryRepositoryImpl.kt$20</ID>
+    <ID>MagicNumber:LibraryRepositoryImpl.kt$3</ID>
+    <ID>MaxLineLength:BackupManager.kt$BackupManager$missingFiles = (fileEntries.size - filesWritten) + (thumbEntries.size - thumbnailsWritten) + orphanCount</ID>
+    <ID>MaxLineLength:LibraryRepositoryImpl.kt$LibraryRepositoryImpl$retryOnIdCollision(exists = documentDao::exists, insert = { candidate -&gt; documentDao.insert(buildEntity(candidate)) })</ID>
+    <ID>TooManyFunctions:DocumentDao.kt$DocumentDao</ID>
+    <ID>TooManyFunctions:FolderDao.kt$FolderDao</ID>
+    <ID>TooManyFunctions:LibraryRepository.kt$LibraryRepository</ID>
+    <ID>TooManyFunctions:LibraryRepositoryImpl.kt$LibraryRepositoryImpl : LibraryRepository</ID>
+    <ID>UseCheckOrError:BackupManager.kt$BackupManager$throw IllegalStateException("备份压缩比异常（解压 $written / 压缩 $compressedDelta），疑似 zip bomb")</ID>
+    <ID>UseCheckOrError:BackupManager.kt$BackupManager$throw IllegalStateException("备份累计解压量超出上限（&gt;${limits.maxTotalBytes} 字节），疑似 zip bomb")</ID>
+    <ID>UseCheckOrError:BackupManager.kt$BackupManager$throw IllegalStateException("存储空间不足，无法恢复备份（需约 $needed 字节）")</ID>
+    <ID>UseCheckOrError:LibraryRepositoryImpl.kt$throw IllegalStateException("实体 ID 生成连续碰撞")</ID>
+    <ID>VariableNaming:BackupManager.kt$BackupManager$/** 整段 relPath 白名单（与 BackupCodec / DocumentStorage 同源）。 */ private val REL_PATH_PATTERN = Regex("^[0-9]+\\.[a-zA-Z0-9]{1,10}$")</ID>
+  </CurrentIssues>
+</SmellBaseline>

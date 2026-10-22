@@ -243,34 +243,4 @@ internal suspend inline fun retryOnIdCollision(
 internal fun escapeLikePattern(s: String): String =
     s.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
-// ---- 实体 → 模型映射（feature 层不直接碰 Entity）----
-
-internal fun FolderEntity.toModel() = Folder(
-    id = id,
-    parentId = parentId,
-    name = name,
-    sortOrder = sortOrder,
-    createdAt = createdAt,
-    updatedAt = updatedAt,
-)
-
-internal fun DocumentEntity.toModel() = LibraryItem(
-    id = id,
-    folderId = folderId,
-    title = title,
-    relPath = relPath,
-    fileType = fileType,
-    mimeType = mimeType,
-    sourceUri = sourceUri,
-    fileSize = fileSize,
-    contentHash = contentHash,
-    needsPassword = needsPassword,
-    pageCount = pageCount,
-    progressType = progressType,
-    currentPage = currentPage,
-    scrollOffsetY = scrollOffsetY,
-    progressPayload = progressPayload,
-    thumbnailRelPath = thumbnailRelPath,
-    lastReadAt = lastReadAt,
-    addedAt = addedAt,
-)
+// 实体 → 模型映射已收敛至 EntityMappers.kt（T8）

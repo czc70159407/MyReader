@@ -132,7 +132,7 @@ class LibraryViewModelTest {
 
     private class FakeViewer : DocumentViewerProvider {
         @Composable
-        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, modifier: Modifier) = Unit
+        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, onPageCountChanged: (Int) -> Unit, modifier: Modifier) = Unit
 
         override suspend fun thumbnail(doc: Document): ImageBitmap =
             Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).asImageBitmap()

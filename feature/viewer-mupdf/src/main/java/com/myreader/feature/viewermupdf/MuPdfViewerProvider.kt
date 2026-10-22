@@ -32,6 +32,7 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         initialProgress: ProgressPayload,
         mode: ReaderMode,
         onProgressChanged: (ProgressPayload) -> Unit,
+        onPageCountChanged: (Int) -> Unit,
         modifier: Modifier,
     ) {
         val muDoc = doc as MuPdfDocument
@@ -50,9 +51,11 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 reflowable = reflowable,
                 initialProgress = initialProgress,
                 onProgressChanged = onProgressChanged,
+                onPageCountChanged = onPageCountChanged,
                 modifier = modifier,
             )
-            // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）
+            // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）。
+            // 垂直模式不 relayout（epub 沿用打开时排版，页数恒定），无需页数回调
             ReaderMode.VERTICAL -> MuPdfVerticalView(
                 doc = doc,
                 reflowable = reflowable,

@@ -58,6 +58,8 @@ fun ReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val mode by viewModel.mode.collectAsStateWithLifecycle()
+    // 实时排版页数（T3）：epub 水平 relayout 后由视图回调上抛；null 时以 Ready 快照兜底
+    val livePageCount by viewModel.displayPageCount.collectAsStateWithLifecycle()
 
     // 进度保底：ON_PAUSE / ON_STOP / 离开组合时即时落库
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -118,6 +120,10 @@ fun ReaderScreen(
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
 
+            // 展示页数：打开快照兜底，relayout 后以视图回调的实时值为准（T3）。
+            // 不 copy Ready 回写 pageCount——Ready 变化会重置 key(s) 内全套会话状态（uiProgress 回退）
+            val pageCount = livePageCount ?: s.pageCount
+
             // 顶栏/跳页用的当前页码：页码式取 page；流式 CFI 解出内嵌 page（展示近似值）
             val uiPage: Int = when (val p = uiProgress) {
                 is ProgressPayload.Page -> p.page
@@ -131,7 +137,7 @@ fun ReaderScreen(
                             Column {
                                 Text(text = s.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Text(
-                                    text = "${(uiPage + 1).coerceAtMost(s.pageCount)} / ${s.pageCount}",
+                                    text = "${(uiPage + 1).coerceAtMost(pageCount)} / $pageCount",
                                     style = MaterialTheme.typography.labelSmall,
                                 )
                             }
@@ -168,6 +174,7 @@ fun ReaderScreen(
                             uiProgress = payload
                             viewModel.onProgress(payload)
                         },
+                        onPageCountChanged = viewModel::onPageCountChanged,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -181,7 +188,7 @@ fun ReaderScreen(
                     // clamp 防损坏大纲越界页码落库（渲染端 setDisplayedViewIndex 对越界 no-op），
                     // coerceAtLeast 与 ReaderViewModel.initialProgress 处同款防御（pageCount=0 时上界不越 -1）
                     onJump = { page ->
-                        val target = page.coerceIn(0, (s.pageCount - 1).coerceAtLeast(0))
+                        val target = page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
                         uiProgress = ProgressPayload.Page(target, 0)
                         // 流式文档由渲染端 reposition 后回发 CFI 落库；页码式立即落库
                         if (!s.reflowable) viewModel.onProgress(ProgressPayload.Page(target, 0))
@@ -191,7 +198,7 @@ fun ReaderScreen(
             if (showGoTo) {
                 GoToPageDialog(
                     currentPage = uiPage,
-                    pageCount = s.pageCount,
+                    pageCount = pageCount,
                     onDismiss = { showGoTo = false },
                     onJump = { page ->
                         uiProgress = ProgressPayload.Page(page, 0)

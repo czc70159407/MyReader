@@ -44,10 +44,12 @@ internal fun MuPdfReaderView(
     reflowable: Boolean,
     initialProgress: ProgressPayload,
     onProgressChanged: (ProgressPayload) -> Unit,
+    onPageCountChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // factory 只执行一次：经 State 转发保证匿名子类始终回调最新 lambda；adapterRef 供释放
     val latestCallback by rememberUpdatedState(onProgressChanged)
+    val latestPageCountCallback by rememberUpdatedState(onPageCountChanged)
     val adapterRef = remember { mutableStateOf<PageAdapter?>(null) }
     val resolver = remember(core) { if (reflowable) EpubLocationResolver(core) else null }
     // 重排协程作用域：rememberCoroutineScope 与组合同生命周期，组合离开即取消——
@@ -119,6 +121,9 @@ internal fun MuPdfReaderView(
                                         onMoveToChild(safe)
                                     }
                                     refresh()
+                                    // relayout 后页数已变（可能增减）：上抛实时页数，
+                                    // 顶栏分母/跳页弹窗/大纲 clamp 随动（T3，修复 Ready 快照过时）
+                                    latestPageCountCallback(core.countPages())
                                 }
                             }
                         } else {

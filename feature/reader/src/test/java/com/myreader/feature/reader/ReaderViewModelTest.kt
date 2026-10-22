@@ -502,6 +502,43 @@ class ReaderViewModelTest {
         assertEquals(1L to 9, repo.pageCountWrites.single())
     }
 
+    // ---- T3：实时页数 ----
+
+    @Test
+    fun `视图回调更新实时页数`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
+        advanceUntilIdle()
+
+        // 初始无回调：以 Ready.pageCount 快照兜底（null 语义）
+        assertEquals(null, vm.displayPageCount.value)
+
+        vm.onPageCountChanged(42)
+        assertEquals(42, vm.displayPageCount.value)
+        // 相等值幂等（StateFlow 同值不发射，此处断言语义不漂移）
+        vm.onPageCountChanged(42)
+        assertEquals(42, vm.displayPageCount.value)
+    }
+
+    @Test
+    fun `密码重试重入时实时页数重置`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val engine = ScriptedEngine { password ->
+            if (password == null) throw PasswordRequiredException()
+            FakeDocument(pageCount = 3)
+        }
+        val vm = newViewModel(engine, item(needsPassword = true))
+        advanceUntilIdle()
+        assertTrue(vm.state.value is ReaderUiState.NeedsPassword)
+
+        vm.onPageCountChanged(99)   // 上一会话残留（防御性构造），重入打开必须失效
+        vm.submitPassword("1234")
+        advanceUntilIdle()
+        assertTrue(vm.state.value is ReaderUiState.Ready)
+        // 重入打开 = 新会话：实时页数重置，回到 Ready 快照兜底语义
+        assertEquals(null, vm.displayPageCount.value)
+    }
+
     // ---- fakes ----
 
     private class TestDispatcherProvider(d: CoroutineDispatcher) : DispatcherProvider {
@@ -538,7 +575,7 @@ class ReaderViewModelTest {
     /** 缩略图兜底测试不覆盖成功路径（asAndroidBitmap 需 Android 运行时），仅验证失败不阻断阅读 */
     private class ThrowingViewer : DocumentViewerProvider {
         @androidx.compose.runtime.Composable
-        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, modifier: androidx.compose.ui.Modifier) = Unit
+        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, onPageCountChanged: (Int) -> Unit, modifier: androidx.compose.ui.Modifier) = Unit
         override suspend fun thumbnail(doc: Document): ImageBitmap = throw UnsupportedOperationException()
     }
 

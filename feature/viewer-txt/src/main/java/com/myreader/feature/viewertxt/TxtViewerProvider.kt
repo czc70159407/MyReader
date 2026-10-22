@@ -46,6 +46,7 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         initialProgress: ProgressPayload,
         mode: ReaderMode,
         onProgressChanged: (ProgressPayload) -> Unit,
+        onPageCountChanged: (Int) -> Unit,
         modifier: Modifier,
     ) {
         val txtDoc = doc as? TxtDocument

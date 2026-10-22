@@ -12,13 +12,18 @@ import com.myreader.core.model.ReaderMode
 interface DocumentViewerProvider {
 
     /** 阅读器渲染主体；实现为 AndroidView 桥接（如 MuPDF ReaderView）。
-     * 注意：接口方法参数不带默认值——Compose 接口默认参数 + 实现会生成冲突重载桥 */
+     * 注意：接口方法参数不带默认值——Compose 接口默认参数 + 实现会生成冲突重载桥
+     *
+     * @param onPageCountChanged 会话内排版页数发生变化时回调（典型：epub 水平模式 relayout
+     *   完成后页数与打开时快照不一致）；打开初值无需回调（调用方以 Ready.pageCount 持有快照，
+     *   经实时值覆盖展示）。实现须在主线程调用。 */
     @Composable
     fun Content(
         doc: Document,
         initialProgress: ProgressPayload,
         mode: ReaderMode,
         onProgressChanged: (ProgressPayload) -> Unit,
+        onPageCountChanged: (Int) -> Unit,
         modifier: Modifier,
     )
 

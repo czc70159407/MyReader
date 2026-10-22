@@ -100,6 +100,19 @@ class ReaderViewModel @Inject constructor(
     private val currentProgress = MutableStateFlow<ProgressPayload?>(null)
     private var progressJob: Job? = null
 
+    /**
+     * 实时排版页数（T3）：视图在页数变化时回调上抛（epub 水平模式 relayout 完成），
+     * 顶栏分母/跳页弹窗/大纲 clamp 优先取此值；null = 无回调（沿用 Ready.pageCount 打开快照）。
+     * 独立流而非更新 Ready——Ready 变化会触发 ReaderScreen 的 key(s) 全套重置（uiProgress 回退）。
+     */
+    private val _displayPageCount = MutableStateFlow<Int?>(null)
+    val displayPageCount: StateFlow<Int?> = _displayPageCount.asStateFlow()
+
+    /** 渲染端页数变化回调（主线程）；相等值幂等忽略 */
+    fun onPageCountChanged(count: Int) {
+        if (_displayPageCount.value != count) _displayPageCount.value = count
+    }
+
     init {
         openDocument()
     }
@@ -150,6 +163,7 @@ class ReaderViewModel @Inject constructor(
             // onCleared 只 close 最终 Ready 态，中间态残留的 doc 无人回收会泄漏 native 内存（M10 review H5）
             (_state.value as? ReaderUiState.Ready)?.doc?.close()
             _state.value = ReaderUiState.Loading
+            _displayPageCount.value = null   // 重入打开（密码重试等）= 新会话，上一轮实时页数失效
             val item = repository.getDocument(docId)
             if (item == null) {
                 _state.value = ReaderUiState.Failed(ReaderFailure.MISSING, "文档记录不存在，可能已被删除")

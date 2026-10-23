@@ -47,7 +47,12 @@ jobs:
           cache: gradle
 
       - name: Build + unit tests (all variants)
-        run: ./gradlew build --stacktrace
+        # shell: bash 显式启用 pipefail——gradle 退出码不被 tee 掩盖；
+        # 控制台日志落盘，失败时随 artifact 留存（job 日志 API 匿名拉取 401/403 需 token，
+        # run #8/#9/#15/#19 失败时均无法离线取证）
+        shell: bash
+        run: |
+          ./gradlew build --stacktrace 2>&1 | tee build-console.log
 
       # T7 已收紧：detekt 挂 check（新违规即 build 失败，存量走 baseline 渐进清理），
       # 此步骤产出完整报告 artifact 供审阅（continue-on-error 保证 kover 报告步骤独立完成）
@@ -63,6 +68,8 @@ jobs:
           path: |
             **/build/reports/detekt/detekt.html
             **/build/reports/kover/html/*
+            **/build/reports/tests/**
+            build-console.log
           if-no-files-found: ignore
 
       - name: Upload debug APK

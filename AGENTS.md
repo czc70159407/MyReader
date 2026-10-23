@@ -106,5 +106,6 @@ APP 整体开源（MuPDF AGPL 要求）。
 | 推进里程碑 / 写测试 / 排风险 / 查文件位置 | [docs/process.md](docs/process.md)（里程碑分解、测试策略、风险对策、关键文件清单） |
 | 执行 M9（多格式支持） | [docs/m9-plan.md](docs/m9-plan.md)（M9 执行计划与验收方案：缺口清单、技术决策、S0 预研门禁、阶段 A~G、夹具/测试矩阵、真机验收场景） |
 | 执行 M10（书签 + 首个 Room Migration） | [docs/m10-plan.md](docs/m10-plan.md)（M10 执行计划与验收方案：S0 锚点/表结构预研、阶段 A~D、MigrationTest 门禁、备份双版本兼容、真机验收场景） |
+| detekt 存量削减（与 M10 并行） | [docs/detekt-baseline-reduction.md](docs/detekt-baseline-reduction.md)（baseline 渐进清理任务说明：分层范围/削减循环/进度追踪/并行冲突防范） |
 
 > **分册纪律**：每份分册单一职责，同一内容禁止两处维护；状态与验收证据只进本文件，设计规范只进分册。

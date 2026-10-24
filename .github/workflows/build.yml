@@ -14,9 +14,12 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # ubuntu-latest 正滚动迁移至 26.04（2026-10-19 ~ 11-19，同一 label 先后落在不同镜像），
+    # 本仓 CI 有环境抖动失败前科（run #8/#9/#19/#22），窗口内固定 24.04 防镜像漂移；
+    # 窗口结束后改为 ubuntu-26.04 或恢复 ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         # 注意：submodule 不走 recursive——viewer 的嵌套 jni 子模块刻意不初始化，
         # native 层用官方 Maven 预编译 fitz AAR（见 README「构建」节）
 
@@ -34,7 +37,7 @@ jobs:
       # （run #8/#9 均失败于构建步骤、代码与通过的 #7 逐字节相同，环境抖动嫌疑最大）。
       # 固定 key 常驻缓存：命中则跳过下载，未命中自动回填
       - name: Cache Robolectric android-all (~/.m2)
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.m2/repository
           key: robolectric-m2-${{ runner.os }}
@@ -62,7 +65,7 @@ jobs:
 
       - name: Upload quality reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: quality-reports
           path: |
@@ -73,7 +76,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: app-debug
           path: app/build/outputs/apk/debug/*.apk

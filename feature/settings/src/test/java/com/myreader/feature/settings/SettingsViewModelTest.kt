@@ -99,4 +99,14 @@ class SettingsViewModelTest {
         assertEquals(ThemeMode.DARK, settings.themeMode.first())
         assertEquals(DocSort.SIZE, library.docSort.first())
     }
+
+    /** T1：确认后打开输入流失败（文件被移动/授权失效）必须有可见反馈，不得静默丢弃 */
+    @Test
+    fun `恢复流失效时上报可读错误`() = runTest(dispatcher) {
+        val (vm, _, _) = newViewModel()
+        vm.reportRestoreStreamUnavailable()
+        advanceUntilIdle()
+
+        assertEquals("备份文件无法识别或已损坏", vm.messages.first())
+    }
 }

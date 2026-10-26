@@ -67,6 +67,12 @@ class SettingsViewModel @Inject constructor(
         _messages.send("已恢复 ${r.documents} 个文档 / ${r.folders} 个目录")
     }
 
+    /** 恢复流程：SAF 返回的 zip 无法打开输入流（文件被移动/授权失效）。
+     *  静默丢弃会让用户以为"点了没反应"，故显式上报（设计纪律：失败不得静默）。 */
+    fun reportRestoreStreamUnavailable() {
+        viewModelScope.launch { _messages.send("备份文件无法识别或已损坏") }
+    }
+
     /** 统一备份操作编排：busy 状态机 + 进度回写 + 异常转 snackbar 文案（不吞 CancellationException）。 */
     private fun runBackup(block: suspend () -> Unit) {
         viewModelScope.launch {

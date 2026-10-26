@@ -46,7 +46,7 @@
 
 | 任务 | 优先级 | 范围 | 状态 | 关联条目 |
 |---|---|---|---|---|
-| T1 | P0 | 恢复备份二次确认（D1） | 待实现 | `flows/backup-restore.md` |
+| T1 | P0 | 恢复备份二次确认（D1） | 已实现（待真机验收） | `flows/backup-restore.md` |
 | T2 | P0 | 书架顶栏窄屏收纳（D2） | 待实现 | `components/top-bar.md` |
 | T3 | P0 | 批量导入取消（D3） | 待实现 | `flows/import-directory.md` |
 | T4 | P0 | 单文件导入汇总对话框（D5） | 待实现 | `flows/import-single.md` |

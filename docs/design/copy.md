@@ -145,7 +145,7 @@
 | `dlg_duplicate_title` | 文档已存在 |
 | `dlg_move_failed_title` | 无法移动 |
 | `dlg_restore_confirm_title` | 从备份恢复（`[建议 D1]`） |
-| `dlg_restore_confirm_body` | 将合并备份中的 {documents}/{folders} 条记录：同名记录以备份为准，备份之外的数据不受影响。是否继续？（`[建议 D1]`） |
+| `dlg_restore_confirm_body` | 将合并备份中的目录与文档记录：同名记录以备份为准，备份之外的数据不受影响。是否继续？（不预测数量——为避免显示数字而先解析整包） |
 
 ## 9. 导入汇总字段（summary_*）
 

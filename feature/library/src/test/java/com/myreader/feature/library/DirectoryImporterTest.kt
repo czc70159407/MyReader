@@ -24,7 +24,9 @@ import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -278,5 +280,63 @@ class DirectoryImporterTest {
         assertEquals(0, summary.imported)
         assertEquals(2, summary.unsupported)
         assertTrue(summary.issues.any { it.path == "目录中没有可导入的文档" })
+    }
+
+    // ---- 取消（T3/D3）----
+
+    /** 导入阶段取消：已导入项保留、未处理项不入库，取消前交出部分汇总且 CancellationException 继续传播 */
+    @Test
+    fun importTree_cancelDuringImport_keepsImportedDocsAndReportsPartialSummary() = runTest {
+        registerDoc("a.pdf")
+        registerDoc("b.pdf", "%PDF-1.4 b".toByteArray())
+        val source = FakeTreeSource(mapOf("root" to listOf(file("a.pdf"), file("b.pdf"))))
+        val partials = mutableListOf<DirectoryImportSummary>()
+        lateinit var job: Job
+        job = launch {
+            directoryImporter.importTree(
+                source,
+                targetFolderId = null,
+                // 第二个文件的进度事件即触发取消：此刻 a.pdf 已导入、b.pdf 尚未开始
+                onProgress = { p ->
+                    if (p.phase == DirectoryImportProgress.Phase.IMPORTING && p.current == 2) job.cancel()
+                },
+                onPartialSummary = { partials += it },
+            )
+        }
+        job.join()
+
+        assertEquals(1, partials.size)
+        assertTrue(partials.single().cancelled)
+        assertEquals(1, partials.single().imported)
+        assertEquals(0, partials.single().failed)
+        // 已导入项保留；未处理项不入库
+        val titles = repository.docsIn(null, com.myreader.core.model.DocSort.TITLE).first().map { it.title }
+        assertEquals(listOf("a.pdf"), titles)
+    }
+
+    /** 扫描阶段取消：不创建目录、不入库，部分汇总 imported = 0 */
+    @Test
+    fun importTree_cancelDuringScan_importsNothing() = runTest {
+        registerDoc("a.pdf")
+        val source = FakeTreeSource(mapOf("root" to listOf(file("a.pdf"))))
+        val partials = mutableListOf<DirectoryImportSummary>()
+        lateinit var job: Job
+        job = launch {
+            directoryImporter.importTree(
+                source,
+                targetFolderId = null,
+                onProgress = { p ->
+                    if (p.phase == DirectoryImportProgress.Phase.SCANNING) job.cancel()
+                },
+                onPartialSummary = { partials += it },
+            )
+        }
+        job.join()
+
+        assertEquals(1, partials.size)
+        assertTrue(partials.single().cancelled)
+        assertEquals(0, partials.single().imported)
+        assertTrue(repository.docsIn(null, com.myreader.core.model.DocSort.TITLE).first().isEmpty())
+        assertTrue(repository.observeAllFolders().first().isEmpty())
     }
 }

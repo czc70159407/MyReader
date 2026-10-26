@@ -382,7 +382,14 @@ fun LibraryScreen(
                             }
                         } ?: "正在导入…",
                         style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
                     )
+                    // T3/D3：目录导入可取消（单文件导入不显示，保持范围）
+                    if (importProgress != null) {
+                        TextButton(onClick = viewModel::cancelImport) {
+                            Text(text = "取消")
+                        }
+                    }
                 }
             }
         }

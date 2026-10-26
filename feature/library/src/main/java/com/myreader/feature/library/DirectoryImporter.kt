@@ -6,7 +6,10 @@ import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.repo.LibraryRepository
 import com.myreader.core.model.DocSort
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,6 +36,8 @@ data class DirectoryImportSummary(
     val truncated: Int = 0,
     val inaccessibleDirs: Int = 0,
     val issues: List<Issue> = emptyList(),
+    /** T3/D3：取消产生的部分汇总（对话框首行展示「已取消，已导入 N 个」） */
+    val cancelled: Boolean = false,
 ) {
     data class Issue(val path: String, val reason: String)
 
@@ -57,50 +62,96 @@ class DirectoryImporter @Inject constructor(
     private val dispatchers: DispatcherProvider,
 ) {
 
-    /** 入口：SAF treeUri → 构造 SAF 遍历源 → 导入。权限异常由 [SafDirectoryTreeSource] 抛出。 */
+    /** 入口：SAF treeUri → 构造 SAF 遍历源 → 导入。权限异常由 [SafDirectoryTreeSource] 抛出。
+     *  取消（T3/D3）：[onPartialSummary] 在协程被取消时收到部分汇总，随后 CancellationException 继续传播。 */
     suspend fun importDirectory(
         treeUri: Uri,
         targetFolderId: Long?,
         limits: DirectoryScanLimits = DirectoryScanLimits(),
         onProgress: (DirectoryImportProgress) -> Unit = {},
+        onPartialSummary: (DirectoryImportSummary) -> Unit = {},
     ): DirectoryImportSummary = importTree(
         source = SafDirectoryTreeSource(context.contentResolver, treeUri),
         targetFolderId = targetFolderId,
         limits = limits,
         onProgress = onProgress,
+        onPartialSummary = onPartialSummary,
     )
 
     /**
      * 导入编排（遍历源可注入：生产走 SAF，单测定注入内存源——Robolectric 无法伪造
      * DocumentsContract 的 child documents 查询）。
+     *
+     * 取消（T3/D3）：job.cancel() 后由本函数在扫描完成后与每个文件前 `ensureActive` 检查——
+     * - 扫描阶段取消（扫描为同步 SAF 查询，最长约 1~2s 后生效）：不创建目录、不入库；
+     * - 导入阶段取消：保留已导入文档与已创建目录（不做空目录清理），部分汇总经
+     *   [onPartialSummary] 上交后 `CancellationException` 继续传播——不得吞掉转为错误文案。
      */
     internal suspend fun importTree(
         source: DirectoryTreeSource,
         targetFolderId: Long?,
         limits: DirectoryScanLimits = DirectoryScanLimits(),
         onProgress: (DirectoryImportProgress) -> Unit = {},
+        onPartialSummary: (DirectoryImportSummary) -> Unit = {},
     ): DirectoryImportSummary = withContext(dispatchers.io) {
         onProgress(DirectoryImportProgress(0, 0, DirectoryImportProgress.Phase.SCANNING))
-        val scan = DirectoryScanner.scan(source, limits)
+        val session = ImportSession(repository, importer, DirectoryScanner.scan(source, limits), targetFolderId)
+        try {
+            // 扫描期取消在此抛出（session 尚未执行任何导入 → 部分汇总 imported = 0）
+            coroutineContext.ensureActive()
+            session.runAll(onProgress, ensureActive = { coroutineContext.ensureActive() })
+            session.dropEmptyCreated()
+            session.summary(cancelled = false, includeDropped = true)
+        } catch (e: CancellationException) {
+            onPartialSummary(session.summary(cancelled = true, includeDropped = false))
+            throw e
+        }
+    }
 
-        val folderCache = FolderCache(repository)
-        val titleCache = TitleCache(repository)
-        val issues = mutableListOf<DirectoryImportSummary.Issue>()
-        var imported = 0
-        var passwordMarked = 0
-        var duplicateSkipped = 0
-        var corruptRejected = 0
-        var unsupported = 0
-        var failed = 0
+    /**
+     * 单次目录导入的会话状态（目录镜像缓存 / 标题查重缓存 / 计数与明细）。
+     * 独立成类以隔离编排复杂度：[DirectoryImporter.importTree] 只负责进度、取消检查与汇总收尾。
+     */
+    private class ImportSession(
+        repository: LibraryRepository,
+        private val importer: DocumentImporter,
+        val scan: DirectoryScanResult,
+        private val targetFolderId: Long?,
+    ) {
+        private val folderCache = FolderCache(repository)
+        private val titleCache = TitleCache(repository)
+        private val issues = mutableListOf<DirectoryImportSummary.Issue>()
+        private var imported = 0
+        private var passwordMarked = 0
+        private var duplicateSkipped = 0
+        private var corruptRejected = 0
+        private var unsupported = 0
+        private var failed = 0
 
-        scan.files.forEachIndexed { index, file ->
-            // 目录在导入前即创建（import 需要 folderId）；若该目录下文件全部失败，
-            // 会在结束时由 dropEmptyCreated 清理，保证「不留下空目录」的设计承诺
-            onProgress(
-                DirectoryImportProgress(index + 1, scan.files.size, DirectoryImportProgress.Phase.IMPORTING),
-            )
-            val folderId = folderCache.resolve(file.folderPath, targetFolderId)
-            val result = importer.import(file.uri, targetFolderId = folderId)
+        suspend fun runAll(
+            onProgress: (DirectoryImportProgress) -> Unit,
+            ensureActive: () -> Unit,
+        ) {
+            scan.files.forEachIndexed { index, file ->
+                // T3/D3：每个文件前显式检查取消（import 内部挂起点也会抛，双保险及时性）
+                ensureActive()
+                // 目录在导入前即创建（import 需要 folderId）；若该目录下文件全部失败，
+                // 会在结束时由 dropEmptyCreated 清理，保证「不留下空目录」的设计承诺
+                onProgress(
+                    DirectoryImportProgress(index + 1, scan.files.size, DirectoryImportProgress.Phase.IMPORTING),
+                )
+                val folderId = folderCache.resolve(file.folderPath, targetFolderId)
+                apply(importer.import(file.uri, targetFolderId = folderId), file, folderId)
+            }
+            if (scan.files.isEmpty() && scan.unsupportedCount > 0) {
+                issues += DirectoryImportSummary.Issue(
+                    "目录中没有可导入的文档",
+                    "${scan.unsupportedCount} 个文件类型暂不支持",
+                )
+            }
+        }
+
+        private suspend fun apply(result: DocumentImporter.Result, file: ScannedFile, folderId: Long?) {
             val name = (file.folderPath + (file.displayName ?: "未命名")).joinToString("/")
             when (result.status) {
                 DocumentImporter.Status.IMPORTED,
@@ -117,57 +168,51 @@ class DirectoryImporter @Inject constructor(
                 }
                 DocumentImporter.Status.DUPLICATE_SKIPPED -> {
                     duplicateSkipped++
-                    addIssue(issues, name, "库中已存在相同内容，已跳过")
+                    addIssue(name, "库中已存在相同内容，已跳过")
                 }
                 DocumentImporter.Status.CORRUPT_REJECTED -> {
                     corruptRejected++
-                    addIssue(issues, name, result.reason ?: "文件损坏")
+                    addIssue(name, result.reason ?: "文件损坏")
                 }
                 DocumentImporter.Status.UNSUPPORTED -> {
                     unsupported++
-                    addIssue(issues, name, result.reason ?: "暂不支持的文件类型")
+                    addIssue(name, result.reason ?: "暂不支持的文件类型")
                 }
                 DocumentImporter.Status.FAILED -> {
                     failed++
-                    addIssue(issues, name, result.reason ?: "导入失败")
+                    addIssue(name, result.reason ?: "导入失败")
                 }
             }
         }
 
-        if (scan.files.isEmpty() && scan.unsupportedCount > 0) {
-            addIssue(issues, "目录中没有可导入的文档", "${scan.unsupportedCount} 个文件类型暂不支持")
+        private fun addIssue(path: String, reason: String) {
+            if (issues.size < DirectoryImportSummary.MAX_ISSUES) {
+                issues += DirectoryImportSummary.Issue(path, reason)
+            }
         }
 
-        // 目录内文件全部失败 → 不留空目录（与设计「只镜像含可导入文件的路径」一致）
-        folderCache.dropEmptyCreated()
+        suspend fun dropEmptyCreated() = folderCache.dropEmptyCreated()
 
-        DirectoryImportSummary(
-            total = scan.files.size,
-            imported = imported,
-            passwordMarked = passwordMarked,
-            duplicateSkipped = duplicateSkipped,
-            corruptRejected = corruptRejected,
-            unsupported = unsupported + scan.unsupportedCount,
-            tooLarge = scan.tooLargeCount,
-            failed = failed,
-            foldersCreated = folderCache.created - folderCache.dropped,
-            foldersReused = folderCache.reused,
-            renamedForConflict = titleCache.renamed,
-            deepSkipped = scan.deepSkippedCount,
-            truncated = scan.truncatedCount,
-            inaccessibleDirs = scan.inaccessibleDirCount,
-            issues = issues,
-        )
-    }
-
-    private fun addIssue(
-        issues: MutableList<DirectoryImportSummary.Issue>,
-        path: String,
-        reason: String,
-    ) {
-        if (issues.size < DirectoryImportSummary.MAX_ISSUES) {
-            issues += DirectoryImportSummary.Issue(path, reason)
-        }
+        /** [includeDropped] 决定是否扣减空目录清理（取消路径不清理，保留现场） */
+        fun summary(cancelled: Boolean, includeDropped: Boolean): DirectoryImportSummary =
+            DirectoryImportSummary(
+                total = scan.files.size,
+                imported = imported,
+                passwordMarked = passwordMarked,
+                duplicateSkipped = duplicateSkipped,
+                corruptRejected = corruptRejected,
+                unsupported = unsupported + scan.unsupportedCount,
+                tooLarge = scan.tooLargeCount,
+                failed = failed,
+                foldersCreated = folderCache.created - if (includeDropped) folderCache.dropped else 0,
+                foldersReused = folderCache.reused,
+                renamedForConflict = titleCache.renamed,
+                deepSkipped = scan.deepSkippedCount,
+                truncated = scan.truncatedCount,
+                inaccessibleDirs = scan.inaccessibleDirCount,
+                issues = issues,
+                cancelled = cancelled,
+            )
     }
 
     /** 目录镜像缓存：同名目录复用（合并），避免重复导入产生「副本」目录 */

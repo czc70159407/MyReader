@@ -24,8 +24,13 @@ internal fun ImportSummaryDialog(summary: DirectoryImportSummary, onDismiss: () 
         title = { Text(text = "目录导入完成") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                // D3：取消后的部分汇总首行为取消语义（copy.md summary_cancelled）
                 Text(
-                    text = "共扫描 ${summary.total} 个可导入文档",
+                    text = if (summary.cancelled) {
+                        "已取消，已导入 ${summary.imported} 个"
+                    } else {
+                        "共扫描 ${summary.total} 个可导入文档"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

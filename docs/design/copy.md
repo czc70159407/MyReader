@@ -166,7 +166,7 @@
 | `summary_inaccessible` | 无法访问的子目录：{n} | n > 0 |
 | `summary_issues_title` | 明细： | issues 非空 |
 | `summary_issue_line` | · {path} —— {reason} | issues 非空，≤ 50 条 |
-| `summary_cancelled` | 已取消，已导入 {n} 个（`[建议 D3]`） | 取消后 |
+| `summary_cancelled` | 已取消，已导入 {n} 个（T3 已实现） | 取消后 |
 
 ## 10. 设置与关于
 

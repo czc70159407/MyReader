@@ -1,6 +1,6 @@
 # 流程 · 整目录批量导入
 
-- 状态：评审通过
+- 状态：已实现（待真机验收）
 - 优先级：P0（D3 取消，T3）
 - 关联决策：D3
 - 代码落点：`feature/library/DirectoryScanner.kt`、`DirectoryImporter.kt`、`LibraryViewModel.kt`、`ImportSummaryDialog.kt`、`LibraryScreen.kt`

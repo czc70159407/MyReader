@@ -15,6 +15,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -382,16 +383,28 @@ class LibraryViewModel @Inject constructor(
         importDirectory(uri, targetFolderId)
     }
 
+    /** 当前目录导入任务（T3/D3：cancelImport 由此取消；单文件导入无取消入口，不赋值） */
+    private var importJob: Job? = null
+
+    /** T3/D3：取消目录导入（扫描或导入阶段）；已导入项保留，取消后弹部分汇总 */
+    fun cancelImport() {
+        importJob?.cancel()
+    }
+
     fun importDirectory(uri: Uri, targetFolderId: Long?) {
         if (_importing.value) return
-        viewModelScope.launch {
+        importJob = viewModelScope.launch {
             _importing.value = true
             try {
-                val summary = directoryImporter.importDirectory(uri, targetFolderId) { progress ->
-                    _importProgress.value = progress
-                }
+                val summary = directoryImporter.importDirectory(
+                    uri,
+                    targetFolderId,
+                    onProgress = { progress -> _importProgress.value = progress },
+                    // T3/D3：取消时由 importer 先交部分汇总，CancellationException 继续传播（不转错误文案）
+                    onPartialSummary = { partial -> _importSummary.value = partial },
+                )
                 _importSummary.value = summary
-                if (summary.total == 0) {
+                if (summary.total == 0 && !summary.cancelled) {
                     _messages.send("该目录中没有可导入的文档")
                 }
             } catch (e: DirectoryAccessException) {

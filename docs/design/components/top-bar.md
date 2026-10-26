@@ -1,6 +1,6 @@
 # 组件 · 顶栏
 
-- 状态：评审通过
+- 状态：已实现（待真机验收，T2）
 - 优先级：P0（书架收纳，T2）
 - 关联决策：D2（窄屏收纳）、D4（沉浸模式，独立预研）
 - 代码落点：`feature/library/LibraryScreen.kt`、`feature/library/SortMenu.kt`、`feature/reader/ReaderScreen.kt`
@@ -21,7 +21,7 @@
 - 导入进行中：两个导入按钮 `enabled = false`。
 - 搜索态：`actions` 全部隐藏。
 
-### 1.2 修订（D2 / T2）
+### 1.2 收纳方案（D2 / T2，已实现）
 
 ```
 ┌────────────────────────────────────────────┐

@@ -4,8 +4,9 @@
 # 注意：规则归属以本版本 default-detekt-config.yml 为准（如 MagicNumber 在 style 而非 naming/complexity）。
 naming:
   FunctionNaming:
-    # Compose 惯例：@Composable 函数 PascalCase（Kotlin 官方 compose-api-guidelines）
-    ignoreAnnotated: ['@Composable']
+    # Compose 惯例：@Composable 函数 PascalCase（Kotlin 官方 compose-api-guidelines）。
+    # 注意 detekt 按注解「简单名」匹配，此处不带 @；曾误写 '@Composable' 导致豁免失效（T2 实测）。
+    ignoreAnnotated: ['Composable']
   MatchingDeclarationName:
     # 路由常量 object 与 NavHost 同文件为刻意组织（docs/ui-design.md 路由节）
     active: false

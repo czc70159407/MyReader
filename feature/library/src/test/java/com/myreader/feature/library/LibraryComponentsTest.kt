@@ -1,6 +1,8 @@
 package com.myreader.feature.library
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -16,7 +18,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * M6 无状态组件 Compose UI 测试（Robolectric）：SortMenu / RecentSection / RecentCard。
+ * 无状态组件 Compose UI 测试（Robolectric）：MoreMenu（T2/D2 收纳后顶栏菜单）/ RecentSection / RecentCard。
  * 纯渲染 + 回调，无 Room/VM 依赖；数据链路由 LibraryViewModelTest 与 core:data 覆盖。
  */
 @RunWith(RobolectricTestRunner::class)
@@ -26,14 +28,20 @@ class LibraryComponentsTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    // ---- SortMenu ----
+    // ---- MoreMenu（T2/D2：动作段 + 分隔线 + 排序段）----
 
     @Test
-    fun sortMenu_showsFourOptions_withSingleCheckOnCurrent() {
-        composeRule.setContent { SortMenu(current = DocSort.SIZE, onSelect = {}) }
-        composeRule.onNodeWithContentDescription("排序").performClick()
+    fun moreMenu_showsActionSection_andFourSortOptions_withSingleCheckOnCurrent() {
+        composeRule.setContent {
+            MoreMenu(importing = false, onNewFolder = {}, onImportDir = {}, current = DocSort.SIZE, onSelect = {})
+        }
+        composeRule.onNodeWithContentDescription("更多").performClick()
         composeRule.waitForIdle()
 
+        // 动作段
+        composeRule.onNodeWithText("新建文件夹").assertIsDisplayed()
+        composeRule.onNodeWithText("导入目录").assertIsDisplayed()
+        // 排序段
         composeRule.onNodeWithText("标题").assertIsDisplayed()
         composeRule.onNodeWithText("最近阅读").assertIsDisplayed()
         composeRule.onNodeWithText("添加时间").assertIsDisplayed()
@@ -43,15 +51,60 @@ class LibraryComponentsTest {
     }
 
     @Test
-    fun sortMenu_selectTriggersCallback() {
-        val selected = mutableListOf<DocSort>()
-        composeRule.setContent { SortMenu(current = DocSort.TITLE, onSelect = { selected.add(it) }) }
-        composeRule.onNodeWithContentDescription("排序").performClick()
+    fun moreMenu_importing_greysOutImportDir_butKeepsNewFolderAndSort() {
+        composeRule.setContent {
+            MoreMenu(
+                importing = true,
+                onNewFolder = {},
+                onImportDir = {},
+                current = DocSort.TITLE,
+                onSelect = {},
+            )
+        }
+        composeRule.onNodeWithContentDescription("更多").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("导入目录").assertIsNotEnabled()
+        composeRule.onNodeWithText("新建文件夹").assertIsEnabled()
+        composeRule.onNodeWithText("标题").assertIsEnabled()
+    }
+
+    @Test
+    fun moreMenu_actionAndSortCallbacks_fire_afterClosingMenu() {
+        val folders = mutableListOf<Int>()
+        val dirs = mutableListOf<Int>()
+        val sorts = mutableListOf<DocSort>()
+        composeRule.setContent {
+            MoreMenu(
+                importing = false,
+                onNewFolder = { folders.add(1) },
+                onImportDir = { dirs.add(1) },
+                current = DocSort.TITLE,
+                onSelect = { sorts.add(it) },
+            )
+        }
+
+        // 新建文件夹
+        composeRule.onNodeWithContentDescription("更多").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("新建文件夹").performClick()
+        composeRule.waitForIdle()
+
+        // 导入目录（菜单关闭后重新展开）
+        composeRule.onNodeWithContentDescription("更多").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("导入目录").performClick()
+        composeRule.waitForIdle()
+
+        // 排序
+        composeRule.onNodeWithContentDescription("更多").performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithText("大小").performClick()
         composeRule.waitForIdle()
 
-        assertEquals(listOf(DocSort.SIZE), selected)
+        assertEquals(listOf(1), folders)
+        assertEquals(listOf(1), dirs)
+        assertEquals(listOf(DocSort.SIZE), sorts)
     }
 
     // ---- RecentSection / RecentCard ----

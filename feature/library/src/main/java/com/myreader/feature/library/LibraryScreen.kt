@@ -24,9 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -75,7 +73,7 @@ import kotlinx.coroutines.CancellationException
  * 本文件只保留屏幕级编排（工程优化 2026-10-16，原 37KB 单文件拆分为）：
  * - 卡片与最近阅读条 → [LibraryCards.kt]（FolderCard / DocumentCard / RecentSection）
  * - 缩略图与角标 → [LibraryThumbnails.kt]（ThumbnailImage / StatusBadge / FormatBadge）
- * - 排序菜单 → [SortMenu.kt]
+ * - 更多菜单（T2/D2 收纳：新建文件夹 / 导入目录 / 排序）→ [MoreMenu.kt]
  */
 // ExperimentalFoundationApi 原为 combinedClickable 等卡片件所需，已随拆分移至 LibraryCards.kt
 @OptIn(ExperimentalMaterial3Api::class)
@@ -217,25 +215,23 @@ fun LibraryScreen(
                 },
                 actions = {
                     if (!searchActive) {
-                        IconButton(onClick = { showNewFolderInCurrent = true }) {
-                            Icon(imageVector = Icons.Filled.CreateNewFolder, contentDescription = "新建文件夹")
-                        }
+                        // T2/D2 窄屏收纳：顶栏固定 4 动作位，「新建文件夹」「导入目录」与排序收进更多菜单
                         IconButton(
                             onClick = { importLauncher.launch(FileTypes.mimeFilters()) },
                             enabled = !importing,
                         ) {
                             Icon(imageVector = Icons.Filled.Add, contentDescription = "导入文档")
                         }
-                        IconButton(
-                            onClick = { dirLauncher.launch(null) },
-                            enabled = !importing,
-                        ) {
-                            Icon(imageVector = Icons.Filled.FolderOpen, contentDescription = "导入目录")
-                        }
                         IconButton(onClick = viewModel::openSearch) {
                             Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
                         }
-                        SortMenu(current = currentSort, onSelect = viewModel::setSort)
+                        MoreMenu(
+                            importing = importing,
+                            onNewFolder = { showNewFolderInCurrent = true },
+                            onImportDir = { dirLauncher.launch(null) },
+                            current = currentSort,
+                            onSelect = viewModel::setSort,
+                        )
                         IconButton(onClick = onOpenSettings) {
                             Icon(imageVector = Icons.Filled.Settings, contentDescription = "设置")
                         }

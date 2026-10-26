@@ -97,6 +97,9 @@ feature/
   └── viewer-txt/       # TXT 渲染（扩展点验证，不依赖 MuPDF）
 third-party/
   └── mupdf-android-viewer/   # MuPDF viewer（git submodule → 自有 fork czc70159407/mupdf-android-viewer，本地补丁在 myreader-patches 分支）
+docs/
+  ├── design/             # UI 交互方案（设计意图事实源：tokens / copy / screens / flows / accessibility）
+  └── *.md                # 架构、数据层、UI 实现、里程碑计划等分册
 .github/
   └── workflows/build.yml     # CI：全量构建 + 单测（push/PR 触发）
 LICENSE                 # AGPL-3.0 全文

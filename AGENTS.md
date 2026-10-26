@@ -105,6 +105,7 @@ APP 整体开源（MuPDF AGPL 要求）。
 | 改模块结构 / 依赖版本 / MuPDF 集成 / 偏离选型 | [docs/architecture.md](docs/architecture.md)（技术选型、项目结构、模块依赖、MuPDF 集成方式、依赖项清单） |
 | 改 Room schema / DAO / Repository / 存储策略 / 进度写库 | [docs/data-layer.md](docs/data-layer.md)（Room Schema、DAO、删除目录策略、存储策略、进度记忆） |
 | 改阅读器渲染 / 路由 / 目录树 / 导入流程 / 错误边界 | [docs/ui-design.md](docs/ui-design.md)（Compose 集成、渲染与内存策略、UI 架构、导入流程、错误处理） |
+| 改 UI 交互 / 文案 / 视觉基线 / 无障碍 / 新建或评审设计条目 | [docs/design/README.md](docs/design/README.md)（设计意图事实源：索引与决策日志 D1~D8、tokens、copy、screens、flows、accessibility） |
 | 推进里程碑 / 写测试 / 排风险 / 查文件位置 | [docs/process.md](docs/process.md)（里程碑分解、测试策略、风险对策、关键文件清单） |
 | 执行 M9（多格式支持） | [docs/m9-plan.md](docs/m9-plan.md)（M9 执行计划与验收方案：缺口清单、技术决策、S0 预研门禁、阶段 A~G、夹具/测试矩阵、真机验收场景） |
 | 执行 M10（书签 + 首个 Room Migration） | [docs/m10-plan.md](docs/m10-plan.md)（M10 执行计划与验收方案：S0 锚点/表结构预研、阶段 A~D、MigrationTest 门禁、备份双版本兼容、真机验收场景） |

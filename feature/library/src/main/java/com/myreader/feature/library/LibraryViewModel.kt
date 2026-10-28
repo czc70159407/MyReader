@@ -293,43 +293,97 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             _importing.value = true
             try {
-                var imported = 0
-                var passwordMarked = 0
-                var rejected = 0
-                var unsupported = 0
-                var failed = 0
+                val issues = mutableListOf<DirectoryImportSummary.Issue>()
+                val tally = SingleImportTally(issues)
                 for (uri in uris) {
                     var r = importer.import(uri, targetFolderId = targetFolderId)
                     if (r.status == DocumentImporter.Status.DUPLICATE_SKIPPED) {
                         // 重复逐个确认（M5）：挂起等待用户决策，确认后对该 uri force 重导
                         val stillImport = awaitDuplicateDecision(uri, r.existingTitle)
-                        if (!stillImport) continue
+                        if (!stillImport) {
+                            tally.skip(r)
+                            continue
+                        }
                         r = importer.import(uri, targetFolderId = targetFolderId, force = true)
                     }
-                    when (r.status) {
-                        DocumentImporter.Status.IMPORTED -> imported++
-                        DocumentImporter.Status.IMPORTED_PASSWORD_MARKED -> passwordMarked++
-                        DocumentImporter.Status.DUPLICATE_SKIPPED -> Unit
-                        DocumentImporter.Status.CORRUPT_REJECTED -> rejected++
-                        DocumentImporter.Status.UNSUPPORTED -> unsupported++
-                        DocumentImporter.Status.FAILED -> failed++
+                    tally.apply(r)
+                }
+                // T4/D5：多选且存在跳过/拒收/不支持/失败 → 弹汇总对话框（与目录导入同构）；
+                // 单文件或全部成功 → 保持轻量 Snackbar（不双通道反馈）
+                if (uris.size >= 2 && tally.problemCount > 0) {
+                    _importSummary.value = ImportSummaryUi(tally.report(uris.size), "导入完成")
+                } else {
+                    val parts = buildList {
+                        if (tally.imported > 0) add("导入 ${tally.imported} 个")
+                        if (tally.passwordMarked > 0) add("${tally.passwordMarked} 个已加密（打开时需密码）")
+                        if (tally.corruptRejected > 0) add("${tally.corruptRejected} 个损坏被拒收")
+                        if (tally.unsupported > 0) add("${tally.unsupported} 个暂不支持的文件类型")
+                        if (tally.failed > 0) add("${tally.failed} 个失败")
                     }
+                    _messages.send(if (parts.isEmpty()) "未导入任何文档" else parts.joinToString("；"))
                 }
-                val parts = buildList {
-                    if (imported > 0) add("导入 $imported 个")
-                    if (passwordMarked > 0) add("$passwordMarked 个已加密（打开时需密码）")
-                    if (rejected > 0) add("$rejected 个损坏被拒收")
-                    if (unsupported > 0) add("$unsupported 个暂不支持的文件类型")
-                    if (failed > 0) add("$failed 个失败")
-                }
-                _messages.send(
-                    if (parts.isEmpty()) "未导入任何文档"
-                    else parts.joinToString("；")
-                )
             } finally {
                 _importing.value = false
             }
         }
+    }
+
+    /** T4/D5：单文件（多选）导入计数与明细登记（文件名与目录导入同口径进 UI；uri 不进文案） */
+    private class SingleImportTally(private val issues: MutableList<DirectoryImportSummary.Issue>) {
+        var imported = 0
+        var passwordMarked = 0
+        var duplicateSkipped = 0
+        var corruptRejected = 0
+        var unsupported = 0
+        var failed = 0
+
+        /** 跳过/拒收/不支持/失败之和（决定 D5 对话框 vs Snackbar） */
+        val problemCount: Int
+            get() = duplicateSkipped + corruptRejected + unsupported + failed
+
+        /** 重复跳过路径（未重导） */
+        fun skip(r: DocumentImporter.Result) {
+            duplicateSkipped++
+            addIssue(r, "库中已存在相同内容，已跳过")
+        }
+
+        fun apply(r: DocumentImporter.Result) {
+            when (r.status) {
+                DocumentImporter.Status.IMPORTED -> imported++
+                DocumentImporter.Status.IMPORTED_PASSWORD_MARKED -> passwordMarked++
+                DocumentImporter.Status.DUPLICATE_SKIPPED -> Unit   // force 重导不返回此状态
+                DocumentImporter.Status.CORRUPT_REJECTED -> {
+                    corruptRejected++
+                    addIssue(r, "文件损坏")
+                }
+                DocumentImporter.Status.UNSUPPORTED -> {
+                    unsupported++
+                    addIssue(r, "暂不支持的文件类型")
+                }
+                DocumentImporter.Status.FAILED -> {
+                    failed++
+                    addIssue(r, "导入失败")
+                }
+            }
+        }
+
+        private fun addIssue(r: DocumentImporter.Result, fallback: String) {
+            if (issues.size < DirectoryImportSummary.MAX_ISSUES) {
+                val name = r.title ?: r.uri.lastPathSegment ?: "未命名文件"
+                issues += DirectoryImportSummary.Issue(name, r.reason ?: fallback)
+            }
+        }
+
+        fun report(total: Int): DirectoryImportSummary = DirectoryImportSummary(
+            total = total,
+            imported = imported,
+            passwordMarked = passwordMarked,
+            duplicateSkipped = duplicateSkipped,
+            corruptRejected = corruptRejected,
+            unsupported = unsupported,
+            failed = failed,
+            issues = issues,
+        )
     }
 
     /** 置重复弹窗状态并挂起等待决策（确认=仍导入 / 跳过=false）。decision 必须先于置位就绪，
@@ -364,9 +418,9 @@ class LibraryViewModel @Inject constructor(
     private val _importProgress = MutableStateFlow<DirectoryImportProgress?>(null)
     val importProgress: StateFlow<DirectoryImportProgress?> = _importProgress
 
-    /** 目录导入汇总（完成后弹对话框，含各类计数与逐条原因） */
-    private val _importSummary = MutableStateFlow<DirectoryImportSummary?>(null)
-    val importSummary: StateFlow<DirectoryImportSummary?> = _importSummary
+    /** 导入汇总对话框（T4/D5 起单文件多选与目录导入共用，标题区分来源） */
+    private val _importSummary = MutableStateFlow<ImportSummaryUi?>(null)
+    val importSummary: StateFlow<ImportSummaryUi?> = _importSummary
 
     fun onDirectoryPicked(uri: Uri?) {
         if (uri == null || _importing.value) return
@@ -401,9 +455,11 @@ class LibraryViewModel @Inject constructor(
                     targetFolderId,
                     onProgress = { progress -> _importProgress.value = progress },
                     // T3/D3：取消时由 importer 先交部分汇总，CancellationException 继续传播（不转错误文案）
-                    onPartialSummary = { partial -> _importSummary.value = partial },
+                    onPartialSummary = { partial ->
+                        _importSummary.value = ImportSummaryUi(partial, "目录导入完成")
+                    },
                 )
-                _importSummary.value = summary
+                _importSummary.value = ImportSummaryUi(summary, "目录导入完成")
                 if (summary.total == 0 && !summary.cancelled) {
                     _messages.send("该目录中没有可导入的文档")
                 }
@@ -429,3 +485,6 @@ class LibraryViewModel @Inject constructor(
         const val RECENT_LIMIT = 20
     }
 }
+
+/** T4/D5：导入汇总对话框 UI 状态——单文件多选与目录导入共用渲染，标题区分来源 */
+data class ImportSummaryUi(val summary: DirectoryImportSummary, val title: String)

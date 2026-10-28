@@ -1,6 +1,6 @@
 # 流程 · 单文件 / 多选导入
 
-- 状态：评审通过
+- 状态：已实现（待真机验收）
 - 优先级：P0（D5 汇总对话框，T4）
 - 关联决策：D5
 - 代码落点：`feature/library/LibraryScreen.kt`（launcher）、`LibraryViewModel.kt`（`importUris`）、`DocumentImporter.kt`、`ImportSummaryDialog.kt`（复用）
@@ -71,7 +71,7 @@ sequenceDiagram
 | `issues` | 逐条原因（≤50 条），格式 `· {文件名} —— {原因}` |
 | `renamedForConflict` / `folders*` / `deepSkipped` / `truncated` / `inaccessibleDirs` | 单文件导入恒 0/不显示 |
 
-3. 抽统一模型 `ImportReport`（`total/imported/passwordMarked/duplicateSkipped/corruptRejected/unsupported/failed/issues`），由 `ImportSummaryDialog` 渲染；目录导入的模型可映射到它（复用同一 UI）。
+3. 统一汇总模型即 `DirectoryImportSummary`（目录专有字段在单文件场景为 0，对话框对 0 值行不显示）；UI 状态 `ImportSummaryUi(summary, title)`，标题键 `ok_import_summary_title`（目录）/ `ok_import_summary_title_multi`（单文件多选）。
 4. 全无结果（例如全部跳过且用户未确认）：Snackbar `err_nothing_imported`。
 
 ## 5. 校验与边界

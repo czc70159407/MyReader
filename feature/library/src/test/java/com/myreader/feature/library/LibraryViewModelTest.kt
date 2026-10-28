@@ -367,6 +367,42 @@ class LibraryViewModelTest {
         assertNull(viewModel.pendingDuplicate.value)
     }
 
+    /** T4/D5：多选且存在跳过/不支持 → 弹汇总对话框（与目录导入同构），不另发 Snackbar */
+    @Test
+    fun importUris_multiSelectWithSkips_showsSummaryDialogInsteadOfSnackbar() =
+        runTest(mainDispatcherRule.testScheduler) {
+            startCollectingMessages()
+            // 预置 b.pdf 入库 → 第二次导入同内容命中重复（Robolectric 流一次性，重复前重新注册）。
+            // 各文件内容必须互异，否则 a 也命中 hash 查重再次挂起（内容 hash 查重按内容不按文件名）
+            importer.import(registerPdf("b.pdf"))
+            val uriA = registerPdf("a.pdf", "%PDF-1.4 a".toByteArray())
+            val uriB = registerPdf("b.pdf")
+            val uriC = registerPdf("c.log", "%PDF-1.4 c".toByteArray())   // 未登记格式 → UNSUPPORTED
+
+            viewModel.importUris(listOf(uriA, uriB, uriC), targetFolderId = null)
+            awaitPendingDuplicate()   // b 命中重复，循环挂起等决策
+            viewModel.dismissDuplicate()
+
+            // 完成后弹汇总对话框
+            val deadline = System.currentTimeMillis() + 5_000
+            while (viewModel.importSummary.value == null) {
+                idle()
+                if (System.currentTimeMillis() > deadline) throw AssertionError("汇总对话框未弹出")
+                delay(10)
+            }
+            val ui = viewModel.importSummary.value!!
+            assertEquals("导入完成", ui.title)
+            assertEquals(3, ui.summary.total)
+            assertEquals(1, ui.summary.imported)
+            assertEquals(1, ui.summary.duplicateSkipped)
+            assertEquals(1, ui.summary.unsupported)
+            assertEquals(2, ui.summary.issues.size)
+            assertTrue(ui.summary.issues.any { it.reason.contains("已存在") })
+            assertTrue(ui.summary.issues.any { it.reason.contains("暂不支持") })
+            // 对话框路径不另发 Snackbar
+            assertTrue(receivedMessages.isEmpty())
+        }
+
     @Test
     fun createSubFolder_persistsAndNotifies() = runTest(mainDispatcherRule.testScheduler) {
         viewModel.createSubFolder(null, "新文件夹")

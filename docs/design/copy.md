@@ -89,7 +89,7 @@
 | `ok_backup_done` | 备份完成 | Snackbar |
 | `ok_restore_done` | 已恢复 {documents} 个文档 / {folders} 个目录 | Snackbar |
 | `ok_import_summary_title` | 目录导入完成 | 对话框标题 |
-| `ok_import_summary_title_multi` | 导入完成（`[建议 D5]` 单文件多选复用） | 对话框标题 |
+| `ok_import_summary_title_multi` | 导入完成（T4 已实现：单文件多选复用） | 对话框标题 |
 
 ## 6. 错误文案（err_*）
 

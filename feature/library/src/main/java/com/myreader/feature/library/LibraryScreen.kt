@@ -486,9 +486,9 @@ fun LibraryScreen(
         )
     }
 
-    // 目录导入汇总（成功/跳过/失败数量及原因）
-    importSummary?.let { summary ->
-        ImportSummaryDialog(summary = summary, onDismiss = viewModel::dismissImportSummary)
+    // 导入汇总（T4/D5 起单文件多选与目录导入共用；成功/跳过/失败数量及原因）
+    importSummary?.let { ui ->
+        ImportSummaryDialog(summary = ui.summary, title = ui.title, onDismiss = viewModel::dismissImportSummary)
     }
 
     // 移动文档：任意目录（默认当前目录）

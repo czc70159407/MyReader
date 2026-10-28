@@ -14,14 +14,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 /**
- * 目录导入汇总（用户要求的「成功/失败数量及原因」反馈）：
+ * 导入汇总（用户要求的「成功/失败数量及原因」反馈）：
  * 各项计数 + 逐条跳过/失败明细（上限 50 条，其余只计入总数）。
+ * T4/D5：单文件多选复用本对话框（[title] 区分来源；目录专有字段为 0 时不显示对应行）。
  */
 @Composable
-internal fun ImportSummaryDialog(summary: DirectoryImportSummary, onDismiss: () -> Unit) {
+internal fun ImportSummaryDialog(
+    summary: DirectoryImportSummary,
+    onDismiss: () -> Unit,
+    title: String = "目录导入完成",
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = "目录导入完成") },
+        title = { Text(text = title) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 // D3：取消后的部分汇总首行为取消语义（copy.md summary_cancelled）
@@ -42,12 +47,15 @@ internal fun ImportSummaryDialog(summary: DirectoryImportSummary, onDismiss: () 
                 SummaryLine("暂不支持的文件类型", summary.unsupported)
                 SummaryLine("超过单文件上限", summary.tooLarge)
                 SummaryLine("导入失败", summary.failed)
-                SummaryLine(
-                    label = "新建目录 / 复用已有目录",
-                    count = null,
-                    value = "${summary.foldersCreated} / ${summary.foldersReused}",
-                    showWhenZero = true,
-                )
+                // T4：单文件多选复用本对话框——无目录操作时 0/0 不显示（目录导入有值才显示）
+                if (summary.foldersCreated > 0 || summary.foldersReused > 0) {
+                    SummaryLine(
+                        label = "新建目录 / 复用已有目录",
+                        count = null,
+                        value = "${summary.foldersCreated} / ${summary.foldersReused}",
+                        showWhenZero = true,
+                    )
+                }
                 SummaryLine("同名自动重命名", summary.renamedForConflict)
                 SummaryLine("超出深度上限未处理", summary.deepSkipped)
                 SummaryLine("超出数量上限未处理", summary.truncated)

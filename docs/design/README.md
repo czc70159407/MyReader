@@ -49,7 +49,7 @@
 | T1 | P0 | 恢复备份二次确认（D1） | 已实现（待真机验收） | `flows/backup-restore.md` |
 | T2 | P0 | 书架顶栏窄屏收纳（D2） | 已实现（待真机验收） | `components/top-bar.md` |
 | T3 | P0 | 批量导入取消（D3） | 已实现（待真机验收） | `flows/import-directory.md` |
-| T4 | P0 | 单文件导入汇总对话框（D5） | 待实现 | `flows/import-single.md` |
+| T4 | P0 | 单文件导入汇总对话框（D5） | 已实现（待真机验收） | `flows/import-single.md` |
 | T5 | P1 | 无障碍修订（卡片语义 / 长按替代 / 焦点 / 进度环语义） | 待实现 | `accessibility.md` |
 | T6 | P1 | 文案对齐与对比度（D8） | 待实现 | `copy.md` |
 | T7 | P2 | 文件夹名长度与控制字符校验统一 | 待实现 | `components/dialogs.md` |

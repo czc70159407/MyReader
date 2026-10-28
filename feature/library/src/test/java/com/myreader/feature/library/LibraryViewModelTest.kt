@@ -403,6 +403,34 @@ class LibraryViewModelTest {
             assertTrue(receivedMessages.isEmpty())
         }
 
+    /** review H2/H3：单文件导入 FAILED 走 Snackbar（不崩、不弹对话框），文案与 summary_failed 一致 */
+    @Test
+    fun importUris_singleFileFailed_snackbar() = runTest(mainDispatcherRule.testScheduler) {
+        startCollectingMessages()
+        // 注册元数据（格式命中 pdf）但不注册输入流 → openInputStream 为 null → FAILED
+        val ghost = Uri.parse("content://test/ghost.pdf")
+        val cursor = org.robolectric.fakes.RoboCursor().apply {
+            setColumnNames(listOf(android.provider.OpenableColumns.DISPLAY_NAME, android.provider.OpenableColumns.SIZE))
+            setResults(arrayOf(arrayOf<Any?>("ghost.pdf", 1024L)))
+        }
+        shadowOf(context.contentResolver).setCursor(ghost, cursor)
+
+        viewModel.importUris(listOf(ghost), targetFolderId = null)
+        awaitMessage("1 个导入失败")
+        assertNull(viewModel.importSummary.value)
+    }
+
+    /** T4/D5 边界：多选全部成功仍走 Snackbar（不弹对话框） */
+    @Test
+    fun importUris_multiSelectAllSuccess_snackbar() = runTest(mainDispatcherRule.testScheduler) {
+        startCollectingMessages()
+        val uriA = registerPdf("a.pdf", "%PDF-1.4 a".toByteArray())
+        val uriB = registerPdf("b.pdf", "%PDF-1.4 b".toByteArray())
+        viewModel.importUris(listOf(uriA, uriB), targetFolderId = null)
+        awaitMessage("导入 2 个")
+        assertNull(viewModel.importSummary.value)
+    }
+
     @Test
     fun createSubFolder_persistsAndNotifies() = runTest(mainDispatcherRule.testScheduler) {
         viewModel.createSubFolder(null, "新文件夹")

@@ -1,6 +1,7 @@
 package com.myreader.feature.settings
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -84,6 +85,14 @@ fun SettingsScreen(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         uri ?: return@rememberLauncherForActivityResult
+        // review H1：持久读授权——OpenDocument 的临时授权随进程结束失效，
+        // 而 pendingRestoreUri 经 rememberSaveable 可在进程死亡/重建后恢复出确认框
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
         pendingRestoreUri = uri
     }
 
@@ -214,9 +223,11 @@ fun SettingsScreen(
                     enabled = !busy,
                     onClick = {
                         pendingRestoreUri = null
-                        // 确认后才读取流；打开失败显式上报，不静默
-                        val input = context.contentResolver.openInputStream(uri)
-                        if (input == null) vm.reportRestoreStreamUnavailable() else vm.restoreBackup(input)
+                        // 确认后才读取流；打开失败（null / SecurityException / FileNotFound）显式上报，不静默不崩溃
+                        val input = runCatching { context.contentResolver.openInputStream(uri) }
+                            .onFailure { vm.reportRestoreStreamUnavailable() }
+                            .getOrNull()
+                        input?.let(vm::restoreBackup)
                     },
                 ) { Text(text = "继续恢复") }
             },

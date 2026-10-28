@@ -48,7 +48,8 @@
 | `act_got_it` | 知道了 | 汇总/失败提示 |
 | `act_back_library` | 返回书架 | 阅读器失败页 |
 | `act_retry` | 重试 | `[建议]` 大纲失败 / 阅读器失败 |
-| `act_cancel_import` | 取消 | `[建议 D3]` 导入胶囊 |
+| `act_cancel_import` | 取消（读屏 CD「取消导入」） | 导入胶囊（T3 已实现） |
+| `act_restore_confirm` | 继续恢复 | 恢复二次确认框（T1 已实现） |
 
 ## 3. 空态文案（empty_*）
 
@@ -109,7 +110,8 @@
 | `err_move_cycle` | 不能移动到自身或其子目录 | L1 | `[已实现]` |
 | `err_subtree_load` | 无法移动 / 读取目录结构失败，请重试 | L2 | `[已实现]` |
 | `err_outline_load` | 目录加载失败 | L1 面板内 | `[已实现]`，`[建议]` 加重试 |
-| `err_backup_op` | 备份操作失败：{原因} | L3 | `[已实现]`，`[建议]` 去异常类名 |
+| `err_backup_op` | 备份操作失败，请重试 | L3 | T1 review M12 已固定文案（去路径/类名，细节仅 debug 日志） |
+| `err_import_interrupted` | 导入失败，请重试 | L3 | 单文件导入遭未预见异常中断（T4 review H2 兜底） |
 | `err_backup_invalid` | 备份文件无法识别或已损坏 | L3 | `[建议]` |
 | `err_generic` | 操作失败：{原因 或 未知错误} | L3 | `[已实现]` |
 | `err_pick_dir_empty` | 该目录中没有可导入的文档 | L3 | `[已实现]` |
@@ -120,6 +122,7 @@
 
 | 键 | 文案 | 触发 |
 |---|---|---|
+| `inline_search_placeholder` | 搜索全部文档 | 书架搜索框占位（review L20 补登记） |
 | `inline_goto_range` | 页码（1 - {pageCount}） | 跳页框 label，常驻显示范围 |
 | `inline_goto_invalid` | 请输入 1 - {pageCount} 的页码 | `[建议]` 非法输入时的 `supportingText` |
 | `inline_password_wrong` | 密码错误，请重试 | 提交失败后内联，保留已输入内容 |
@@ -165,7 +168,7 @@
 | `summary_truncated` | 超出数量上限未处理：{n} | n > 0 |
 | `summary_inaccessible` | 无法访问的子目录：{n} | n > 0 |
 | `summary_issues_title` | 明细： | issues 非空 |
-| `summary_issue_line` | · {path} —— {reason} | issues 非空，≤ 50 条 |
+| `summary_issue_line` | · {path} —— {reason} | issues 非空，≤ 50 条；**{reason} 不得含内部 relPath 文件名**（真机验收发现 `无法打开文档: 188029…pdf`，T6 净化） |
 | `summary_cancelled` | 已取消，已导入 {n} 个（T3 已实现） | 取消后 |
 
 ## 10. 设置与关于

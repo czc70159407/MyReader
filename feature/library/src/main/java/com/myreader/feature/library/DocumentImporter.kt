@@ -114,6 +114,8 @@ class DocumentImporter @Inject constructor(
                         return@withContext Result(
                             uri, Status.DUPLICATE_SKIPPED,
                             documentId = existing.id, existingTitle = existing.title,
+                            // T4 review H3：displayName 供明细行展示文件名（原为 null 导致回退泄漏 uri 段）
+                            title = displayName,
                         )
                     }
                 }

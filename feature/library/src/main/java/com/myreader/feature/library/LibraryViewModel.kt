@@ -311,17 +311,22 @@ class LibraryViewModel @Inject constructor(
                 // T4/D5：多选且存在跳过/拒收/不支持/失败 → 弹汇总对话框（与目录导入同构）；
                 // 单文件或全部成功 → 保持轻量 Snackbar（不双通道反馈）
                 if (uris.size >= 2 && tally.problemCount > 0) {
-                    _importSummary.value = ImportSummaryUi(tally.report(uris.size), "导入完成")
+                    _importSummary.value = ImportSummaryUi(tally.report(uris.size), "导入完成", fromDirectory = false)
                 } else {
                     val parts = buildList {
                         if (tally.imported > 0) add("导入 ${tally.imported} 个")
                         if (tally.passwordMarked > 0) add("${tally.passwordMarked} 个已加密（打开时需密码）")
                         if (tally.corruptRejected > 0) add("${tally.corruptRejected} 个损坏被拒收")
                         if (tally.unsupported > 0) add("${tally.unsupported} 个暂不支持的文件类型")
-                        if (tally.failed > 0) add("${tally.failed} 个失败")
+                        if (tally.failed > 0) add("${tally.failed} 个导入失败")
                     }
                     _messages.send(if (parts.isEmpty()) "未导入任何文档" else parts.joinToString("；"))
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // review H2：importer 内部未预见的异常（如授权中途失效）直穿会崩溃，统一转 Snackbar
+                _messages.send("导入失败，请重试")
             } finally {
                 _importing.value = false
             }
@@ -369,7 +374,8 @@ class LibraryViewModel @Inject constructor(
 
         private fun addIssue(r: DocumentImporter.Result, fallback: String) {
             if (issues.size < DirectoryImportSummary.MAX_ISSUES) {
-                val name = r.title ?: r.uri.lastPathSegment ?: "未命名文件"
+                // review H3：不用 lastPathSegment 兜底（SAF uri 段会泄漏路径信息），无标题用固定占位
+                val name = r.title ?: "未命名文件"
                 issues += DirectoryImportSummary.Issue(name, r.reason ?: fallback)
             }
         }
@@ -459,9 +465,11 @@ class LibraryViewModel @Inject constructor(
                         _importSummary.value = ImportSummaryUi(partial, "目录导入完成")
                     },
                 )
-                _importSummary.value = ImportSummaryUi(summary, "目录导入完成")
                 if (summary.total == 0 && !summary.cancelled) {
+                    // 契约（import-directory.md §4）：空目录仅 Snackbar，不弹汇总对话框
                     _messages.send("该目录中没有可导入的文档")
+                } else {
+                    _importSummary.value = ImportSummaryUi(summary, "目录导入完成")
                 }
             } catch (e: DirectoryAccessException) {
                 _messages.send("无法访问所选目录（权限可能已被撤销）")
@@ -486,5 +494,10 @@ class LibraryViewModel @Inject constructor(
     }
 }
 
-/** T4/D5：导入汇总对话框 UI 状态——单文件多选与目录导入共用渲染，标题区分来源 */
-data class ImportSummaryUi(val summary: DirectoryImportSummary, val title: String)
+/** T4/D5：导入汇总对话框 UI 状态——单文件多选与目录导入共用渲染，标题区分来源；
+ *  [fromDirectory] 决定目录行是否恒显示（目录导入契约恒显示；单文件 0 值不显示） */
+data class ImportSummaryUi(
+    val summary: DirectoryImportSummary,
+    val title: String,
+    val fromDirectory: Boolean = true,
+)

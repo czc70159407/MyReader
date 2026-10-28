@@ -82,8 +82,10 @@ class SettingsViewModel @Inject constructor(
                 block()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                _messages.send("备份操作失败：${e.message ?: e.javaClass.simpleName}")
+            } catch (_: Exception) {
+                // review M12：e.message 可能含绝对路径/异常类名，用户文案固定不含技术信息
+                // （模块未启用 buildConfig，异常细节不落日志；如需排查可临时断点）
+                _messages.send("备份操作失败，请重试")
             } finally {
                 _busy.value = false
                 _progress.value = 0f

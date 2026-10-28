@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -51,6 +52,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -384,9 +387,15 @@ fun LibraryScreen(
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.weight(1f),
                     )
-                    // T3/D3：目录导入可取消（单文件导入不显示，保持范围）
+                    // T3/D3：目录导入可取消（单文件导入不显示，保持范围）。
+                    // review M9：触达 ≥48dp + 读屏语义 CD「取消导入」
                     if (importProgress != null) {
-                        TextButton(onClick = viewModel::cancelImport) {
+                        TextButton(
+                            onClick = viewModel::cancelImport,
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .semantics { contentDescription = "取消导入" },
+                        ) {
                             Text(text = "取消")
                         }
                     }
@@ -488,7 +497,12 @@ fun LibraryScreen(
 
     // 导入汇总（T4/D5 起单文件多选与目录导入共用；成功/跳过/失败数量及原因）
     importSummary?.let { ui ->
-        ImportSummaryDialog(summary = ui.summary, title = ui.title, onDismiss = viewModel::dismissImportSummary)
+        ImportSummaryDialog(
+            summary = ui.summary,
+            title = ui.title,
+            fromDirectory = ui.fromDirectory,
+            onDismiss = viewModel::dismissImportSummary,
+        )
     }
 
     // 移动文档：任意目录（默认当前目录）

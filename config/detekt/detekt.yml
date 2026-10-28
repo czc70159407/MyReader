@@ -12,6 +12,7 @@ naming:
     active: false
 style:
   MagicNumber:
-    # 常量属性本就以具名承载语义；@Composable 内的布局/动画参数就地可读性优先
+    # 常量属性本就以具名承载语义；@Composable 内的布局/动画参数就地可读性优先。
+    # 同 FunctionNaming：按注解简单名匹配，不带 @（T2 review 修正笔误时此处漏改）。
     ignorePropertyDeclaration: true
-    ignoreAnnotated: ['@Composable']
+    ignoreAnnotated: ['Composable']

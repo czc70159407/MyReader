@@ -23,19 +23,23 @@ internal fun ImportSummaryDialog(
     summary: DirectoryImportSummary,
     onDismiss: () -> Unit,
     title: String = "目录导入完成",
+    fromDirectory: Boolean = true,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = title) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                // D3：取消后的部分汇总首行为取消语义（copy.md summary_cancelled）
+                // D3：取消后的部分汇总首行为取消语义（copy.md summary_cancelled）；total 行契约恒显示
+                if (summary.cancelled) {
+                    Text(
+                        text = "已取消，已导入 ${summary.imported} 个",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
-                    text = if (summary.cancelled) {
-                        "已取消，已导入 ${summary.imported} 个"
-                    } else {
-                        "共扫描 ${summary.total} 个可导入文档"
-                    },
+                    text = "共扫描 ${summary.total} 个可导入文档",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -47,8 +51,8 @@ internal fun ImportSummaryDialog(
                 SummaryLine("暂不支持的文件类型", summary.unsupported)
                 SummaryLine("超过单文件上限", summary.tooLarge)
                 SummaryLine("导入失败", summary.failed)
-                // T4：单文件多选复用本对话框——无目录操作时 0/0 不显示（目录导入有值才显示）
-                if (summary.foldersCreated > 0 || summary.foldersReused > 0) {
+                // T4：单文件多选复用本对话框（fromDirectory=false 时 0/0 不显示；目录导入恒显示）
+                if (fromDirectory || summary.foldersCreated > 0 || summary.foldersReused > 0) {
                     SummaryLine(
                         label = "新建目录 / 复用已有目录",
                         count = null,

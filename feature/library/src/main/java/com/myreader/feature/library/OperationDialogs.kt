@@ -1,15 +1,23 @@
 package com.myreader.feature.library
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 
@@ -30,17 +38,29 @@ fun RenameDialog(
     var name by remember {
         mutableStateOf(TextFieldValue(baseName, selection = TextRange(0, baseName.length)))
     }
+    // T5：弹窗打开即聚焦输入框；等一帧避开独立窗口焦点时序，
+    // 并在聚焦后重新落一次全选（未聚焦时设置的 selection 可能被收敛到末尾）
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        focusRequester.requestFocus()
+        name = name.copy(selection = TextRange(0, name.text.length))
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "重命名") },
         text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                label = { Text(text = "名称") },
-                singleLine = true,
-                suffix = lockedExtension?.let { ext -> { Text(text = ext) } },
-            )
+            // 自动聚焦必弹键盘：容器 imePadding 防按钮被顶出可视区
+            Column(modifier = Modifier.imePadding()) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(text = "名称") },
+                    singleLine = true,
+                    suffix = lockedExtension?.let { ext -> { Text(text = ext) } },
+                    modifier = Modifier.focusRequester(focusRequester).fillMaxWidth(),
+                )
+            }
         },
         confirmButton = {
             TextButton(

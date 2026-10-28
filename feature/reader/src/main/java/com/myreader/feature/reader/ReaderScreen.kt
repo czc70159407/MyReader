@@ -4,8 +4,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowBack
@@ -25,11 +30,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -78,7 +85,10 @@ fun ReaderScreen(
 
     when (val s = state) {
         is ReaderUiState.Loading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            // T5：加载态可被读屏感知
+            CircularProgressIndicator(
+                modifier = Modifier.semantics { contentDescription = "正在加载" },
+            )
         }
 
         is ReaderUiState.NeedsPassword -> {
@@ -219,12 +229,19 @@ private fun PasswordDialog(
     onConfirm: (String) -> Unit,
 ) {
     var password by remember { mutableStateOf("") }
+    // T5：弹窗打开即聚焦密码框（等一帧避开独立窗口焦点时序）
+    val passwordFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        passwordFocusRequester.requestFocus()
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "文档已加密") },
         text = {
-            Column {
+            // 自动聚焦必弹键盘：容器 imePadding 防按钮被顶出可视区
+            Column(modifier = Modifier.imePadding()) {
                 if (wrongPassword) {
                     Text(
                         text = "密码错误，请重试",
@@ -239,6 +256,9 @@ private fun PasswordDialog(
                     label = { Text(text = "密码") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier
+                        .focusRequester(passwordFocusRequester)
+                        .fillMaxWidth(),
                 )
             }
         },

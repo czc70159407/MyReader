@@ -45,14 +45,19 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -105,6 +110,14 @@ fun LibraryScreen(
     val importSummary by viewModel.importSummary.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    // T5 review L19：搜索态自动聚焦搜索框（等一帧避开布局期焦点请求）
+    val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(searchActive) {
+        if (searchActive) {
+            withFrameNanos { }
+            searchFocusRequester.requestFocus()
+        }
+    }
 
     // 系统返回手势：搜索态先收起搜索，不 pop 导航栈（searchActive 来自 VM，跨导航一致）
     BackHandler(enabled = searchActive) { viewModel.exitSearch() }
@@ -163,6 +176,10 @@ fun LibraryScreen(
                                     style = MaterialTheme.typography.bodyMedium,
                                 )
                             },
+                            // T5 review L19：进入搜索态自动聚焦，读屏/键盘用户免一次触达
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(searchFocusRequester),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             trailingIcon = {
@@ -178,7 +195,6 @@ fun LibraryScreen(
                                 focusedIndicatorColor = Color.Transparent,
                                 unfocusedIndicatorColor = Color.Transparent,
                             ),
-                            modifier = Modifier.fillMaxWidth(),
                         )
                     } else {
                         // 面包屑：书架 / A / B ——根级弱化，当前级加粗；单 Text 便于整体省略
@@ -251,7 +267,10 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    CircularProgressIndicator()
+                    // T5：加载态可被读屏感知
+                    CircularProgressIndicator(
+                        modifier = Modifier.semantics { contentDescription = "正在加载" },
+                    )
                 }
                 // 搜索态（仅以 searchResults != null 切换；空白关键词/防抖中维持浏览内容）
                 searchResults != null -> {
@@ -385,7 +404,10 @@ fun LibraryScreen(
                             }
                         } ?: "正在导入…",
                         style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
+                        // T5：读屏礼貌播报进度（更新频率由 VM 侧 1s 节流控制）
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
                     )
                     // T3/D3：目录导入可取消（单文件导入不显示，保持范围）。
                     // review M9：触达 ≥48dp + 读屏语义 CD「取消导入」

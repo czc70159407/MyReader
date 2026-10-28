@@ -1,5 +1,6 @@
 package com.myreader.feature.library
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -9,8 +10,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import com.myreader.core.model.DocSort
+import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -107,6 +110,52 @@ class LibraryComponentsTest {
         assertEquals(listOf(DocSort.SIZE), sorts)
     }
 
+    // ---- T5 无障碍语义（整卡合并描述 + customActions 长按替代路径）----
+
+    private fun documentCard(item: LibraryItem, onRename: () -> Unit = {}) {
+        composeRule.setContent {
+            DocumentCard(
+                item = item,
+                onClick = {},
+                onLongClick = {},
+                menuExpanded = false,
+                onDismissMenu = {},
+                onRename = onRename,
+                onMove = {},
+                onDelete = {},
+            )
+        }
+    }
+
+    @Test
+    fun documentCard_mergedDescription_coversTitleAndPages() {
+        documentCard(item(1, "a.pdf", 0))
+        composeRule.onNodeWithContentDescription("a.pdf，3 页").assertIsDisplayed()
+    }
+
+    @Test
+    fun documentCard_encrypted_descriptionMentionsPassword() {
+        documentCard(item(2, "enc.pdf", 0, needsPassword = true))
+        composeRule.onNodeWithContentDescription("enc.pdf，3 页，需要密码").assertIsDisplayed()
+    }
+
+    @Test
+    fun documentCard_customActions_coverManagementOps() {
+        val renamed = mutableListOf<Boolean>()
+        documentCard(item(1, "a.pdf", 0), onRename = { renamed.add(true) })
+        val actions = composeRule.onNodeWithContentDescription("a.pdf，3 页")
+            .fetchSemanticsNode().config[SemanticsActions.CustomActions]
+        assertEquals(3, actions.size)
+        actions.first { it.label == "重命名" }.action()
+        assertEquals(listOf(true), renamed)
+    }
+
+    @Test
+    fun recentCard_mergedDescription_coversProgressAndStatus() {
+        composeRule.setContent { RecentCard(item = item(9, "r.pdf", 2, needsPassword = true), onClick = {}) }
+        composeRule.onNodeWithContentDescription("r.pdf，第 3 页，需要密码").assertIsDisplayed()
+    }
+
     // ---- RecentSection / RecentCard ----
 
     private fun item(id: Long, title: String, currentPage: Int, needsPassword: Boolean = false) = LibraryItem(
@@ -140,14 +189,44 @@ class LibraryComponentsTest {
     }
 
     @Test
-    fun recentCard_encrypted_showsLockBadge() {
+    fun folderCard_customActions_coverFourOps_includingNewSubFolder() {
+        var newSubFolder = 0
         composeRule.setContent {
-            RecentSection(
-                recent = listOf(item(1, "a.pdf", 0), item(2, "enc.pdf", 0, needsPassword = true)),
-                onDocumentClick = {},
+            FolderCard(
+                folder = Folder(id = 3, parentId = null, name = "Docs", sortOrder = 0, createdAt = 1, updatedAt = 1),
+                onClick = {},
+                onLongClick = {},
+                menuExpanded = false,
+                onDismissMenu = {},
+                onRename = {},
+                onMove = {},
+                onDelete = {},
+                onNewSubFolder = { newSubFolder++ },
             )
         }
-        // needsPassword 常驻（M6 修正）：加密文档在最近条同样显示锁角标
-        composeRule.onNodeWithContentDescription("需要密码").assertIsDisplayed()
+        val actions = composeRule.onNodeWithContentDescription("Docs，文件夹")
+            .fetchSemanticsNode().config[SemanticsActions.CustomActions]
+        assertEquals(listOf("重命名", "移动", "删除", "新建子目录"), actions.map { it.label })
+        actions.first { it.label == "新建子目录" }.action()
+        assertEquals(1, newSubFolder)
+    }
+
+    @Test
+    fun documentCard_damaged_descriptionOmitsFormatButMentionsStatus() {
+        composeRule.setContent {
+            DocumentCard(
+                item = item(1, "bad.pdf", 0).copy(pageCount = -2),
+                onClick = {},
+                onLongClick = {},
+                menuExpanded = false,
+                onDismissMenu = {},
+                onRename = {},
+                onMove = {},
+                onDelete = {},
+            )
+        }
+        // T5 review L15：损坏文档不追加格式词，避免「x.pdf，PDF，已损坏」
+        // 用 fetchSemanticsNode 断言存在（不依赖 Robolectric 布局尺寸）
+        composeRule.onNodeWithContentDescription("bad.pdf，已损坏").fetchSemanticsNode()
     }
 }

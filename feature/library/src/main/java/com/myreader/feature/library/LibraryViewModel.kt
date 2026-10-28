@@ -1,6 +1,7 @@
 package com.myreader.feature.library
 
 import android.net.Uri
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -446,6 +447,10 @@ class LibraryViewModel @Inject constructor(
     /** 当前目录导入任务（T3/D3：cancelImport 由此取消；单文件导入无取消入口，不赋值） */
     private var importJob: Job? = null
 
+    /** T5：进度节流（≥1s 或 phase 变化才更新 StateFlow，降低 liveRegion 播报频率） */
+    private var lastProgressEmitAt = 0L
+    private var lastProgressPhase: DirectoryImportProgress.Phase? = null
+
     /** T3/D3：取消目录导入（扫描或导入阶段）；已导入项保留，取消后弹部分汇总 */
     fun cancelImport() {
         importJob?.cancel()
@@ -453,13 +458,26 @@ class LibraryViewModel @Inject constructor(
 
     fun importDirectory(uri: Uri, targetFolderId: Long?) {
         if (_importing.value) return
+        // 每次导入从零开始节流：避免上次导入的时间戳/phase 吞掉本轮首条进度
+        lastProgressEmitAt = 0L
+        lastProgressPhase = null
         importJob = viewModelScope.launch {
             _importing.value = true
             try {
                 val summary = directoryImporter.importDirectory(
                     uri,
                     targetFolderId,
-                    onProgress = { progress -> _importProgress.value = progress },
+                    onProgress = { progress ->
+                        // T5：≥1s 节流（phase 切换必发——扫描→导入的首条 x/y 不被吞），
+                        // 单调时钟避免系统改时间导致长时间不刷新
+                        val now = SystemClock.elapsedRealtime()
+                        val phaseChanged = progress.phase != lastProgressPhase
+                        if (phaseChanged || now - lastProgressEmitAt >= 1_000) {
+                            lastProgressEmitAt = now
+                            lastProgressPhase = progress.phase
+                            _importProgress.value = progress
+                        }
+                    },
                     // T3/D3：取消时由 importer 先交部分汇总，CancellationException 继续传播（不转错误文案）
                     onPartialSummary = { partial ->
                         _importSummary.value = ImportSummaryUi(partial, "目录导入完成")

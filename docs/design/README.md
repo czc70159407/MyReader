@@ -50,7 +50,7 @@
 | T2 | P0 | 书架顶栏窄屏收纳（D2） | 已验收（真机 2026-10-28） | `components/top-bar.md` |
 | T3 | P0 | 批量导入取消（D3） | 已验收（真机 2026-10-28） | `flows/import-directory.md` |
 | T4 | P0 | 单文件导入汇总对话框（D5） | 已验收（真机 2026-10-28） | `flows/import-single.md` |
-| T5 | P1 | 无障碍修订（卡片语义 / 长按替代 / 焦点 / 进度环语义） | 待实现 | `accessibility.md` |
+| T5 | P1 | 无障碍修订（卡片语义 / 长按替代 / 焦点 / 进度环语义） | 已实现（待真机验收） | `accessibility.md` |
 | T6 | P1 | 文案对齐与对比度（D8） | 待实现 | `copy.md` |
 | T7 | P2 | 文件夹名长度与控制字符校验统一 | 待实现 | `components/dialogs.md` |
 | T8 | P0（独立） | 沉浸模式手势预研（D4） | 预研完成（可行，待排期） | `screens/reader.md` |

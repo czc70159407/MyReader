@@ -31,6 +31,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -43,6 +47,69 @@ import com.myreader.core.model.LibraryItem
  * （缩略图/格式角标/状态角标/页码）、最近阅读横向条。
  * 共用视觉件（ThumbnailImage / StatusBadge / FormatBadge）在 LibraryThumbnails.kt。
  */
+
+/**
+ * 状态角标（加密 / 损坏）。T5：角标 CD 置 null——状态词已由整卡描述承担，
+ * 否则 `mergeDescendants` 会把角标 CD 并入卡片列表，读屏重复播报「需要密码」。
+ */
+@Composable
+private fun DocumentStatusBadge(item: LibraryItem, modifier: Modifier) {
+    when {
+        item.needsPassword -> StatusBadge(
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            },
+            modifier = modifier,
+        )
+        item.pageCount == -2 -> StatusBadge(
+            icon = {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(14.dp),
+                )
+            },
+            modifier = modifier,
+        )
+    }
+}
+
+/** 卡片元信息：页码式显示「N 页」；流式/未知页数（epub 恒 -1、加密未开）显示格式标签 */
+@Composable
+private fun DocumentMetaText(item: LibraryItem) {
+    val text = if (item.pageCount > 0) "${item.pageCount} 页" else formatLabel(item.fileType)
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.outline,
+    )
+}
+
+/** T5：文档卡整卡朗读描述（名称 + 页数/格式 + 状态），供 TalkBack 一次读全 */
+private fun documentCardDescription(item: LibraryItem): String = buildString {
+    append(item.title)
+    when {
+        item.pageCount > 0 -> append("，${item.pageCount} 页")
+        // 损坏文档不追加格式词（状态词已表达类型未知，避免读成「x.pdf，PDF，已损坏」）
+        item.pageCount == -2 -> Unit
+        else -> append("，${formatLabel(item.fileType)}")
+    }
+    // 与角标优先级一致：加密优先于损坏（二者同时成立时只读加密）
+    when {
+        item.needsPassword -> append("，需要密码")
+        item.pageCount == -2 -> append("，已损坏")
+    }
+}
+
+/** T5：读屏 customActions 构造（TalkBack 长按替代路径） */
+private fun cardActions(vararg pairs: Pair<String, () -> Unit>) =
+    pairs.map { (label, action) -> CustomAccessibilityAction(label) { action(); true } }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -61,6 +128,17 @@ internal fun FolderCard(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                // T5：整卡合并朗读（名称 + 类型）；customActions 为读屏长按替代路径，
+                // 且与视觉菜单一致先复位菜单状态（避免读屏触发后残留展开菜单）
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "${folder.name}，文件夹"
+                    customActions = cardActions(
+                        "重命名" to { onDismissMenu(); onRename() },
+                        "移动" to { onDismissMenu(); onMove() },
+                        "删除" to { onDismissMenu(); onDelete() },
+                        "新建子目录" to { onDismissMenu(); onNewSubFolder() },
+                    )
+                }
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         ) {
@@ -124,9 +202,18 @@ internal fun DocumentCard(
     onDelete: () -> Unit,
 ) {
     Box {
+        // T5：整卡语义合并（描述见 documentCardDescription）+ customActions 长按替代路径
         Card(
             modifier = Modifier
                 .fillMaxWidth()
+                .semantics(mergeDescendants = true) {
+                    contentDescription = documentCardDescription(item)
+                    customActions = cardActions(
+                        "重命名" to { onDismissMenu(); onRename() },
+                        "移动" to { onDismissMenu(); onMove() },
+                        "删除" to { onDismissMenu(); onDelete() },
+                    )
+                }
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         ) {
@@ -136,17 +223,8 @@ internal fun DocumentCard(
                 if (item.fileType != FileTypes.PDF) {
                     FormatBadge(label = formatLabel(item.fileType), modifier = Modifier.align(Alignment.TopStart))
                 }
-                // 状态角标：加密 / 损坏
-                when {
-                    item.needsPassword -> StatusBadge(
-                        icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) },
-                        modifier = Modifier.align(Alignment.TopEnd),
-                    )
-                    item.pageCount == -2 -> StatusBadge(
-                        icon = { Icon(Icons.Filled.Warning, contentDescription = "已损坏", tint = Color.White, modifier = Modifier.size(14.dp)) },
-                        modifier = Modifier.align(Alignment.TopEnd),
-                    )
-                }
+                // 状态角标：加密 / 损坏（见 DocumentStatusBadge）
+                DocumentStatusBadge(item = item, modifier = Modifier.align(Alignment.TopEnd))
             }
             Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                 Text(
@@ -156,20 +234,7 @@ internal fun DocumentCard(
                     overflow = TextOverflow.Ellipsis,
                     color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                 )
-                // 页码式文档显示「N 页」；流式/未知页数（epub 恒 -1、加密未开）显示格式标签
-                if (item.pageCount > 0) {
-                    Text(
-                        text = "${item.pageCount} 页",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                } else {
-                    Text(
-                        text = formatLabel(item.fileType),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.outline,
-                    )
-                }
+                DocumentMetaText(item = item)
             }
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = onDismissMenu) {
@@ -211,16 +276,37 @@ internal fun RecentSection(recent: List<LibraryItem>, onDocumentClick: (Long) ->
 
 @Composable
 internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
+    // T5：整卡语义合并（标题 + 进度 + 加密状态）；未知 progressType 补「未读」避免只剩标题
+    val description = buildString {
+        append(item.title)
+        when (item.progressType) {
+            "page" -> append("，第 ${item.currentPage + 1} 页")
+            "cfi" -> append("，继续阅读")
+            else -> append("，未读")
+        }
+        if (item.needsPassword) append("，需要密码")
+    }
     Card(
-        modifier = Modifier.width(100.dp).clickable(onClick = onClick),
+        modifier = Modifier
+            .width(100.dp)
+            .semantics(mergeDescendants = true) { contentDescription = description }
+            .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)) {
             ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
-            // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）
+            // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）；
+            // T5：CD 置 null，状态已由整卡描述承担（避免重复播报）
             if (item.needsPassword) {
                 StatusBadge(
-                    icon = { Icon(Icons.Filled.Lock, contentDescription = "需要密码", tint = Color.White, modifier = Modifier.size(14.dp)) },
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Filled.Lock,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp),
+                        )
+                    },
                     modifier = Modifier.align(Alignment.TopEnd),
                 )
             }

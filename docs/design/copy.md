@@ -72,6 +72,7 @@
 | `loading_import_progress` | 正在导入 {current}/{total}… |
 | `loading_outline` | 正在加载目录… |
 | `loading_backup` | 处理中…（无阶段文案时） |
+| `loading_generic` | 正在加载 | 无可见文案的加载环（书架首帧 / 阅读器打开）读屏说明 |
 
 规则：加载文案只在**可预期等待 > 1s** 的场景出现；进度可量化时必须给 `x/y`。
 
@@ -170,6 +171,19 @@
 | `summary_issues_title` | 明细： | issues 非空 |
 | `summary_issue_line` | · {path} —— {reason} | issues 非空，≤ 50 条；**{reason} 不得含内部 relPath 文件名**（真机验收发现 `无法打开文档: 188029…pdf`，T6 净化） |
 | `summary_cancelled` | 已取消，已导入 {n} 个（T3 已实现） | 取消后 |
+
+## 9.1 读屏文案（a11y_*，T5）
+
+整卡朗读模板（`mergeDescendants` 组合描述；状态角标 CD 置 null，状态只由本描述承担）：
+
+| 键 | 模板 | 场景 |
+|---|---|---|
+| `a11y_doc_card` | {title}，{N 页 / 格式}，{需要密码 / 已损坏} | 文档卡；损坏时不追加格式词；加密与损坏同时成立只读加密 |
+| `a11y_folder_card` | {name}，文件夹 | 文件夹卡 |
+| `a11y_recent_card` | {title}，{第 N 页 / 继续阅读 / 未读}，{需要密码} | 最近阅读卡 |
+| `a11y_unread` | 未读 | 最近卡 progressType 未知时的进度位 |
+
+规则：模板只描述用户可感知信息，不得含 uri、内部 relPath、异常类名；状态词与角标优先级保持一致（加密优先）。
 
 ## 10. 设置与关于
 

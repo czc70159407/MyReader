@@ -7,8 +7,9 @@ $adb = "D:\develop\Android\Sdk\platform-tools\adb.exe"
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 
 function Dump([string]$name) {
-    & $adb shell uiautomator dump /sdcard/m9_$name.xml | Out-Null
-    & $adb pull /sdcard/m9_$name.xml "$Out\$name.xml" | Out-Null
+    # 红线：设备侧验收文件统一落 Download/MyReaderTest/xml（AGENTS.md 工作规则 10）
+    & $adb shell uiautomator dump /sdcard/Download/MyReaderTest/xml/m9_$name.xml | Out-Null
+    & $adb pull /sdcard/Download/MyReaderTest/xml/m9_$name.xml "$Out\$name.xml" | Out-Null
     return [System.IO.File]::ReadAllText("$OUT\$name.xml", [System.Text.Encoding]::UTF8)
 }
 

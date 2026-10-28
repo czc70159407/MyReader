@@ -120,16 +120,59 @@ stateDiagram-v2
 
 `[建议 P2]`：增加「重试」；MISSING 记录场景增加「删除此记录」。
 
-## 6. 沉浸模式（D4，待预研）
+## 6. 沉浸模式（D4：预研完成，结论=可行，待排期）
 
 目标：垂直长文档阅读时释放顶栏 64dp。
 
-前置验证（预研任务，不写产品代码）：
+### 6.1 预研结论（代码实证）
 
-1. 水平模式：`ReaderView` 是否消费点击（点击翻页/唤出工具栏）——若消费，轻点唤出顶栏会与翻页冲突；
-2. 垂直模式：`LazyColumn` 上 `detectTapGestures` 与滚动的竞争；
-3. 无障碍：隐藏顶栏后必须有非手势替代（如音量键翻页或读屏操作），否则不可接受；
-4. 结论写入本节；未通过则维持常驻顶栏并关闭该需求。
+| 通道 | 事实 | 结论 |
+|---|---|---|
+| 水平分页 | 上游 `ReaderView` 自己消费触摸：`onTouchEvent` 交给 `GestureDetector` / `ScaleGestureDetector`；`onSingleTapUp` 中**边缘 `tapPageMargin`（约 1 英寸，钳 100px ~ 屏宽/5）→ 翻页**，**中间区域 → `onTapMainDocArea()`（protected 空钩子）**；`onScroll` 中调 `onDocMotion()`（同为 protected 空钩子） | **不要用 Compose 手势**：AndroidView 区域的事件交给内部 View，外层 `pointerInput` 收不到稳定事件。改为覆写上游钩子：`onTapMainDocArea()` → 切换顶栏；`onDocMotion()` → 隐藏顶栏 |
+| 垂直滚动（MuPDF） | `MuPdfVerticalView` 的 `LazyColumn` 无任何点击/手势处理 | 外层 `pointerInput { detectTapGestures(onTap = …) }` 可行；滚动会取消 tap，**无冲突** |
+| 连续滚动（TXT） | `TxtViewerProvider` 同为裸 `LazyColumn` | 同上 |
+| 边缘点按 | 水平边缘区仍翻页，且不唤出顶栏 | 符合直觉，作为设计约定保留（避免"想翻页却唤出工具栏"） |
+
+### 6.2 交互契约（实现时照此执行）
+
+1. 进入阅读器：顶栏显示。
+2. 点按内容区中间区域（水平 = 非边缘 1 英寸；垂直 = 未滚动的任意点按）→ 切换顶栏显隐。
+3. 拖动 / 滚动 / 缩放 → 顶栏隐藏（水平用 `onDocMotion`；垂直监听滚动状态或手势取消）。
+4. 大纲 / 跳页操作完成后 → 顶栏显示（用户刚操作，需要页码反馈）。
+5. 隐藏时**仅隐藏应用内 TopAppBar**，不改系统状态栏 / 导航栏（避免 insets 抖动与手势导航冲突）。
+6. 隐藏不改变返回语义：系统返回仍退出阅读器。
+
+### 6.3 无障碍强制约束（不满足则不实现）
+
+| 约束 | 原因 |
+|---|---|
+| `AccessibilityManager.isTouchExplorationEnabled == true` 时**禁用自动隐藏** | 读屏探索触摸会误触隐藏并丢失焦点 |
+| 隐藏态必须暴露语义动作 `Modifier.semantics { onClick(label = "显示工具栏") { …; true } }` | 读屏用户需双击内容区唤出顶栏；纯 `pointerInput` 不产生 click 语义 |
+| 顶栏隐藏后动作全部不可达，必须保留可读的恢复路径 | 防止"无出口" |
+
+### 6.4 实现工作量与契约变更
+
+沿用 T3 `onPageCountChanged` 的契约扩展先例，`DocumentViewerProvider.Content` 追加两个带默认值的回调（全实现与测试 fake 同步）：
+
+```kotlin
+onTapContent: () -> Unit = {},
+onUserScroll: () -> Unit = {},
+```
+
+- 实现侧：`MuPdfReaderView`（覆写 `onTapMainDocArea` / `onDocMotion`，经 `rememberUpdatedState` 转发）、`MuPdfVerticalView`、`TxtViewerProvider`（`pointerInput` + `semantics`）。
+- 状态侧：`ReaderScreen` 持有 `topBarVisible`（`rememberSaveable`，旋转保持）；大纲/跳页关闭时置 `true`。
+- 测试侧：4 个 fake 签名同步；`ReaderViewModelTest` 无需改（状态在 Screen 层）。
+- 预估：1 个会话（含真机验收）。
+
+### 6.5 验收场景
+
+1. 水平 PDF 点中间 → 顶栏隐藏；再点 → 显示；点左右边缘 → 翻页且顶栏状态不变；
+2. 水平拖动翻页 → 顶栏隐藏；
+3. 垂直滚动 → 隐藏；静止后点按 → 显示；
+4. 大纲跳页 → 顶栏可见（页码反馈可读）；
+5. 开启 TalkBack → 滚动不自动隐藏；双击内容区可切换顶栏；
+6. 旋转 / 分屏 → 显隐状态保持，渲染不白屏；
+7. 字体 200% / 深色 → 显隐切换无布局跳动（内容区尺寸恒定）。
 
 ## 7. 书签（M10 预留）
 

@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.Composable
 import androidx.test.core.app.ApplicationProvider
+import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
@@ -51,6 +52,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -545,10 +547,11 @@ class LibraryViewModelTest {
         val vm = LibraryViewModel(SavedStateHandle(mapOf("folderId" to b)), repository, importer, directoryImporter, prefs)
 
         vm.breadcrumb.test {
-            assertEquals(emptyList<String>(), awaitItem())          // stateIn 初始值
-            assertEquals(listOf("A", "B"), awaitItem())             // 祖先链 根→当前
+            // CI run #33 实证：stateIn 首帧在慢机上可能已被上游填成 [A, B]，
+            // 不能假设第一次 awaitItem 必为初始空值——按「关键状态最终出现」断言，跳过中间发射
+            awaitBreadcrumb(listOf("A", "B"))                        // 祖先链 根→当前
             repository.deleteFolder(a)                              // 删祖先：B 级联删除 → 链回退空
-            assertEquals(emptyList<String>(), awaitItem())
+            awaitBreadcrumb(emptyList())
             cancelAndIgnoreRemainingEvents()
         }
 
@@ -648,5 +651,19 @@ class LibraryViewModelTest {
         val fid = repository.createFolder(null, "F")
         val vm2 = LibraryViewModel(SavedStateHandle(mapOf("folderId" to fid)), repository, importer, directoryImporter, prefs)
         assertTrue(vm2.recent.value.isEmpty())
+    }
+
+    /**
+     * 轮询 Turbine 发射直到出现期望值：`stateIn` 首帧与 Room 中间发射在慢机/CI 上时序不定
+     * （run #33 实证首次 awaitItem 直接拿到 [A, B]），因此按「关键状态最终出现」断言。
+     */
+    private suspend fun ReceiveTurbine<List<String>>.awaitBreadcrumb(
+        expected: List<String>,
+        maxEmissions: Int = 10,
+    ) {
+        repeat(maxEmissions) {
+            if (awaitItem() == expected) return
+        }
+        fail("breadcrumb 未在 $maxEmissions 次发射内出现 $expected")
     }
 }

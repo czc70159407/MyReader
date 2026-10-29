@@ -56,7 +56,7 @@
 
 - 预填当前页（1 基）。
 - 输入过滤：仅数字、长度 ≤ 7；label 常驻范围「页码（1 - {pageCount}）」。
-- `isError = !valid`（`target !in 1..pageCount`）；`[建议]` 增加 `supportingText` 说明合法范围。
+- `isError = !valid`（`target !in 1..pageCount`）；`supportingText` 说明合法范围（`inline_goto_invalid`，`[已实现 T6]`）。
 - 页码范围随实时页数变化（epub 重排后弹窗内范围应为当前值）。
 
 ### 2.6 密码（`PasswordDialog`，`ReaderScreen` 私有）

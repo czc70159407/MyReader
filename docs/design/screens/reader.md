@@ -81,7 +81,7 @@ stateDiagram-v2
 
 - 打开时懒加载，加载中「正在加载目录…」+ 环；
 - 空：「本文档没有目录」；
-- 失败：「目录加载失败」+ `[建议]` 重试按钮；
+- 失败：「目录加载失败」+「重试」（`[已实现 T6]`，重试重走加载）；
 - 展平缩进（每级 20dp），条目 1 行省略，key 用序号（PDF 大纲允许同名同页重复）；
 - 点击条目：跳页并关闭面板。
 
@@ -115,7 +115,7 @@ stateDiagram-v2
 | 记录缺失 | `err_missing_record` | `[已实现]` |
 | 文件缺失 | `err_missing_file` | `[已实现]` |
 | 损坏 | `err_corrupt_open` | `[已实现]` |
-| 格式不支持 | `err_unsupported_type` | `[已实现]`（含原始 `fileType`，`[建议]` 去技术值） |
+| 格式不支持 | `err_unsupported_type` | `[已实现 T6]`（已去 `fileType` 技术值） |
 | 其他 | `err_open_generic` | `[已实现]` |
 
 `[建议 P2]`：增加「重试」；MISSING 记录场景增加「删除此记录」。

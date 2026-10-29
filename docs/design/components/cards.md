@@ -29,7 +29,7 @@
 │              │
 ├──────────────┤
 │ 文档标题        │  bodySmall，2 行省略；损坏时用 onSurfaceVariant 弱化
-│ 12 页 / EPUB   │  labelSmall，outline 色
+│ 12 页 / EPUB   │  labelSmall，onSurfaceVariant 色
 └──────────────┘
 ```
 
@@ -38,7 +38,7 @@
 1. **格式角标**：仅非 PDF 显示（EPUB / CBZ / XPS / TXT），圆角 8dp，半透明黑底白字。
 2. **状态角标**：`needsPassword` → 锁图标；`pageCount == -2` → 警告图标；二者互斥优先加密。24dp 圆形半透明黑底白图标，`contentDescription` 分别为「需要密码」「已损坏」。
 3. **元信息文案**：`pageCount > 0` → `{n} 页`；否则显示格式标签（流式/加密未知页数）。
-4. **缺图占位**：`surfaceVariant` 底 + 按格式取图标（EPUB=Book / CBZ=Image / TXT=Article / 其它=Description），图标 36dp，`outline` 色。
+4. **缺图占位**：`surfaceVariant` 底 + 按格式取图标（EPUB=Book / CBZ=Image / TXT=Article / 其它=Description），图标 36dp，`onSurfaceVariant` 色（T6/D8）。
 5. **解码中**：仅 `surfaceVariant` 底，不出骨架闪烁（避免网格滚动时频闪）。
 6. 单击打开阅读器；长按菜单：重命名 / 移动 / 删除。
 
@@ -66,7 +66,7 @@
 | 装饰静默 | 缩略图、占位图标 `contentDescription = null` | `[已实现]` |
 | 状态语义 | 锁/警告图标有独立 CD | `[已实现]` |
 | 触达 | 整卡可点，尺寸远大于 48dp | `[已实现]` |
-| 弱化但可读 | 损坏文档标题用 `onSurfaceVariant` | `[已实现]`（`outline`，D8 建议统一） |
+| 弱化但可读 | 损坏文档标题用 `onSurfaceVariant` | `[已实现 T6]`（原 `outline` 对比度不足） |
 
 ## 5. 状态矩阵
 

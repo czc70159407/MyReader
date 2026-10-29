@@ -26,7 +26,7 @@
 | 阅读器 | 失败 | error 文案 + 按钮 | `err_*`（见 reader.md） | 返回书架 | `[已实现]` |
 | 大纲 | 加载 | 环 + 文案 | `loading_outline` | — | `[已实现]` |
 | 大纲 | 空 | 次要文本 | `empty_outline` | — | `[已实现]` |
-| 大纲 | 失败 | error 文本 | `err_outline_load` | `[建议]` 重试 | `[已实现]`（无重试） |
+| 大纲 | 失败 | error 文本 + 重试 | `err_outline_load` / `act_retry` | 重试 | `[已实现 T6]` |
 | 设置备份 | 进行中 | 环 + 状态文案 + 线性进度 | `loading_backup` | 入口隐藏 | `[已实现]` |
 | 设置恢复 | 确认中 | 确认对话框 | `dlg_restore_confirm_*` | 继续恢复 / 取消 | `[建议 T1]` |
 | 书签（M10） | 空 | 次要文本 | `empty_bookmarks` | 新建书签 | 待实现 |
@@ -57,10 +57,10 @@
 
 | 项 | 要求 |
 |---|---|
-| 加载语义 | `[建议 T5]` 进度环加 `stateDescription = "正在加载"` 或 `progressBarRangeInfo` |
+| 加载语义 | `[已实现 T5]` 进度环加 `contentDescription = "正在加载"`（书架 / 阅读器） |
 | 空态朗读 | 图标静默，文案可读；根空态需读出入口指引 |
 | 错误朗读 | 失败页文案不在可聚焦容器时需 `liveRegion = Polite` |
-| 导入胶囊 | `[建议]` 作为 `liveRegion`，`x/y` 变化时朗读（避免过频，可设 1s 节流） |
+| 导入胶囊 | `[已实现 T5]` `liveRegion` + VM 侧 1s 节流（phase 切换必发，不回退） |
 | 焦点 | 失败页「返回书架」应可被 TalkBack 直接到达 |
 
 ## 5. 验收场景

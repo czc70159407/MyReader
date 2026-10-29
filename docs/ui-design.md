@@ -203,7 +203,7 @@ fun FolderTreeList(
 | 场景 | 处理 |
 |---|---|
 | 损坏/非 PDF 文件 | 导入时 `engine.open()` 抛 `CorruptDocumentException` → 删半成品文件、不入库，提示「无法读取」；打开时读 `pageCount` 抛错 → 标记 `pageCount = -2`（错误标记，区别于 `-1` 未知），书架条目置灰显示「已损坏」，长按可删除记录（「重新导入」重选源文件替换为后续里程碑，M5 仅提供删除入口），不自动重试、不崩溃 |
-| 暂不支持的文件类型（M9） | 导入前 `FileTypes.normalize` 未命中已注册格式 → 直接拒收（不复制、不入库），snackbar「N 个暂不支持的文件类型」；打开已存在但 `fileType ∉ FileTypes.ALL` 的记录（如跨版本恢复出未知格式）→ `ReaderViewModel` 前置守卫转 `Failed`「暂不支持的文件类型（xxx）」，不流入 router 崩溃 |
+| 暂不支持的文件类型（M9） | 导入前 `FileTypes.normalize` 未命中已注册格式 → 直接拒收（不复制、不入库），snackbar「N 个暂不支持的文件类型」；打开已存在但 `fileType ∉ FileTypes.ALL` 的记录（如跨版本恢复出未知格式）→ `ReaderViewModel` 前置守卫转 `Failed`「暂不支持的文件类型」（T6 去掉 fileType 技术值），不流入 router 崩溃 |
 | 密码保护文档 | 导入时 `engine.open()` 抛 `PasswordRequiredException` → 照常入库置 `needsPassword = true`；打开时先弹密码对话框，`engine.open(path, fileType, password)` 成功后补 `pageCount`、**保留 `needsPassword`（加密标识常驻）**、**清除并不再生成缩略图（加密文档不保留内容预览）**；密码不持久化（v1 仅会话内），每次打开均重新弹密码框；取消密码弹窗先让弹窗离开组合再返回书架（避免弹窗残影悬于转场之上） |
 | 重复导入 | 导入时 `contentHash` 命中已有记录 → 弹窗「已存在《title》，是否仍导入」，可跳过（跳过则删刚复制的文件） |
 | 存储空间不足 | 复制前 `StatFs` 检查 `filesDir` 可用空间 ≥ 文件大小 + 余量，不足则提示并中止，不写半文件 |

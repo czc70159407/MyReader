@@ -47,7 +47,7 @@
 | `act_skip` | 跳过 | 重复确认 |
 | `act_got_it` | 知道了 | 汇总/失败提示 |
 | `act_back_library` | 返回书架 | 阅读器失败页 |
-| `act_retry` | 重试 | `[建议]` 大纲失败 / 阅读器失败 |
+| `act_retry` | 重试 | 大纲失败（`[已实现 T6]`）；阅读器失败页 `[建议]` |
 | `act_cancel_import` | 取消（读屏 CD「取消导入」） | 导入胶囊（T3 已实现） |
 | `act_restore_confirm` | 继续恢复 | 恢复二次确认框（T1 已实现） |
 
@@ -105,19 +105,25 @@
 | `err_corrupt_open` | 无法读取此文档（可能已损坏） | L2 页面 | `[已实现]` |
 | `err_missing_record` | 文档记录不存在，可能已被删除 | L2 页面 | `[已实现]` |
 | `err_missing_file` | 文档文件已丢失，可删除记录后重新导入 | L2 页面 | `[已实现]` |
-| `err_open_generic` | 打开失败：{原因 或 未知错误} | L2 页面 | `[已实现]` |
-| `err_unsupported_type` | 暂不支持的文件类型（{fileType}） | L2 页面 | `[已实现]`（`[建议]` 去技术值） |
+| `err_open_generic` | 打开失败，请返回书架后重试 | L2 页面 | `[已实现 T6]`（异常消息只进日志，不进文案） |
+| `err_unsupported_type` | 暂不支持的文件类型 | L2 页面 | `[已实现 T6]`（去掉 `{fileType}` 技术值） |
 | `err_pick_dir_permission` | 无法访问所选目录（权限可能已被撤销） | L3 | `[已实现]` |
 | `err_move_cycle` | 不能移动到自身或其子目录 | L1 | `[已实现]` |
 | `err_subtree_load` | 无法移动 / 读取目录结构失败，请重试 | L2 | `[已实现]` |
-| `err_outline_load` | 目录加载失败 | L1 面板内 | `[已实现]`，`[建议]` 加重试 |
+| `err_folder_missing` | 目录不存在，请刷新后重试 | L3 | `[已实现 T6]`（去掉内部 id） |
+| `err_doc_missing` | 文档不存在，请刷新后重试 | L3 | `[已实现 T6]`（去掉内部 id） |
+| `err_create_folder` | 创建失败，请重试 | L3 | `[已实现 T6]`（异常消息不进文案） |
+| `err_outline_load` | 目录加载失败 | L1 面板内 | `[已实现 T6]`（含「重试」出口） |
 | `err_backup_op` | 备份操作失败，请重试 | L3 | T1 review M12 已固定文案（去路径/类名，细节仅 debug 日志） |
 | `err_import_interrupted` | 导入失败，请重试 | L3 | 单文件导入遭未预见异常中断（T4 review H2 兜底） |
-| `err_backup_invalid` | 备份文件无法识别或已损坏 | L3 | `[建议]` |
-| `err_generic` | 操作失败：{原因 或 未知错误} | L3 | `[已实现]` |
-| `err_pick_dir_empty` | 该目录中没有可导入的文档 | L3 | `[已实现]` |
-| `err_import_dir` | 目录导入失败：{原因 或 未知错误} | L3 | `[已实现]` |
+| `err_backup_invalid` | 备份文件无法识别或已损坏 | L3 | `[已实现]`（`SettingsViewModel`） |
+| `err_generic` | 操作失败，请重试 | L3 | `[已实现 T6]`（异常消息不进文案） |
+| `err_pick_dir_empty` | 该目录中没有可导入的文档 | L3 | `[已实现]`；目录内全部为不支持类型时也只报本句（total=0 不弹汇总，T6 已删伪路径明细条目） |
+| `err_import_dir` | 目录导入失败，请重试 | L3 | `[已实现 T6]`（异常消息不进文案） |
 | `err_nothing_imported` | 未导入任何文档 | L3 | `[已实现]` |
+| `err_viewer_empty` | 无可显示的页面 | L2 视图内 | `[已实现]`（MuPDF 视图无页可绘兜底） |
+| `err_txt_view` | 无法显示此文档 | L2 视图内 | `[已实现]`（TXT 视图兜底） |
+| `err_page_render` | 第 {N} 页渲染失败 | L1 页内 | `[已实现]`（垂直模式单页失败占位，不整篇失败） |
 
 ## 7. 表单校验文案（inline_*）
 
@@ -125,7 +131,7 @@
 |---|---|---|
 | `inline_search_placeholder` | 搜索全部文档 | 书架搜索框占位（review L20 补登记） |
 | `inline_goto_range` | 页码（1 - {pageCount}） | 跳页框 label，常驻显示范围 |
-| `inline_goto_invalid` | 请输入 1 - {pageCount} 的页码 | `[建议]` 非法输入时的 `supportingText` |
+| `inline_goto_invalid` | 请输入 1 - {pageCount} 的页码 | `[已实现 T6]` 非法输入时的 `supportingText` |
 | `inline_password_wrong` | 密码错误，请重试 | 提交失败后内联，保留已输入内容 |
 | `inline_name_empty` | 名称不能为空 | `[建议]` 失焦或提交时 |
 | `inline_name_too_long` | 名称最多 64 个字符 | `[建议]` 输入期 |
@@ -148,7 +154,7 @@
 | `dlg_delete_doc_title` | 删除文档 |
 | `dlg_duplicate_title` | 文档已存在 |
 | `dlg_move_failed_title` | 无法移动 |
-| `dlg_restore_confirm_title` | 从备份恢复（`[建议 D1]`） |
+| `dlg_restore_confirm_title` | 从备份恢复（`[已实现 T1]`） |
 | `dlg_restore_confirm_body` | 将合并备份中的目录与文档记录：同名记录以备份为准，备份之外的数据不受影响。是否继续？（不预测数量——为避免显示数字而先解析整包） |
 
 ## 9. 导入汇总字段（summary_*）
@@ -169,7 +175,7 @@
 | `summary_truncated` | 超出数量上限未处理：{n} | n > 0 |
 | `summary_inaccessible` | 无法访问的子目录：{n} | n > 0 |
 | `summary_issues_title` | 明细： | issues 非空 |
-| `summary_issue_line` | · {path} —— {reason} | issues 非空，≤ 50 条；**{reason} 不得含内部 relPath 文件名**（真机验收发现 `无法打开文档: 188029…pdf`，T6 净化） |
+| `summary_issue_line` | · {path} —— {reason} | issues 非空，≤ 50 条；**{reason} 走白名单**（`[已实现 T6]`：`文件损坏` / `文本过大（>16MB），请使用分卷或压缩版` / `导入失败` / `暂不支持的文件类型` / `库中已存在相同内容，已跳过`；异常消息只进 debug 日志，真机验收曾发现 `无法打开文档: 188029…pdf`） |
 | `summary_cancelled` | 已取消，已导入 {n} 个（T3 已实现） | 取消后 |
 
 ## 9.1 读屏文案（a11y_*，T5）

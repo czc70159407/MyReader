@@ -51,6 +51,12 @@ fun GoToPageDialog(
                     label = { Text(text = "页码（1 - $pageCount）") },
                     singleLine = true,
                     isError = !valid,
+                    // T6：非法输入给明确范围提示（copy.md inline_goto_invalid），不只靠红框
+                    supportingText = if (valid) {
+                        null
+                    } else {
+                        { Text(text = "请输入 1 - $pageCount 的页码") }
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.focusRequester(focusRequester).fillMaxWidth(),
                 )

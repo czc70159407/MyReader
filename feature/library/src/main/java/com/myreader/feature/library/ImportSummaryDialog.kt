@@ -71,7 +71,7 @@ internal fun ImportSummaryDialog(
                         Text(
                             text = "· ${issue.path} —— ${issue.reason}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }

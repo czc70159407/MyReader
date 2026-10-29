@@ -61,9 +61,9 @@ class DocumentImporterTest {
     private lateinit var repository: LibraryRepositoryImpl
     private lateinit var importer: DocumentImporter
 
-    /** 可编程 fake：模拟成功/损坏/加密；记录最近打开的 path 供断言清理效果 */
+    /** 可编程 fake：模拟成功/损坏/加密/未预见异常；记录最近打开的 path 供断言清理效果 */
     private class FakeEngine(var behavior: Behavior) : DocumentEngine {
-        enum class Behavior { OK, CORRUPT, PASSWORD }
+        enum class Behavior { OK, CORRUPT, TOO_LARGE, PASSWORD, BOOM }
 
         var lastOpenedPath: String? = null
 
@@ -71,7 +71,11 @@ class DocumentImporterTest {
             lastOpenedPath = path
             when (behavior) {
                 Behavior.CORRUPT -> throw CorruptDocumentException("bad")
+                // 与 TxtDocumentEngine 超限文案逐字一致（白名单唯一放行项）
+                Behavior.TOO_LARGE -> throw CorruptDocumentException("文本过大（>16MB），请使用分卷或压缩版")
                 Behavior.PASSWORD -> throw PasswordRequiredException("encrypted")
+                // T6：模拟含内部物理路径的异常消息（真实场景为 native/IO 异常）
+                Behavior.BOOM -> error("$path 崩溃")
                 Behavior.OK -> {}
             }
             // epub 视为流式重排（pageCount 不落库 → 恒 -1），其余页码式
@@ -121,12 +125,14 @@ class DocumentImporterTest {
                 "epub" to engine,
                 "cbz" to engine,
                 "xps" to engine,
+                "txt" to engine,   // T6：超限文案白名单用例
             ),
             viewers = mapOf(
                 "pdf" to FakeViewer(),
                 "epub" to FakeViewer(),
                 "cbz" to FakeViewer(),
                 "xps" to FakeViewer(),
+                "txt" to FakeViewer(),
             ),
         )
         importer = DocumentImporter(context, router, storage, repository, dispatchers)
@@ -192,11 +198,35 @@ class DocumentImporterTest {
         val result = importer.import(registerPdf())
 
         assertEquals(DocumentImporter.Status.CORRUPT_REJECTED, result.status)
+        // T6/M11：明细 reason 走白名单，引擎消息（"bad"）不得直出
+        assertEquals("文件损坏", result.reason)
         // 引擎收到过打开请求，且对应半成品文件已被清理
         val opened = File(engine.lastOpenedPath!!)
         assertFalse(opened.exists())
         // 无库记录
         assertNull(repository.findByHash(sha256Of(pdfBytes)))
+    }
+
+    @Test
+    fun import_tooLargeText_keepsActionableReasonFromWhitelist() = runTest {
+        engine.behavior = FakeEngine.Behavior.TOO_LARGE
+
+        val result = importer.import(registerPdf("big.txt", "hello".toByteArray()))
+
+        assertEquals(DocumentImporter.Status.CORRUPT_REJECTED, result.status)
+        // 白名单放行唯一带行动指引的文案（分卷/压缩版），其余损坏原因统一「文件损坏」
+        assertEquals("文本过大（>16MB），请使用分卷或压缩版", result.reason)
+    }
+
+    @Test
+    fun import_unexpectedFailure_reasonIsFixedAndHidesPath() = runTest {
+        engine.behavior = FakeEngine.Behavior.BOOM
+
+        val result = importer.import(registerPdf())
+
+        assertEquals(DocumentImporter.Status.FAILED, result.status)
+        // T6/M11：异常消息含内部物理路径，用户明细只给固定文案（细节仅 debug 日志）
+        assertEquals("导入失败", result.reason)
     }
 
     @Test

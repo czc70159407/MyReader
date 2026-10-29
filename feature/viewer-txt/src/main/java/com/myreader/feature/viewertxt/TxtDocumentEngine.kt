@@ -29,12 +29,12 @@ class TxtDocumentEngine @Inject constructor() : DocumentEngine {
     override fun open(path: String, fileType: String, password: String?): Document {
         val file = File(path)
         if (file.length() > MAX_BYTES) {
-            throw CorruptDocumentException("文本过大（>16MB），请使用分卷或压缩版: ${file.name}")
+            throw CorruptDocumentException("文本过大（>16MB），请使用分卷或压缩版")
         }
         val bytes = try {
             file.readBytes()
         } catch (e: Exception) {
-            throw CorruptDocumentException("无法读取文本: ${file.name}", e)
+            throw CorruptDocumentException("无法读取文本", e)
         }
         val text = decodeText(bytes)
         return TxtDocument(TxtPaginator.paginate(text))

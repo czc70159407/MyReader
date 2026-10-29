@@ -183,8 +183,9 @@ class ReaderViewModel @Inject constructor(
                 return@launch
             }
             // 未注册格式（如跨版本恢复出未来/未知 fileType）：友好降级，不流入 router 抛异常崩溃（M9-E）
+            // T6：文案不带 fileType 原始值（copy.md err_unsupported_type「去技术值」）
             if (!FileTypes.isKnown(item.fileType)) {
-                _state.value = ReaderUiState.Failed(ReaderFailure.OPEN_FAILED, "暂不支持的文件类型（${item.fileType}）")
+                _state.value = ReaderUiState.Failed(ReaderFailure.OPEN_FAILED, "暂不支持的文件类型")
                 return@launch
             }
 
@@ -218,8 +219,9 @@ class ReaderViewModel @Inject constructor(
                 }
                 _state.value = ReaderUiState.Failed(ReaderFailure.CORRUPT, "无法读取此文档（可能已损坏）")
                 return@launch
-            } catch (e: Exception) {
-                _state.value = ReaderUiState.Failed(ReaderFailure.OPEN_FAILED, "打开失败：${e.message.orEmpty().ifEmpty { "未知错误" }}")
+            } catch (_: Exception) {
+                // T6：异常消息可能含内部路径/类名等实现细节，不进用户文案（copy.md err_open_generic）
+                _state.value = ReaderUiState.Failed(ReaderFailure.OPEN_FAILED, "打开失败，请返回书架后重试")
                 return@launch
             }
 

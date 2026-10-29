@@ -111,7 +111,7 @@ private fun ExpandToggle(hasChildren: Boolean, expanded: Boolean, onToggle: () -
     Icon(
         imageVector = if (expanded) Icons.Filled.ExpandMore else Icons.AutoMirrored.Filled.KeyboardArrowRight,
         contentDescription = if (expanded) "收起" else "展开",
-        tint = MaterialTheme.colorScheme.outline,
+        tint = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier
             .size(TOGGLE_SLOT)
             .clickable(onClick = onToggle)

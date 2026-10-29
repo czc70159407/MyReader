@@ -91,7 +91,7 @@ private fun DocumentMetaText(item: LibraryItem) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.outline,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
@@ -250,7 +250,12 @@ internal fun DocumentCard(
                         style = MaterialTheme.typography.bodySmall,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                        // D8：损坏卡标题用 onSurfaceVariant（outline 对比度不足）
+                        color = if (item.pageCount == -2) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
                     )
                     DocumentMetaText(item = item)
                 }
@@ -354,12 +359,12 @@ private fun RecentCardBody(item: LibraryItem) {
             "page" -> Text(
                 text = "第 ${item.currentPage + 1} 页",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             "cfi" -> Text(
                 text = "继续阅读",
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

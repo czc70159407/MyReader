@@ -91,7 +91,7 @@ internal fun ThumbnailImage(relPath: String?, fileType: String, modifier: Modifi
             Icon(
                 imageVector = formatIcon(fileType),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.outline,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(36.dp),
             )
         }

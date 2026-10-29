@@ -143,12 +143,8 @@ class DirectoryImporter @Inject constructor(
                 val folderId = folderCache.resolve(file.folderPath, targetFolderId)
                 apply(importer.import(file.uri, targetFolderId = folderId), file, folderId)
             }
-            if (scan.files.isEmpty() && scan.unsupportedCount > 0) {
-                issues += DirectoryImportSummary.Issue(
-                    "目录中没有可导入的文档",
-                    "${scan.unsupportedCount} 个文件类型暂不支持",
-                )
-            }
+            // T6：原先向 issues 塞「目录中没有可导入的文档」当作 path（语义错位）。该场景 total=0，
+            // 由 LibraryViewModel 走 Snackbar（err_pick_dir_empty），明细本就不会展示，删除冗余条目。
         }
 
         private suspend fun apply(result: DocumentImporter.Result, file: ScannedFile, folderId: Long?) {

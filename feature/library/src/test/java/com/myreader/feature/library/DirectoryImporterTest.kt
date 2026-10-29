@@ -244,9 +244,10 @@ class DirectoryImporterTest {
         assertEquals(0, summary.imported)
         assertEquals(2, summary.corruptRejected)
         assertEquals(2, summary.unsupported)           // 扫描期不支持 + 导入期统计合并
-        // 每个被拒文件一条 issue（reason 为引擎消息；log/jpg 扫描期拒收不计 issue）
+        // 每个被拒文件一条 issue（T6：reason 走白名单固定文案；log/jpg 扫描期拒收不计 issue）
         assertEquals(2, summary.issues.size)
         assertTrue(summary.issues.all { it.path.endsWith(".pdf") })
+        assertTrue(summary.issues.all { it.reason == "文件损坏" })
         // 损坏文件不留半成品：库内 0 条
         assertEquals(0, repository.docsIn(null, com.myreader.core.model.DocSort.TITLE).first().size)
     }
@@ -279,7 +280,8 @@ class DirectoryImporterTest {
         assertEquals(0, summary.total)
         assertEquals(0, summary.imported)
         assertEquals(2, summary.unsupported)
-        assertTrue(summary.issues.any { it.path == "目录中没有可导入的文档" })
+        // T6：total=0 时该目录走 Snackbar（err_pick_dir_empty），明细不再放语义错位的伪路径条目
+        assertTrue(summary.issues.isEmpty())
     }
 
     // ---- 取消（T3/D3）----

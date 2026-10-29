@@ -12,6 +12,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,8 +50,12 @@ fun OutlineSheet(
     // remember + LaunchedEffect 懒加载（不用 produceState：Compose lint 对其赋值形态有误报，见项目经验）
     var entries by remember { mutableStateOf<List<FlatOutline>?>(null) }
     var failed by remember { mutableStateOf(false) }
+    // T6：失败后可重试（copy.md err_outline_load + act_retry；错误态必须有出口）
+    var retryKey by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(retryKey) {
+        failed = false
+        entries = null
         try {
             val flat = mutableListOf<FlatOutline>()
             load().flatten(0, flat)
@@ -65,11 +70,13 @@ fun OutlineSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         when {
-            failed -> Text(
-                text = "目录加载失败",
+            failed -> Column(
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
-                color = MaterialTheme.colorScheme.error,
-            )
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(text = "目录加载失败", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { retryKey++ }) { Text(text = "重试") }
+            }
             entries == null -> Row(
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -81,7 +88,7 @@ fun OutlineSheet(
             entries!!.isEmpty() -> Text(
                 text = "本文档没有目录",
                 modifier = Modifier.fillMaxWidth().padding(24.dp),
-                color = MaterialTheme.colorScheme.outline,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             else -> LazyColumn(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                 // key 用列表序号：PDF 大纲存在同名同页重复条目，内容拼 key 会触发重复 key 崩溃

@@ -184,11 +184,13 @@ class LibraryViewModel @Inject constructor(
                 _messages.send("已创建文件夹「$trimmed」")
                 onCreated(id)
             } catch (e: IllegalArgumentException) {
-                _messages.send(e.message ?: "创建失败")
+                _messages.send(e.message ?: "创建失败，请重试")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _messages.send("创建失败：${e.message ?: "未知错误"}")
+                // T6：异常消息可能含内部路径/类名，用户文案固定化，细节仅 debug 日志
+                if (BuildConfig.DEBUG) android.util.Log.e(TAG, "createFolderAndSelect 失败", e)
+                _messages.send("创建失败，请重试")
             }
         }
     }
@@ -196,7 +198,7 @@ class LibraryViewModel @Inject constructor(
     fun renameFolder(id: Long, name: String) = launchOp {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@launchOp ""
-        val folder = repository.getFolder(id) ?: throw IllegalArgumentException("目录不存在: $id")
+        val folder = repository.getFolder(id) ?: throw IllegalArgumentException("目录不存在，请刷新后重试")
         requireUniqueFolder(folder.parentId, trimmed, excludeId = id)
         repository.renameFolder(id, trimmed)
         "已重命名文件夹"
@@ -208,7 +210,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     fun moveFolder(id: Long, newParentId: Long?) = launchOp {
-        val folder = repository.getFolder(id) ?: throw IllegalArgumentException("目录不存在: $id")
+        val folder = repository.getFolder(id) ?: throw IllegalArgumentException("目录不存在，请刷新后重试")
         if (folder.parentId == newParentId) return@launchOp "文件夹已在该目录"
         repository.moveFolder(id, newParentId)
         "已移动文件夹"
@@ -217,14 +219,14 @@ class LibraryViewModel @Inject constructor(
     fun renameDocument(id: Long, title: String) = launchOp {
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return@launchOp ""
-        val doc = repository.getDocument(id) ?: throw IllegalArgumentException("文档不存在: $id")
+        val doc = repository.getDocument(id) ?: throw IllegalArgumentException("文档不存在，请刷新后重试")
         requireUniqueDocTitle(doc.folderId, trimmed, excludeId = id)
         repository.renameDocument(id, trimmed)
         "已重命名文档"
     }
 
     fun moveDocument(id: Long, newFolderId: Long?) = launchOp {
-        val doc = repository.getDocument(id) ?: throw IllegalArgumentException("文档不存在: $id")
+        val doc = repository.getDocument(id) ?: throw IllegalArgumentException("文档不存在，请刷新后重试")
         if (doc.folderId == newFolderId) return@launchOp "文档已在该目录"
         repository.moveDocument(id, newFolderId)
         "已移动文档"
@@ -242,14 +244,15 @@ class LibraryViewModel @Inject constructor(
                 val message = block()
                 if (message.isNotEmpty()) _messages.send(message)
             } catch (e: IllegalArgumentException) {
-                _messages.send(e.message ?: "操作失败")
+                _messages.send(e.message ?: "操作失败，请重试")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 // 编程错误（NPE/状态 bug 等）与业务失败同文案；debug 下记录堆栈便于排障（T5），
                 // release 维持旧行为静默——日志仅异常对象，不含文档 uri/文件名等隐私（L1 语义）
+                // T6：异常消息可能含内部路径/类名，用户文案固定化
                 if (BuildConfig.DEBUG) android.util.Log.e(TAG, "launchOp 失败", e)
-                _messages.send("操作失败：${e.message ?: "未知错误"}")
+                _messages.send("操作失败，请重试")
             }
         }
     }
@@ -494,7 +497,9 @@ class LibraryViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _messages.send("目录导入失败：${e.message ?: "未知错误"}")
+                // T6：异常消息可能含内部路径/类名，用户文案固定化，细节仅 debug 日志
+                if (BuildConfig.DEBUG) android.util.Log.e(TAG, "importDirectory 失败", e)
+                _messages.send("目录导入失败，请重试")
             } finally {
                 _importing.value = false
                 _importProgress.value = null

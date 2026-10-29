@@ -40,6 +40,13 @@ class DocumentImporter @Inject constructor(
         private const val TAG = "DocumentImporter"
     }
 
+    /**
+     * T6/M11：损坏拒收的明细原因白名单——引擎异常消息可能含内部物理文件名/类名，
+     * 只放行带用户行动指引的固定文案，其余统一「文件损坏」（copy.md §9 summary_issue_line）。
+     */
+    private fun corruptReason(e: CorruptDocumentException): String =
+        e.message?.takeIf { it.startsWith("文本过大") } ?: "文件损坏"
+
     enum class Status {
         /** 导入成功（含完整元数据与缩略图） */
         IMPORTED,
@@ -129,7 +136,9 @@ class DocumentImporter @Inject constructor(
                 } catch (e: CorruptDocumentException) {
                     storage.deleteDocument(copy.relPath)
                     copy = null
-                    return@withContext Result(uri, Status.CORRUPT_REJECTED, title = displayName, reason = e.message)
+                    return@withContext Result(
+                        uri, Status.CORRUPT_REJECTED, title = displayName, reason = corruptReason(e),
+                    )
                 }
 
                 // 6. pageCount + 首页缩略图（失败不阻断导入，留首开兜底）
@@ -184,7 +193,9 @@ class DocumentImporter @Inject constructor(
                 }
                 copy?.let { storage.deleteDocument(it.relPath) }
                 thumbnailRelPath?.let { storage.deleteThumbnail(it) }
-                Result(uri, Status.FAILED, title = displayName, reason = t.message ?: t.javaClass.simpleName)
+                // T6/M11：未预见异常的消息可能含绝对路径 / SAF uri / 类名，用户明细只给固定文案，
+                // 细节仅进 debug 日志（见上方 Log.e）
+                Result(uri, Status.FAILED, title = displayName, reason = "导入失败")
             }
         }
 

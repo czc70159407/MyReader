@@ -26,6 +26,7 @@
 | `core:document` 接口 | 仅契约测试 | 接口存在性，实现在 viewer-mupdf |
 | `feature:viewer-mupdf` | Android 插桩测试（`androidTest`，需真机/.so） | `MuPdfDocumentEngine.open`（含密码/损坏异常映射）+ `countPages` + `drawPage` + `outline` 对 assets 内样本 PDF；native 句柄 `close()` 无泄漏 |
 | `feature:library` / `reader` | Compose UI 测试（`createAndroidComposeRule`） | 导入流程、目录树展开/移动/循环校验拦截、跳页+进度回写、大纲跳页、搜索/排序切换 |
+| `app`（无障碍门禁） | Android 插桩测试（`androidTest`，需真机） | `LibraryA11yTreeTest`：读**平台** `AccessibilityNodeInfo`，断言书架卡片是单一 `clickable && contentDescription` 节点、其下无文本子节点、`actionList` 含 `重命名/移动/删除`——Compose 语义被平台拆成两个焦点位（重复播报）只有这一层能看到。测试自播种 `a11y_test.pdf` 后删除，不依赖设备数据；注意 `connectedAndroidTest` 跑完会卸载应用（数据清空） |
 | MuPDF 渲染正确性 | 手工真机回归 | 无参考图难自动化；真机验证首页渲染、翻页、大文件不 OOM、横竖屏切换进度保持 |
 | `Repository` | JVM 单元测试（Robolectric + inMemory Room，真 DAO；M2 已落地 9 用例） | 业务编排：循环校验、移动目标存在性、删除编排顺序（后代回根/子先父删）、删文档联动物理文件、进度分发、hash 查重 |
 

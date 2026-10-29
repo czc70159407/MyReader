@@ -34,7 +34,7 @@
 |---|---|---|
 | 图标语义 | 每个 `IconButton` 有 `contentDescription` | `[已实现]` 全量核对：返回/返回上级/目录/跳页/切换阅读模式/新建文件夹/导入文档/导入目录/搜索/排序/设置/退出搜索/清空关键词/展开/收起 |
 | 装饰元素静默 | 纯装饰图标、缩略图、占位图标 `contentDescription = null` | `[已实现]` |
-| 卡片整卡语义 | 朗读「文档名，12 页，需要密码」，而非逐个子节点 | `[已实现 T5]` `mergeDescendants` + 组合描述（模板见 `copy.md` §9.1）；状态角标 CD 置 null 避免重复播报 |
+| 卡片整卡语义 | 朗读「文档名，12 页，需要密码」，而非逐个子节点 | `[已实现 T5]` 点击容器单节点语义（`clearAndSetSemantics` 组合描述 + `role` + `onClick`/`onLongClick`/`customActions`），模板见 `copy.md` §9.1；状态角标 CD 置 null 避免重复播报。**注意**：`mergeDescendants` 挂在 `Card` 上会被平台拆成两个 `AccessibilityNodeInfo`（真机实测重复播报），门禁见 `app` 模块 `LibraryA11yTreeTest` |
 | 页码语义 | 阅读器顶栏朗读「第 5 页，共 12 页」而非「5 / 12」 | `[缺口 P1]` 建议 `contentDescription` 覆盖 |
 | 加载语义 | 无可见文案的加载环需可被读屏感知 | `[已实现 T5]` 书架首帧 / 阅读器 Loading 环加 CD「正在加载」（`loading_generic`）；备份/大纲等已有文本的加载态不重复加 |
 | 错误可感知 | Snackbar 出现时被朗读；关键错误可达 | `[已实现]` 默认礼貌播报 |
@@ -81,6 +81,16 @@
 **前置**：设置 → 其他设置 → 无障碍 → 视觉 → TalkBack（一加 ColorOS 路径）；首次开启的「无障碍套件」通知权限选允许；确认书架已有 ≥3 张文档卡。
 
 **手势**：单指右滑 / 左滑 = 上 / 下一焦点；双击 = 激活当前焦点；**上滑后立刻右滑**（两段连续）= 本地上下文菜单；双指上下滑 = 滚动。
+
+**自动化门禁**：A / B 两组的判据已由设备插桩测试 `app/src/androidTest/java/com/myreader/LibraryA11yTreeTest.kt` 覆盖——直接读平台 `AccessibilityNodeInfo`，断言每张卡是**单一** `clickable && contentDescription` 节点、其下无文本子节点、`actionList` 含 `重命名/移动/删除`。回归命令：
+
+```powershell
+.\gradlew.bat :app:connectedDebugAndroidTest "-Pandroid.testInstrumentationRunnerArguments.class=com.myreader.LibraryA11yTreeTest"
+```
+
+本节人工步骤只在「改动卡片结构 / 升级 Compose 或 TalkBack」后抽查朗读，不再作为每次验收的必经项。
+
+> **运行注意**：测试自身向 DB 播种 `a11y_test.pdf` 夹具（结束后删除），不依赖设备既有书架；但 `connectedDebugAndroidTest` 跑完会**卸载被测应用（数据清空）**，真机验收前后需自行备份 / 恢复（或使用独立测试机）。
 
 #### A 组：卡片整卡朗读
 

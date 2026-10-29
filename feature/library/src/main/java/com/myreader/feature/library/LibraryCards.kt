@@ -32,9 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -50,7 +54,7 @@ import com.myreader.core.model.LibraryItem
 
 /**
  * 状态角标（加密 / 损坏）。T5：角标 CD 置 null——状态词已由整卡描述承担，
- * 否则 `mergeDescendants` 会把角标 CD 并入卡片列表，读屏重复播报「需要密码」。
+ * 且整卡用 `clearAndSetSemantics` 清空后代语义，读屏不会重复播报「需要密码」。
  */
 @Composable
 private fun DocumentStatusBadge(item: LibraryItem, modifier: Modifier) {
@@ -125,41 +129,48 @@ internal fun FolderCard(
     onNewSubFolder: () -> Unit,
 ) {
     Box {
-        Card(
+        // T5：整卡语义由「点击容器」单节点承担（同 DocumentCard），customActions 为长按替代路径，
+        // 且与视觉菜单一致先复位菜单状态（避免读屏触发后残留展开菜单）
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                // T5：整卡合并朗读（名称 + 类型）；customActions 为读屏长按替代路径，
-                // 且与视觉菜单一致先复位菜单状态（避免读屏触发后残留展开菜单）
-                .semantics(mergeDescendants = true) {
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .clearAndSetSemantics {
                     contentDescription = "${folder.name}，文件夹"
+                    role = Role.Button
+                    onClick(label = "打开") { onClick(); true }
+                    onLongClick(label = "更多操作") { onLongClick(); true }
                     customActions = cardActions(
                         "重命名" to { onDismissMenu(); onRename() },
                         "移动" to { onDismissMenu(); onMove() },
                         "删除" to { onDismissMenu(); onDelete() },
                         "新建子目录" to { onDismissMenu(); onNewSubFolder() },
                     )
-                }
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                },
         ) {
-            Box(
-                modifier = Modifier.fillMaxWidth().aspectRatio(1f),
-                contentAlignment = Alignment.Center,
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Folder,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp),
+                Box(
+                    modifier = Modifier.fillMaxWidth().aspectRatio(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp),
+                    )
+                }
+                Text(
+                    text = folder.name,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
                 )
             }
-            Text(
-                text = folder.name,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(8.dp),
-            )
         }
         FolderMenu(
             expanded = menuExpanded,
@@ -202,39 +213,47 @@ internal fun DocumentCard(
     onDelete: () -> Unit,
 ) {
     Box {
-        // T5：整卡语义合并（描述见 documentCardDescription）+ customActions 长按替代路径
-        Card(
+        // T5：整卡语义由「点击容器」单节点承担——clickable 与合并语义挂在同一个 LayoutNode，
+        // 避免 Card 自身语义与 clickable 语义被平台拆成两个焦点位（真机实测会重复播报）。见 docs/design/accessibility.md §3.2 A 组
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .semantics(mergeDescendants = true) {
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .clearAndSetSemantics {
                     contentDescription = documentCardDescription(item)
+                    role = Role.Button
+                    onClick(label = "打开") { onClick(); true }
+                    onLongClick(label = "更多操作") { onLongClick(); true }
                     customActions = cardActions(
                         "重命名" to { onDismissMenu(); onRename() },
                         "移动" to { onDismissMenu(); onMove() },
                         "删除" to { onDismissMenu(); onDelete() },
                     )
-                }
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                },
         ) {
-            Box(modifier = Modifier.aspectRatio(1f)) {
-                ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
-                // M9：非 PDF 格式在左上角显示格式角标（EPUB / CBZ / XPS）
-                if (item.fileType != FileTypes.PDF) {
-                    FormatBadge(label = formatLabel(item.fileType), modifier = Modifier.align(Alignment.TopStart))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            ) {
+                Box(modifier = Modifier.aspectRatio(1f)) {
+                    ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
+                    // M9：非 PDF 格式在左上角显示格式角标（EPUB / CBZ / XPS）
+                    if (item.fileType != FileTypes.PDF) {
+                        FormatBadge(label = formatLabel(item.fileType), modifier = Modifier.align(Alignment.TopStart))
+                    }
+                    // 状态角标：加密 / 损坏（见 DocumentStatusBadge）
+                    DocumentStatusBadge(item = item, modifier = Modifier.align(Alignment.TopEnd))
                 }
-                // 状态角标：加密 / 损坏（见 DocumentStatusBadge）
-                DocumentStatusBadge(item = item, modifier = Modifier.align(Alignment.TopEnd))
-            }
-            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
-                Text(
-                    text = item.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
-                )
-                DocumentMetaText(item = item)
+                Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.bodySmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        color = if (item.pageCount == -2) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                    )
+                    DocumentMetaText(item = item)
+                }
             }
         }
         DropdownMenu(expanded = menuExpanded, onDismissRequest = onDismissMenu) {
@@ -276,7 +295,7 @@ internal fun RecentSection(recent: List<LibraryItem>, onDocumentClick: (Long) ->
 
 @Composable
 internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
-    // T5：整卡语义合并（标题 + 进度 + 加密状态）；未知 progressType 补「未读」避免只剩标题
+    // T5：整卡描述（标题 + 进度 + 加密状态）；未知 progressType 补「未读」避免只剩标题
     val description = buildString {
         append(item.title)
         when (item.progressType) {
@@ -286,51 +305,62 @@ internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
         }
         if (item.needsPassword) append("，需要密码")
     }
-    Card(
+    // T5：单节点语义（同 DocumentCard）：clickable + clearAndSetSemantics，避免平台拆成两个焦点位
+    Box(
         modifier = Modifier
             .width(100.dp)
-            .semantics(mergeDescendants = true) { contentDescription = description }
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            .clickable(onClick = onClick)
+            .clearAndSetSemantics {
+                contentDescription = description
+                role = Role.Button
+                onClick(label = "打开") { onClick(); true }
+            },
     ) {
-        Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)) {
-            ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
-            // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）；
-            // T5：CD 置 null，状态已由整卡描述承担（避免重复播报）
-            if (item.needsPassword) {
-                StatusBadge(
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Filled.Lock,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(14.dp),
-                        )
-                    },
-                    modifier = Modifier.align(Alignment.TopEnd),
-                )
-            }
+        Card(elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
+            RecentCardBody(item)
         }
-        Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    }
+}
+
+@Composable
+private fun RecentCardBody(item: LibraryItem) {
+    Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)) {
+        ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
+        // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）；
+        // T5：CD 置 null，状态已由整卡描述承担（避免重复播报）
+        if (item.needsPassword) {
+            StatusBadge(
+                icon = {
+                    Icon(
+                        imageVector = Icons.Filled.Lock,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(14.dp),
+                    )
+                },
+                modifier = Modifier.align(Alignment.TopEnd),
             )
-            // 页码式显示「第 N 页」；流式（cfi，如 epub）无固定页概念，显示「继续阅读」
-            when (item.progressType) {
-                "page" -> Text(
-                    text = "第 ${item.currentPage + 1} 页",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-                "cfi" -> Text(
-                    text = "继续阅读",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.outline,
-                )
-            }
+        }
+    }
+    Column(modifier = Modifier.fillMaxWidth().padding(6.dp)) {
+        Text(
+            text = item.title,
+            style = MaterialTheme.typography.labelSmall,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        // 页码式显示「第 N 页」；流式（cfi，如 epub）无固定页概念，显示「继续阅读」
+        when (item.progressType) {
+            "page" -> Text(
+                text = "第 ${item.currentPage + 1} 页",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
+            "cfi" -> Text(
+                text = "继续阅读",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.outline,
+            )
         }
     }
 }

@@ -61,7 +61,7 @@
 
 | 项 | 要求 | 现状 |
 |---|---|---|
-| 整卡朗读 | 一次读出「文档名，12 页，需要密码」 | `[已实现 T5]` `mergeDescendants` + 组合描述；状态角标 CD 置 null 防重复播报（模板见 `copy.md` §9.1） |
+| 整卡朗读 | 一次读出「文档名，12 页，需要密码」 | `[已实现 T5]` 点击容器 `clearAndSetSemantics` 单节点（描述 + `role` + `onClick`/`onLongClick` + `customActions`）；状态角标 CD 置 null 防重复播报（模板见 `copy.md` §9.1）。**勿改回 `Card` 上的 `mergeDescendants`**：平台会拆成两个节点导致重复播报，门禁 `LibraryA11yTreeTest` |
 | 菜单替代 | 非长按路径触发重命名/移动/删除 | `[已实现 T5]` `customActions`（文件夹 4 项 / 文档 3 项，先复位菜单再执行）；不新增可见按钮以免改变布局 |
 | 装饰静默 | 缩略图、占位图标 `contentDescription = null` | `[已实现]` |
 | 状态语义 | 锁/警告图标有独立 CD | `[已实现]` |

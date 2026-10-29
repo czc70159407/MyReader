@@ -172,17 +172,16 @@ class LibraryComponentsTest {
         composeRule.setContent { RecentSection(recent = items, onDocumentClick = {}) }
 
         composeRule.onNodeWithText("最近阅读").assertIsDisplayed()
-        composeRule.onNodeWithText("a.pdf").assertIsDisplayed()
-        composeRule.onNodeWithText("b.pdf").assertIsDisplayed()
-        composeRule.onNodeWithText("第 1 页").assertIsDisplayed()    // currentPage 0 → 第 1 页
-        composeRule.onNodeWithText("第 3 页").assertIsDisplayed()    // currentPage 2 → 第 3 页
+        // T5：卡片整卡由 clearAndSetSemantics 单节点承担描述，文本不再单独暴露
+        composeRule.onNodeWithContentDescription("a.pdf，第 1 页").assertIsDisplayed()    // currentPage 0 → 第 1 页
+        composeRule.onNodeWithContentDescription("b.pdf，第 3 页").assertIsDisplayed()    // currentPage 2 → 第 3 页
     }
 
     @Test
     fun recentCard_clickTriggersCallback() {
         val clicked = mutableListOf<Long>()
         composeRule.setContent { RecentSection(recent = listOf(item(7, "a.pdf", 0)), onDocumentClick = { clicked.add(it) }) }
-        composeRule.onNodeWithText("a.pdf").performClick()
+        composeRule.onNodeWithContentDescription("a.pdf，第 1 页").performClick()
         composeRule.waitForIdle()
 
         assertEquals(listOf(7L), clicked)

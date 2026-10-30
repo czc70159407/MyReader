@@ -58,6 +58,8 @@ CREATE INDEX IF NOT EXISTS index_bookmarks_documentId ON bookmarks(documentId)
 
 ## M10-C 阅读器 UI
 
+> 状态：**已完成（2026-10-30）**——顶栏书签入口（实心/描边）+ `BookmarkSheet`（加载/空/失败重试/列表）+ 添加/跳转/删除编排 + Snackbar；VM 测试 5 例、Sheet Compose UI 测试 5 例。证据见根 `AGENTS.md`。
+
 - 顶栏书签入口：当前页添加/移除（图标状态区分已收藏）
 - 书签列表 Sheet：跳转 + 删除（复用 `OutlineSheet` 的 ModalSheet 模式）
 - 跳转对 epub 走锚点解析（bookmark→page，复用 `EpubLocationResolver` 往返校验，失效回落 page）

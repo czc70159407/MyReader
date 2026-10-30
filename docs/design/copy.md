@@ -34,7 +34,8 @@
 | `act_outline` | 目录 | 阅读器顶栏 |
 | `act_goto` | 跳页 | 阅读器顶栏 |
 | `act_toggle_mode` | 切换阅读模式 | 阅读器顶栏 |
-| `act_bookmark` | 书签（M10 预留） | 阅读器顶栏 |
+| `act_bookmark` | 书签 | 阅读器顶栏（M10-C 已实现；实心/描边区分当前页是否已收藏） |
+| `act_add_bookmark` | 添加当前位置书签 | 书签面板顶部（M10-C） |
 | `act_rename` | 重命名 | 卡片菜单 |
 | `act_move` | 移动 | 卡片菜单 |
 | `act_delete` | 删除 | 卡片菜单 / 确认按钮 |
@@ -59,7 +60,7 @@
 | `empty_folder` | 此文件夹为空 | 子目录无内容 |
 | `empty_search` | 未找到匹配文档 | 搜索无结果 |
 | `empty_outline` | 本文档没有目录 | 大纲为空 |
-| `empty_bookmarks` | 暂无书签（M10 预留） | 书签面板为空 |
+| `empty_bookmarks` | 暂无书签 | 书签面板为空（M10-C 已实现） |
 
 规则：空态必须配「下一步」，根空态已含入口指引；其余空态由顶栏动作提供出口（评审时确认可发现性）。
 
@@ -71,6 +72,7 @@
 | `loading_scan_dir` | 正在扫描目录… |
 | `loading_import_progress` | 正在导入 {current}/{total}… |
 | `loading_outline` | 正在加载目录… |
+| `loading_bookmarks` | 正在加载书签… | 书签面板首帧（M10-C） |
 | `loading_backup` | 处理中…（无阶段文案时） |
 | `loading_generic` | 正在加载 | 无可见文案的加载环（书架首帧 / 阅读器打开）读屏说明 |
 
@@ -88,6 +90,9 @@
 | `ok_doc_moved` | 已移动文档 | Snackbar |
 | `ok_doc_deleted` | 已删除文档 | Snackbar |
 | `ok_import_summary` | 导入 {n} 个；{其他项}…（分号连接） | Snackbar |
+| `ok_bookmark_added` | 已添加书签 | Snackbar（M10-C） |
+| `ok_bookmark_deleted` | 已删除书签 | Snackbar（M10-C） |
+| `ok_bookmark_exists` | 该位置已有书签 | Snackbar（M10-C，重复添加不新增） |
 | `ok_backup_done` | 备份完成 | Snackbar |
 | `ok_restore_done` | 已恢复 {documents} 个文档 / {folders} 个目录 | Snackbar |
 | `ok_import_summary_title` | 目录导入完成 | 对话框标题 |
@@ -114,6 +119,11 @@
 | `err_doc_missing` | 文档不存在，请刷新后重试 | L3 | `[已实现 T6]`（去掉内部 id） |
 | `err_create_folder` | 创建失败，请重试 | L3 | `[已实现 T6]`（异常消息不进文案） |
 | `err_outline_load` | 目录加载失败 | L1 面板内 | `[已实现 T6]`（含「重试」出口） |
+| `err_bookmark_load` | 书签加载失败 | L1 面板内 | `[已实现 M10-C]`（含「重试」出口） |
+| `err_bookmark_limit` | 书签已达上限（100 个） | L3 | `[已实现 M10-C]`（每文档上限，常量 `MAX_BOOKMARKS_PER_DOCUMENT`） |
+| `err_bookmark_unavailable` | 当前位置无法添加书签 | L3 | `[已实现 M10-C]`（流式 payload 无有效锚点时不写库，防降级成页码式污染列表） |
+| `err_bookmark_add` | 添加书签失败，请重试 | L3 | `[已实现 M10-C]`（写库异常兜底，不让协程异常崩溃） |
+| `err_bookmark_delete` | 删除书签失败，请重试 | L3 | `[已实现 M10-C]` |
 | `err_backup_op` | 备份操作失败，请重试 | L3 | T1 review M12 已固定文案（去路径/类名，细节仅 debug 日志） |
 | `err_import_interrupted` | 导入失败，请重试 | L3 | 单文件导入遭未预见异常中断（T4 review H2 兜底） |
 | `err_backup_invalid` | 备份文件无法识别或已损坏 | L3 | `[已实现]`（`SettingsViewModel`） |

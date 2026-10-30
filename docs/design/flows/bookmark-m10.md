@@ -1,6 +1,6 @@
 # 流程 · 书签（M10 设计预留）
 
-- 状态：设计预留（未实现）
+- 状态：**已实现（M10-C，2026-10-30）**——入口/面板/跳转/删除/加载失败重试；实现差异见 §8
 - 优先级：M10（v1.3）
 - 代码落点（计划）：`feature/reader/BookmarkSheet.kt`、`ReaderScreen.kt`、`ReaderViewModel.kt`；`core:data` 新增 `BookmarkEntity/Dao` 与 `MIGRATION_1_2`
 - 执行计划：以 `docs/m10-plan.md` 为准；本文件只定义交互与状态，冲突时服从执行计划
@@ -86,3 +86,13 @@
 7. 升级安装（v1 → v2）：原有文档/进度/目录保留，书签为空；
 8. 从 v1 备份恢复：成功且书签为空，不报错；
 9. 删除含书签的文档：书签随之删除，无残留（DB 校验）。
+
+## 8. 实现差异（M10-C 落地记录）
+
+1. **删除入口**：由「长按弹出删除」改为列表行尾部显式删除图标（CD「删除书签」）——更易发现且读屏可直接到达；即时删除 + Snackbar，无二次确认。
+2. **顶栏图标态**：`Bookmark`（实心）/ `BookmarkBorder`（描边）区分当前页/锚点是否已收藏，判据与列表一致（页码式比 page、流式比 page + loc）。
+3. **文案**：页码式 label「第 N 页」；流式 label「第 N 屏」（page 取 `EpubProgressCodec` 解析值）。
+4. **跳转**：页码式写 `ProgressPayload.Page(page, scrollOffsetY)` 并立即落库；流式以 `loc` 重建 `ProgressPayload.Cfi`，由渲染端解析锚点定位（跨重排稳定），随后回发 CFI 落库。
+5. **加载失败**：观察流异常 → 面板「书签加载失败 + 重试」（重建观察）。
+6. **无障碍**：行点击跳转、删除为可聚焦图标按钮；顶部添加按钮 48dp；空态/失败态文案可读。
+7. **失败兜底（M10-C review）**：写库异常转 Snackbar（`err_bookmark_add`/`err_bookmark_delete`），不让协程异常冒泡崩溃；流式 payload 无有效 `loc` 时提示 `err_bookmark_unavailable` 且**不写库**——避免降级成 `anchor=null` 的页码式书签污染列表（备份恢复侧仅接受十进制锚点）。

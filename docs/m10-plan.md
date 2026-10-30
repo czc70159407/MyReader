@@ -47,6 +47,8 @@ CREATE INDEX IF NOT EXISTS index_bookmarks_documentId ON bookmarks(documentId)
 
 ## M10-B DAO / Repository / 备份兼容
 
+> 状态：**已完成（2026-10-30）**——`Bookmark` 模型与映射、仓储书签 CRUD（双轨去重 + 上限 100）、备份 `SCHEMA_VERSION=2` 与 v1 兼容、`BackupManager` 事务写书签；测试 +10、build 全绿。证据见根 `AGENTS.md`。
+
 - `BookmarkDao`：`insert` / `delete` / `observeByDocument(documentId)`（Robolectric inMemory 单测，含 CASCADE 级联删验证）
 - `LibraryRepository` 扩展书签 CRUD（并入现有仓储，不建独立 Repository——维持「feature 依赖单一仓储接口」惯例）
 - `BackupCodec`：`schemaVersion=2` + bookmarks 数组 DTO；**恢复接受 v1**（书签空）+ 拒绝超版本；导出含书签

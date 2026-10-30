@@ -183,15 +183,17 @@ interface DocumentDao {
 - **`BackupCodec`（纯逻辑，JVM 可测，`core:data` 内）**：`library.json` 快照编解码（`BackupManifest { schemaVersion, exportedAt, appVersion, folders[], documents[] }`）；不可信边界处对 `relPath` / `thumbnailRelPath` 做白名单校验、对 `schemaVersion` 做版本门禁（当前 `=1`）。
 - **`BackupManager`**：导出 = 读全量 → 流式写 zip（`files/` 物理文档 + `thumbs/` 缩略图 + `library.json`）；恢复 = 整体解压到临时目录（`entry.name` 严格白名单，拒绝 `../` 与未知条目，防 zip slip；资源上限 `RestoreLimits`——条目数 ≤512 / 单条目解压 ≤512MB / 累计解压 ≤1GB / `library.json` ≤4M 字符 / 单条目压缩比 ≤100x（小包按 8MB 下限豁免），超限即中止，防 zip bomb 与磁盘耗尽，安全审计 M2）→ 校验清单 → 空间预检 → 事务内目录按拓扑序 upsert 再文档 upsert（满足 `folderId` 外键）→ 提交后把临时文件 move 进 `library/`/`thumb/`；失败临时目录由调用方 `deleteRecursively`，DB 因事务原子性保持未变。
 - **序列化选型**：`kotlinx-serialization-json` 1.7.3（M8 唯一偏离选型的依赖，见 architecture.md「技术选型」+「依赖项清单」），类型安全、跨 schema 版本可演进；零运行时闭源风险、AGPL 兼容。
+- **M10 双版本备份（schemaVersion 1→2）**：`BackupCodec.SCHEMA_VERSION = 2`，`BackupManifest.bookmarks: List<BookmarkDto> = emptyList()`（v1 旧包缺该字段 → 直接解码为空，**无需独立迁移逻辑**）；版本门禁改为 `in 1..SCHEMA_VERSION`（拒绝超版本）。`BackupManager.export` 写全书签并计入 `ExportResult.bookmarks`；`restore` 在既有事务内、文档 upsert **之后** 执行 `bookmarkDao.upsertAll`（满足 `documentId` 外键），`RestoreResult.bookmarks` 回报数量。不可信书签字段边界校验：`documentId` 必须在本包文档集合内、`page ≥ 0`、`label` 非空且 ≤200 字符、`anchor` 仅十进制串（≤20 位）。
 
 ## 书签存储（M10，schema v2）
 
 - 表结构：`bookmarks(id, documentId, page, scrollOffsetY, anchor, label, createdAt)`，**仅新增表、既有表零变更**；`documentId` 外键 `ON DELETE CASCADE`（删文档即删书签；目录删除只把文档移回根，书签保留）。
 - **锚点双轨**（与进度锚点同一套防御）：页码式（pdf/cbz/xps/txt）= `page + scrollOffsetY`，`anchor` 为 null；流式 epub = `anchor` 存 `MuPDFCore.pageToBookmark` 的 long 十进制串（跨重排稳定），`page` 仅作排序与锚点失效回落。
 - `label` 是**创建时快照**（「第 N 页」/「第 N 屏」），重排不回溯改写；去重判据 `documentId + page + anchor`（`anchor IS :anchor`，null 安全）。
+- 仓储接口（`LibraryRepository`，M10-B）：`observeBookmarks(documentId)` / `bookmarksOf(documentId)` / `deleteBookmark(id)`，以及 `addBookmark(...): BookmarkAddResult`——**业务分支不抛异常**：重复位置 → `DUPLICATE`，超上限 → `LIMIT_REACHED`（上限常量 `MAX_BOOKMARKS_PER_DOCUMENT = 100` 在 `core:model`）。
 - 上限：每文档 ≤100（`BookmarkDao.countByDocument` 预检，超限拒绝并提示），防单文档滥用拖慢面板。
 - 去重：**双轨判定**——流式仅比 `anchor`（重排后页码漂移，带 page 会漏判），页码式仅比 `page`（且 `anchor IS NULL`）。
-- 备份：`BackupCodec.schemaVersion = 2` 含 `bookmarks` 数组；恢复接受 v1（书签为空）并拒绝超版本——**M10-B 落地**（当前 A 阶段导出仍为 v1，不含书签）。
+- 备份：`BackupCodec.schemaVersion = 2` 含 `bookmarks` 数组；恢复接受 v1（书签为空）并拒绝超版本（M10-B 已实现，详见「备份与恢复存储」节）。
 
 ## 进度记忆实现时机（防频繁写库）
 

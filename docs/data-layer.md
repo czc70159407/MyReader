@@ -183,12 +183,13 @@ interface DocumentDao {
 - **`BackupCodec`（纯逻辑，JVM 可测，`core:data` 内）**：`library.json` 快照编解码（`BackupManifest { schemaVersion, exportedAt, appVersion, folders[], documents[] }`）；不可信边界处对 `relPath` / `thumbnailRelPath` 做白名单校验、对 `schemaVersion` 做版本门禁（当前 `=1`）。
 - **`BackupManager`**：导出 = 读全量 → 流式写 zip（`files/` 物理文档 + `thumbs/` 缩略图 + `library.json`）；恢复 = 整体解压到临时目录（`entry.name` 严格白名单，拒绝 `../` 与未知条目，防 zip slip；资源上限 `RestoreLimits`——条目数 ≤512 / 单条目解压 ≤512MB / 累计解压 ≤1GB / `library.json` ≤4M 字符 / 单条目压缩比 ≤100x（小包按 8MB 下限豁免），超限即中止，防 zip bomb 与磁盘耗尽，安全审计 M2）→ 校验清单 → 空间预检 → 事务内目录按拓扑序 upsert 再文档 upsert（满足 `folderId` 外键）→ 提交后把临时文件 move 进 `library/`/`thumb/`；失败临时目录由调用方 `deleteRecursively`，DB 因事务原子性保持未变。
 - **序列化选型**：`kotlinx-serialization-json` 1.7.3（M8 唯一偏离选型的依赖，见 architecture.md「技术选型」+「依赖项清单」），类型安全、跨 schema 版本可演进；零运行时闭源风险、AGPL 兼容。
-- **M10 双版本备份（schemaVersion 1→2）**：`BackupCodec.SCHEMA_VERSION = 2`，`BackupManifest.bookmarks: List<BookmarkDto> = emptyList()`（v1 旧包缺该字段 → 直接解码为空，**无需独立迁移逻辑**）；版本门禁改为 `in 1..SCHEMA_VERSION`（拒绝超版本）。`BackupManager.export` 写全书签并计入 `ExportResult.bookmarks`；`restore` 在既有事务内、文档 upsert **之后** 执行 `bookmarkDao.upsertAll`（满足 `documentId` 外键），`RestoreResult.bookmarks` 回报数量。不可信书签字段边界校验：`documentId` 必须在本包文档集合内、`page ≥ 0`、`label` 非空且 ≤200 字符、`anchor` 仅十进制串（≤20 位）。
+- **M10 双版本备份（schemaVersion 1→2）**：`BackupCodec.SCHEMA_VERSION = 2`，`BackupManifest.bookmarks: List<BookmarkDto> = emptyList()`（v1 旧包缺该字段 → 直接解码为空，**无需独立迁移逻辑**）；版本门禁改为 `in 1..SCHEMA_VERSION`（拒绝超版本）。`BackupManager.export` 写全书签并计入 `ExportResult.bookmarks`；`restore` 在既有事务内、文档 upsert **之后** 执行 `bookmarkDao.upsertAll`（满足 `documentId` 外键），`RestoreResult.bookmarks` 回报数量。不可信书签字段边界校验：`documentId` 必须在本包文档集合内、`page ≥ 0`、`label` 非空且 ≤200 字符、`anchor` 仅十进制串（≤20 位，**必须允许负号**——`makeBookmark` 返回 long，epub 实测常为负值；M10-D 真机抓出：无符号校验会让含 epub 书签的备份整体恢复失败）。
 
 ## 书签存储（M10，schema v2）
 
 - 表结构：`bookmarks(id, documentId, page, scrollOffsetY, anchor, label, createdAt)`，**仅新增表、既有表零变更**；`documentId` 外键 `ON DELETE CASCADE`（删文档即删书签；目录删除只把文档移回根，书签保留）。
-- **锚点双轨**（与进度锚点同一套防御）：页码式（pdf/cbz/xps/txt）= `page + scrollOffsetY`，`anchor` 为 null；流式 epub = `anchor` 存 `MuPDFCore.pageToBookmark` 的 long 十进制串（跨重排稳定），`page` 仅作排序与锚点失效回落。
+- **锚点双轨**（与进度锚点同一套防御）：页码式（pdf/cbz/xps/txt）= `page + scrollOffsetY`，`anchor` 为 null；流式 epub = `anchor` 存 `MuPDFCore.pageToBookmark` 的 long 十进制串（**可含负号**），`page` 仅作排序与锚点失效回落。
+- **锚点精度边界（M10-D 实测）**：bookmark 串只在**同一 doc 会话 + 同一排版**内可解析——fitz bookmark = `chapter + 章节内页码`，跨会话的旧 mark 与跨排版（relayout 后章节页数变化）均让 `findBookmark` 失效返回 -2，调用方回落 `page`。故：垂直模式（epub 默认、不 relayout）恢复精确是**依赖 page 回落**（固定排版下 page 即稳定坐标），不是锚点解析成功；水平模式 relayout 后 page 属旧排版坐标 → 位置错位。彻底方案（比例锚点）登记 M11。
 - `label` 是**创建时快照**（「第 N 页」/「第 N 屏」），重排不回溯改写；去重判据 `documentId + page + anchor`（`anchor IS :anchor`，null 安全）。
 - 仓储接口（`LibraryRepository`，M10-B）：`observeBookmarks(documentId)` / `bookmarksOf(documentId)` / `deleteBookmark(id)`，以及 `addBookmark(...): BookmarkAddResult`——**业务分支不抛异常**：重复位置 → `DUPLICATE`，超上限 → `LIMIT_REACHED`（上限常量 `MAX_BOOKMARKS_PER_DOCUMENT = 100` 在 `core:model`）。
 - 上限：每文档 ≤100（`BookmarkDao.countByDocument` 预检，超限拒绝并提示），防单文档滥用拖慢面板。
@@ -226,7 +227,8 @@ interface DocumentDao {
 ## 流式（EPUB）CFI 进度锚点（M9）
 
 - `progressType="cfi"` 时进度写 `progressPayload`（JSON），由 `core:document` 的 `EpubProgressCodec`（纯逻辑）编解码：`{"v":1,"loc":"<bookmark>","page":N,"chapter":"..."}`，带 `version` 门禁与脏输入拒绝（解码失败返回 null，调用方回落安全默认）。
-- **锚点** `loc` = fitz `makeBookmark` 返回的 long bookmark 十进制串，经 `MuPDFCore.pageToBookmark/bookmarkToPage` 往返——**跨重排稳定**（epub 排版随视口变化、页码漂移，故以 bookmark 为权威锚）。恢复时 `bookmarkToPage(loc)` 得当前排版页码再跳转；无 `loc` 时回落 payload 内 `page`（L3）。
+- **锚点** `loc` = fitz `makeBookmark` 返回的 long bookmark 十进制串（可含负号），经 `MuPDFCore.pageToBookmark/bookmarkToPage` 往返。恢复时 `bookmarkToPage(loc)` 得当前排版页码再跳转；无 `loc` 或解析失效（-2）时回落 payload 内 `page`（L3）。
+- **跨会话语义（M10-D 修正 M9 口径）**：bookmark 串**并非真正跨重排/跨会话稳定**——fitz 的 bookmark 编码为 `chapter + 章节内页码`，同一 mark 只在**生成它的 doc 会话与排版**内可解析；跨会话（重开文档后解析库中 loc）与跨排版（relayout 后章节页数变化）均让 `findBookmark` 失效（真机日志实测返回 -2）→ 回落 payload 内 `page`。垂直模式因排版固定（312×504，不 relayout）回落值精确；水平模式 relayout 后回落 `page` 会错位。模式切换时的正确 remap 走 `MuPDFCore.layout(oldPage, w, h, em)`（内部先取 mark、重排后立即 re-find，属同一调用内跨越排版）——不能复用于「隔会话的旧锚点」。
 - `pageCount` 对流式恒 -1（不落库）；书架卡片显示格式标签（EPUB）而非页数，最近阅读显示「继续阅读」而非「第 N 页」。
 
 ## 轻量偏好持久化（DataStore，M6 排序 / M7 设置）

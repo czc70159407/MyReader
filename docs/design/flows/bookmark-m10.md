@@ -96,3 +96,6 @@
 5. **加载失败**：观察流异常 → 面板「书签加载失败 + 重试」（重建观察）。
 6. **无障碍**：行点击跳转、删除为可聚焦图标按钮；顶部添加按钮 48dp；空态/失败态文案可读。
 7. **失败兜底（M10-C review）**：写库异常转 Snackbar（`err_bookmark_add`/`err_bookmark_delete`），不让协程异常冒泡崩溃；流式 payload 无有效 `loc` 时提示 `err_bookmark_unavailable` 且**不写库**——避免降级成 `anchor=null` 的页码式书签污染列表（备份恢复侧仅接受十进制锚点）。
+8. **页内偏移（M10-D）**：页码式跳转必须落回 `scrollOffsetY`——M10-C 首版垂直视图外部跳页硬编码 `scrollToItem(page, 0)` 且回发 `Page(page, 0)`，既跳不到收藏位置、又把库中的偏移覆盖为 0；现按 `(page, 项内偏移)` 对做差分、`scrollToItem(page, offset)` 并按目标偏移回发（TXT 视图同型改为按对差分，偏移由跳转侧立即落库保证）。
+9. **已知限制 · epub 锚点（M10-D 真机实证，修正 M9 口径）**：fitz bookmark = `chapter + 章节内页码`，**只能在同一 doc 会话、同一排版内解析**——跨会话的旧 mark 在 `MuPDFCore.bookmarkToPage` 中恒返回 -2（真机日志：打开文档时解析库中锚点即 -2），跨排版同理；调用方回落 payload 内 `page`。因此：**垂直模式（epub 默认、不 relayout，312×504 固定排版）恢复精确，靠的是 page 回落而非锚点解析**；水平模式 relayout 后 page 属旧排版坐标 → 位置错位。M9 文档「bookmark 串跨重排稳定」的表述不成立。比例锚点（percent/CSS 偏移）方案登记 M11。
+10. **review 结论（M10-D）**：曾设想「流式书签跳转应像页码式一样立即落库」以避免点完即退丢进度——实测渲染端 reposition 后必然回发并覆盖落库值（且回发的 mark 随会话变化），该改动无净效果，已在 `ReaderScreen` 注释中记录，不再重复尝试。

@@ -141,5 +141,6 @@ NOTICE                  # 第三方组件与许可来源
 | M9 | 多格式支持（EPUB / CBZ / XPS + TXT 扩展点，v1.2） | 已完成 |
 | 安全加固 | 导出面收窄、备份解压资源上限、release 混淆、LICENSE / NOTICE | 已完成 |
 | M10 | 书签（章节级）+ 首个 Room Migration（v1.3） | 已完成（2026-10-30，A/B/C/D 全过：schema v2 + `MIGRATION_1_2`（真机 MigrationTest 2/2）、书签仓储双轨去重与上限 100、备份 v2 与 v1 兼容、阅读器书签入口/面板/跳转；D 真机五项通过并修 2 缺陷——垂直视图跳页丢页内偏移、备份负锚点致恢复整体失败。epub 跨排版/跨会话锚点失效登记为已知限制 → M11 候选改比例锚点，见 [docs/m10-plan.md](docs/m10-plan.md)） |
+| M11 | epub 锚点稳健性 / 比例锚点（v1.4） | 代码完成（2026-10-31：`cp:<chapter>:<章内页>:<章页数>` 比例锚点 + `EpubProgressCodec` v2 + 备份 `schemaVersion=3` + `MuPDFCore` Location API；真机探针判定「Location 跨会话可用、bookmark 串失效」；build 与插桩全绿，真机验收待做，见 [docs/m11-plan.md](docs/m11-plan.md)） |
 
 > 开发指南与任务分解见 [AGENTS.md](AGENTS.md)。

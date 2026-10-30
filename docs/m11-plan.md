@@ -1,6 +1,6 @@
 # M11 执行计划（v1.4：epub 锚点稳健性 / 比例锚点）
 
-> 状态：**S0 进行中**（S0-1 已完成 2026-10-30；S0-2 / S0-3 需真机探针，见 §3.2）。
+> 状态：**S0 已完成（2026-10-31，分支 P 采纳）**——fitz API 边界 + 真机跨会话/跨排版探针均已取证，见 §3。
 > 前序：M10（v1.3，书签 + 首个 Room Migration）已完成，见 [m10-plan.md](m10-plan.md)。
 
 ## 1. 问题陈述
@@ -16,10 +16,9 @@ M10-D 真机实证：fitz bookmark 串只在「同一 doc 会话 + 同一排版�
 
 即 M9 决策「L1 bookmark 串跨重排稳定」不成立，M9 设计中预留的 **L2「章节索引 + 章内偏移」从未实现**。
 
-> **归因待证**：`MuPDFCore.bookmarkToPage` 的 -2 有两个来源——`findBookmark` / `pageNumberFromLocation`
-> 抛异常，或**往返校验**（`makeBookmark(locationFromPageNumber(page)) != mark`）不成立。M10-D 的日志只能
-> 证明「走到了 -2」，**不足以断定是 findBookmark 失效**。S0-2 探针（§3.2 B 组）分别打印
-> `findBookmark` 结果、其还原页与 `back == mark`，用于区分这两种成因（若是后者，修复成本远低于比例锚点）。
+> **归因已证（S0-2）**：`-2` 的来源是 **`findBookmark` 本身失效**——跨会话调用返回 `Location(-1,-1)`，
+> 与 `bookmarkToPage` 的往返校验无关（§3.2 B 组实测）。同一探针证明 **`Location(chapter, pageInChapter)`
+> 路径跨会话精确**，故 M11 改用 Location 分量 + 章内比例，不再依赖 mark 串。
 
 ## 2. 目标 / 非目标
 
@@ -58,23 +57,40 @@ M10-D 真机实证：fitz bookmark 串只在「同一 doc 会话 + 同一排版�
 & "D:/develop/Android/Sdk/platform-tools/adb.exe" logcat -d -s M11PROBE
 ```
 
-三组观测（同一 `epub_test.epub` 夹具，默认 312×504 / em=10）：
+三组观测（同一 `epub_test.epub` 夹具，默认 312×504 / em=10）。**已执行（2026-10-31，一加 PKC110 / Android 16）**：
 
-| 组 | 场景 | 观测值 | 判据 |
-|---|---|---|---|
-| A | 单会话自洽 | `page→Location→page`、`page→mark`、各章页数分布 | `pageBack == target` 即 Location 自洽 |
-| B | **重开文档，同排版** | `pageNumberFromLocation(Location(ch,cp))`、`findBookmark(mark)→page`、`back == mark` | B 组 `pageFromLoc == target` → 方案 P 可行性成立 |
-| C | **重开文档，换排版 420×640** | `pageNumberFromLocation(Location(ch,cp))` 及其回读 Location | 回读 Location 与原始相同 → `chapter+章内页` 跨排版稳定（否则需比例） |
+```
+A(session) count=12 chapters=3 target=6 loc=Location(chapter=1, page=2) pageBack=6
+           locBack=Location(chapter=1, page=2) mark=501387747608 chapterCounts={0=4, 1=4, 2=4}
+B(reopen, same layout) count=12 pageFromLoc=6 pageFromLocEqualsTarget=true
+           found=Location(chapter=-1, page=-1) pageFromMark=-1 backEqualsMark=false
+           mark=501387747608 back=501387693520
+C(reopen, relayout 420x640) count=6 pageFromLoc=4 locFromPage=Location(chapter=2, page=0)
+           locStable=false markFromLoc=0 pageFromMark=-1
+```
 
-> 若有设备侧证据需留档，按 AGENTS.md 工作规则 10 落 `/sdcard/Download/MyReaderTest/`，本地副本放 `tools/acceptance/verify/`。
+| 组 | 结论 |
+|---|---|
+| A | `Location.page` 是**章内页码**（第 6 页 = 章 1 内第 2 页，三章各 4 页），`page→Location→page` 自洽 |
+| B | **`Location` 路径跨会话可用**（`pageFromLoc=6` 精确回到原页）；`findBookmark` 返回 `Location(-1,-1)` → **mark 路径确实失效**，与往返校验无关（此前“往返校验误判”的猜测被排除） |
+| C | 换排版后 `pageFromLocation(1,2)` 得到第 4 页，但该页回读为 `Location(2,0)`——**章内页码跨排版漂移且静默落到相邻章**，故必须用比例（章内页/章页数） |
 
-### 3.3 决策树
+> 设备侧日志留档按 AGENTS.md 工作规则 10 写 `/sdcard/Download/MyReaderTest/`；本轮为 logcat 一次性取证，未产生持久文件。
 
-| 分支 | 触发条件（S0-2 结果） | 交付 |
+### 3.3 决策（S0-2 已拍板）
+
+| 分支 | 结论 | 交付 |
 |---|---|---|
-| **P（首选）** | B 组 `pageFromLoc` 可用（即使 mark 仍 -2） | 锚点 = `chapter:章内页:章页数`，比例优先；进度 codec v2 + 备份 v3 |
-| Q | Location 路径不可用，但 mark 在同排版可解 | 仅修 `bookmarkToPage` 往返校验误判，比例锚点不做，登记限制 |
-| R（止损） | 两路均不可用 | 不写代码，只文档化限制 + 进度/书签恢复的 UI 提示；退出本里程碑 |
+| **P（采纳）** | B 组 `pageFromLoc` 精确 → Location 路径可用 | 锚点 = `chapter:章内页:章页数`，比例优先；进度 codec v2 + 备份 v3 |
+| Q（排除） | — | `findBookmark` 已证实返回 `(-1,-1)`，仅修往返校验无收益 |
+| R（不适用） | — | — |
+
+### 3.4 S0 附带的坑（禁止再踩）
+
+fitz 1.28.2 的 `Document.openDocument(String path, String magic)` **重载不可用**：真机 JNI 报
+`jfieldID long Archive.pointer not valid for an object of class java.lang.String`（native 把 magic 传进
+archive 形参）→ **SIGABRT 进程崩溃**。生产侧走 `MuPDFCore(byte[], magic)`（byte[] 重载）不受影响；
+插桩/探针一律用 `openDocument(path)` 单参或 `MuPDFCore(byte[], magic)`。
 
 ## 4. 锚点格式（P 分支）
 
@@ -122,6 +138,13 @@ v1 / v2 包导入路径不变（v2 包内十进制 anchor 按旧格式读）。*
 
 ## 5. 落地分解（P 分支）
 
+> **状态：A-1 / A-2 / A-3 已落地（2026-10-31）**——`.\gradlew.bat build` BUILD SUCCESSFUL、detekt 全绿、
+> `:feature:viewer-mupdf:connectedDebugAndroidTest` 真机通过（含探针与多格式引擎用例）。
+> 实现差异：①`EpubProgressCodec.encode` 的比例三分量打包为 `RatioAnchor`（6 参数触发 detekt
+> `LongParameterList`）；②`EpubLocationResolver` 对 `chapterRange` 做「按页数失效」的缓存，避免每次
+> 进度回发都整册扫描；③`MuPDFCore.layout()` 旧页 remap 已改 Location 路径（原 mark 路径同源失效）。
+> 真机验收（§7）待做。
+
 ### A-1 进度链路（`core:document` + `feature:viewer-mupdf`）
 - `EpubProgressCodec`：v2 字段与 `decode(1..2)`；`encode(loc, page, chapter, chIdx, pageInChap, chapPages)`（后三者带默认值，旧调用点免改）
 - `MuPDFCore` 增（MuPDF 边界内，工作规则 1）：`pageToLocation(page)` → `chapter:page`；
@@ -168,6 +191,9 @@ v1 / v2 包导入路径不变（v2 包内十进制 anchor 按旧格式读）。*
 | 比例精度不足以还原「同一屏」 | 误差判据放宽到 1 屏；书签用容差判重避免重复 |
 | 旧版 App 读 v3 备份 | 预期明确报「版本不支持」（优于「非法锚点」） |
 | M10 旧书签失去精确性 | 旧 anchor 继续可读；仅新加书签享比例精度 |
+| **降级兼容**（M11 代码 review） | 旧版 App 读 v2 进度 payload 时 `decode` 返回 null → 回落首页（升级后再降级会丢 epub 进度位置）；属非目标场景，登记不修 |
+| **混合格式去重漏判**（M11 review） | 同一位置若已有 M10 旧串书签，再加书签因格式不可比而生成为两条；比例容差只覆盖 cp 之间，登记为已知限制 |
+| 章页数扫描开销 | `MuPDFCore` 已加「页→章」映射缓存（`layout()` 主动失效），`chapterRange` 不再每次整册重扫 |
 
 ## 9. 排期
 

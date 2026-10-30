@@ -13,6 +13,13 @@ android {
 
     defaultConfig {
         minSdk = 26
+        // M10：MigrationTest（androidTest）运行器
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        // MigrationTestHelper 从 androidTest assets 读取 schema JSON（1.json / 2.json）
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 
     compileOptions {
@@ -58,4 +65,9 @@ dependencies {
     testImplementation(libs.room.testing)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.turbine)
+
+    // M10：Room MigrationTest（真机/模拟器插桩，MigrationTestHelper 校验 v1→v2 schema）
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.room.testing)
 }

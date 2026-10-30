@@ -12,6 +12,7 @@ import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
+import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
@@ -201,11 +202,18 @@ class LibraryRepositoryImpl @Inject constructor(
         anchor: String?,
         label: String,
     ): BookmarkAddResult = withContext(dispatchers.io) {
-        // 双轨去重（M10-A review）：流式只比锚点（重排后 page 漂移），页码式只比页
-        val duplicate = if (anchor != null) {
-            bookmarkDao.existsAtAnchor(documentId, anchor)
-        } else {
-            bookmarkDao.existsAtPage(documentId, page)
+        // 去重：流式只比锚点（重排后 page 漂移），页码式只比页。
+        // M11 比例锚点需 ±1% 容差，DAO 只有精确相等 → 取列表在内存比对（上限 100，成本可忽略）；
+        // 旧十进制串与非法锚点维持精确比对语义。
+        val duplicate = when (val parsed = BookmarkAnchorCodec.parse(anchor)) {
+            is BookmarkAnchorCodec.Anchor.Ratio -> bookmarkDao.byDocument(documentId).any { existing ->
+                BookmarkAnchorCodec.isSamePosition(parsed, BookmarkAnchorCodec.parse(existing.anchor))
+            }
+            else -> if (anchor != null) {
+                bookmarkDao.existsAtAnchor(documentId, anchor)
+            } else {
+                bookmarkDao.existsAtPage(documentId, page)
+            }
         }
         if (duplicate) return@withContext BookmarkAddResult.DUPLICATE
         if (bookmarkDao.countByDocument(documentId) >= MAX_BOOKMARKS_PER_DOCUMENT) {

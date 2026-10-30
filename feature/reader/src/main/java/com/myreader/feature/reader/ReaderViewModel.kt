@@ -18,6 +18,7 @@ import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
+import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.LibraryItem
 import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import com.myreader.core.model.ReaderMode
@@ -166,7 +167,8 @@ class ReaderViewModel @Inject constructor(
     }
 
     /**
-     * 以当前位置添加书签：页码式记 page + 垂直偏移；流式记 `loc`（bookmark 串）为锚，page 仅展示/回退。
+     * 以当前位置添加书签：页码式记 page + 垂直偏移；流式写比例锚点 `cp:<chapter>:<章内页>:<章页数>`
+     * （M11；payload 无比例分量时退回旧 bookmark 串），page 仅展示与回落。
      * 重复位置与上限由仓储返回业务结果，转 Snackbar（不抛异常）。
      */
     fun addBookmarkAtCurrent() {
@@ -181,14 +183,16 @@ class ReaderViewModel @Inject constructor(
             )
             is ProgressPayload.Cfi -> {
                 val decoded = EpubProgressCodec.decode(payload.cfi)
-                val loc = decoded?.loc
-                if (decoded == null || loc == null) {
-                    // 无有效锚点（payload 损坏/缺 loc）：不写库——否则会降级成页码式书签污染列表，
-                    // 且备份恢复侧要求 anchor 为十进制串（BackupCodec 校验）
+                // M11：优先写比例锚点（跨会话/跨排版可还原）；无比例分量时退回旧 bookmark 串
+                val anchor = decoded?.let {
+                    if (it.hasRatio) BookmarkAnchorCodec.encodeRatio(it.chIdx, it.pageInChap, it.chapPages) else it.loc
+                }
+                if (decoded == null || anchor == null) {
+                    // 无有效锚点（payload 损坏/分量缺失）：不写库——否则会降级成页码式书签污染列表
                     _messages.trySend("当前位置无法添加书签")
                     return
                 }
-                AddDraft(page = decoded.page, scrollOffsetY = 0, anchor = loc, label = "第 ${decoded.page + 1} 屏")
+                AddDraft(page = decoded.page, scrollOffsetY = 0, anchor = anchor, label = "第 ${decoded.page + 1} 屏")
             }
         }
         viewModelScope.launch {

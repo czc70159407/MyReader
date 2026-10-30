@@ -4,6 +4,7 @@ import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.document.FileTypes
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -20,18 +21,20 @@ import kotlinx.serialization.decodeFromString
  */
 object BackupCodec {
 
-    /** 当前备份格式版本（M10 = 2：新增 bookmarks 数组；v1 旧包仍可导入）。 */
-    const val SCHEMA_VERSION = 2
+    /** 当前备份格式版本（M10 = 2 书签数组；M11 = 3 比例锚点；v1/v2 旧包仍可导入）。 */
+    const val SCHEMA_VERSION = 3
 
     /** 书签 label 上限（不可信输入防御：防超长文案撑爆面板） */
     private const val MAX_BOOKMARK_LABEL_LEN = 200
 
     /**
-     * 流式书签锚点格式：bookmark 十进制串（`MuPDFCore.pageToBookmark`）。
-     * **必须允许负号**——`makeBookmark` 返回 long，实测 epub 锚点常为负（如 -5476376651105784552）；
-     * M10-D 真机抓出：无符号校验会让含 epub 书签的备份整体恢复失败（IllegalArgumentException）。
+     * 流式书签锚点**格式**门禁（长度/字符集防御）：
+     * - 旧 bookmark 十进制串（`MuPDFCore.pageToBookmark`）——**必须允许负号**，
+     *   实测 epub 锚点常为负（M10-D 抓出：无符号校验会让含 epub 书签的备份整体恢复失败）；
+     * - M11 比例锚点 `cp:<chapter>:<pageInChapter>:<chapterPages>`。
+     * 语义自洽性（章页数为正、章内页不越界）统一交给 [BookmarkAnchorCodec.parse]，避免两处维护。
      */
-    private val BOOKMARK_ANCHOR_PATTERN = Regex("^-?\\d{1,20}$")
+    private val BOOKMARK_ANCHOR_PATTERN = Regex("^(-?\\d{1,20}|cp:\\d{1,5}:\\d{1,5}:\\d{1,5})$")
 
     /** JSON 配置：容错未知字段（向前兼容新增字段）、pretty 便于调试与人工核查。 */
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }
@@ -128,6 +131,9 @@ object BackupCodec {
             require(b.label.isNotBlank() && b.label.length <= MAX_BOOKMARK_LABEL_LEN) { "非法书签名称" }
             if (b.anchor != null) {
                 require(BOOKMARK_ANCHOR_PATTERN.matches(b.anchor)) { "非法书签锚点" }
+                require(BookmarkAnchorCodec.parse(b.anchor) != BookmarkAnchorCodec.Anchor.Invalid) {
+                    "非法书签锚点"
+                }
             }
         }
         // 一致性 + 防御：总数不得超过「文档数 × 每文档上限」（恶意备份不得灌爆恢复写入）

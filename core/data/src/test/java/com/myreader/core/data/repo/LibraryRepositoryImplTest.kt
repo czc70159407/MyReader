@@ -299,6 +299,27 @@ class LibraryRepositoryImplTest {
     }
 
     @Test
+    fun addBookmark_deduplicatesRatioAnchorWithinTolerance() = runTest {
+        val docId = addDoc("bm.epub")
+
+        // M11 比例锚点：同章比例相同（分母不同）即判重
+        assertEquals(
+            BookmarkAddResult.ADDED,
+            repo.addBookmark(docId, page = 6, scrollOffsetY = 0, anchor = "cp:1:2:4", label = "第 7 屏"),
+        )
+        assertEquals(
+            BookmarkAddResult.DUPLICATE,
+            repo.addBookmark(docId, page = 9, scrollOffsetY = 0, anchor = "cp:1:12:20", label = "第 10 屏"),
+        )
+        // 跨章同比例 → 不同位置
+        assertEquals(
+            BookmarkAddResult.ADDED,
+            repo.addBookmark(docId, page = 10, scrollOffsetY = 0, anchor = "cp:2:2:4", label = "第 11 屏"),
+        )
+        assertEquals(2, repo.bookmarksOf(docId).size)
+    }
+
+    @Test
     fun addBookmark_enforcesPerDocumentLimit() = runTest {
         val docId = addDoc("bm.pdf")
 

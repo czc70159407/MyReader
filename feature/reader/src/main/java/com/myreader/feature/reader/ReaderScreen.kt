@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.model.Bookmark
+import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.ReaderMode
 
 /**
@@ -237,10 +238,9 @@ fun ReaderScreen(
                         onAdd = viewModel::addBookmarkAtCurrent,
                         onJump = { bookmark: Bookmark ->
                             val progress = if (bookmark.anchor != null) {
-                                // 流式：以 bookmark 串重建 payload，渲染端解析锚点定位（跨重排稳定）
-                                ProgressPayload.Cfi(
-                                    EpubProgressCodec.encode(loc = bookmark.anchor, page = bookmark.page),
-                                )
+                                // 流式：按锚点格式重建 payload，渲染端解析定位
+                                // （M11 比例锚点跨会话/跨排版；旧 mark 串仅同会话可解，跨会话回落 page）
+                                ProgressPayload.Cfi(anchorToCfi(bookmark))
                             } else {
                                 // 页码式：clamp 防历史/备份越界；垂直偏移原样恢复
                                 ProgressPayload.Page(
@@ -292,6 +292,21 @@ fun ReaderScreen(
         }
     }
 }
+
+/**
+ * 流式书签锚点 → 渲染端 payload（M11）。
+ * 比例锚点重建为带 `chIdx/pageInChap/chapPages` 的 CFI（跨会话、跨排版均可还原）；
+ * 旧十进制串等其它形式仍按 `loc` 传入（同会话可解析，跨会话回落 `page`）。
+ */
+private fun anchorToCfi(bookmark: Bookmark): String =
+    when (val parsed = BookmarkAnchorCodec.parse(bookmark.anchor)) {
+        is BookmarkAnchorCodec.Anchor.Ratio -> EpubProgressCodec.encode(
+            loc = null,
+            page = bookmark.page,
+            ratio = EpubProgressCodec.RatioAnchor(parsed.chapter, parsed.pageInChapter, parsed.chapterPages),
+        )
+        else -> EpubProgressCodec.encode(loc = bookmark.anchor, page = bookmark.page)
+    }
 
 /** 加密文档密码对话框：密码不持久化（v1 仅会话内），错误时提示重试 */
 @Composable

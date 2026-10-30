@@ -163,7 +163,7 @@ class BackupCodecTest {
 
         val back = BackupCodec.decode(BackupCodec.encode(manifest))
 
-        assertEquals(2, back.schemaVersion)
+        assertEquals(BackupCodec.SCHEMA_VERSION, back.schemaVersion)
         assertEquals(bookmarkDtos.map { it.toDto() }, back.bookmarks)
         assertEquals(bookmarkDtos, back.bookmarks.map { it.toEntity() })
     }
@@ -193,6 +193,68 @@ class BackupCodecTest {
 
         assertEquals(1, back.documents.size)
         assertTrue(back.bookmarks.isEmpty())
+    }
+
+    // ---- M11：比例锚点（schemaVersion 3）----
+
+    @Test
+    fun roundTrip_preservesRatioBookmarkAnchor() {
+        val ratio = sampleBookmark(13, documentId = 1, anchor = "cp:1:2:4")
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            bookmarks = listOf(ratio.toDto()),
+        )
+
+        val back = BackupCodec.decode(BackupCodec.encode(manifest))
+
+        assertEquals("cp:1:2:4", back.bookmarks.single().anchor)
+        assertEquals(13L, back.bookmarks.single().toEntity().id)
+    }
+
+    @Test
+    fun decode_acceptsV2Backup_withDecimalAnchor() {
+        // M11 向后兼容：v2 包（schemaVersion 2）里的十进制锚点仍按旧格式接受
+        val v2Json = """
+        {
+          "schemaVersion": 2,
+          "exportedAt": 1,
+          "appVersion": "m10",
+          "folders": [],
+          "documents": [
+            {
+              "id": 1, "folderId": null, "title": "d", "relPath": "1.pdf", "fileType": "pdf",
+              "mimeType": null, "sourceUri": null, "fileSize": 1, "contentHash": null,
+              "needsPassword": false, "pageCount": 1, "progressType": "page",
+              "currentPage": 0, "scrollOffsetY": 0, "progressPayload": null,
+              "thumbnailRelPath": null, "lastReadAt": null, "addedAt": 1
+            }
+          ],
+          "bookmarks": [
+            {
+              "id": 5, "documentId": 1, "page": 2, "scrollOffsetY": 0,
+              "anchor": "-5476376651105784552", "label": "第 3 屏", "createdAt": 1000
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val back = BackupCodec.decode(v2Json)
+
+        assertEquals("-5476376651105784552", back.bookmarks.single().anchor)
+    }
+
+    @Test
+    fun decode_rejectsInconsistentRatioAnchor() {
+        // 格式合法但语义不自洽（章内页 5 ≥ 章页数 5）→ 由 BookmarkAnchorCodec 拒绝
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            bookmarks = listOf(sampleBookmark(5, documentId = 1, anchor = "cp:0:5:5").toDto()),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
     }
 
     @Test

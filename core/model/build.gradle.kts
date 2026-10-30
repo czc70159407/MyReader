@@ -12,3 +12,8 @@ kotlin {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
+
+dependencies {
+    // M11：BookmarkAnchorCodec 为纯逻辑，下沉到本模块做 JVM 单测
+    testImplementation(libs.junit)
+}

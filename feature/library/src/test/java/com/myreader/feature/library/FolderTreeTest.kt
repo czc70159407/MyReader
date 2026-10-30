@@ -1,6 +1,9 @@
 package com.myreader.feature.library
 
 import com.myreader.core.model.Folder
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -78,5 +81,24 @@ class FolderTreeTest {
     @Test
     fun emptyInput_yieldsEmptyList() {
         assertTrue(buildFlatTree(emptyList(), emptySet()).isEmpty())
+    }
+
+    // ---- T7：同级重名预检（数据源 = 全量目录快照，与展开状态无关）----
+
+    @Test
+    fun isNameTaken_scopedToParent_andCaseSensitive() = runTest {
+        val folders = MutableStateFlow(
+            listOf(
+                folder(1, null, "Docs"),
+                folder(2, 1, "Sub"),
+            ),
+        )
+        val state = FolderTreeState(folders, backgroundScope)
+        state.all.first { it.isNotEmpty() }   // Eagerly 订阅完成
+
+        assertTrue(state.isNameTaken(null, "Docs"))
+        assertFalse(state.isNameTaken(null, "docs"))    // D7：区分大小写
+        assertTrue(state.isNameTaken(1L, "Sub"))
+        assertFalse(state.isNameTaken(2L, "Sub"))       // 父级不同不算重名
     }
 }

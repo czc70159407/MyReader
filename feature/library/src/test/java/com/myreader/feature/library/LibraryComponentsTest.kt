@@ -1,14 +1,18 @@
 package com.myreader.feature.library
 
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
@@ -227,5 +231,58 @@ class LibraryComponentsTest {
         // T5 review L15：损坏文档不追加格式词，避免「x.pdf，PDF，已损坏」
         // 用 fetchSemanticsNode 断言存在（不依赖 Robolectric 布局尺寸）
         composeRule.onNodeWithContentDescription("bad.pdf，已损坏").fetchSemanticsNode()
+    }
+
+    // ---- T7：名称输入期校验（新建文件夹弹窗）----
+
+    @Test
+    fun newFolderDialog_tooLong_showsInlineErrorAndDisablesCreate() {
+        composeRule.setContent { NewFolderDialog(onConfirm = {}, onDismiss = {}) }
+
+        composeRule.onNode(hasSetTextAction()).performTextInput("x".repeat(MAX_NAME_LEN + 1))
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("名称最多 $MAX_NAME_LEN 个字符").assertIsDisplayed()
+        composeRule.onNodeWithText("创建").assertIsNotEnabled()
+    }
+
+    @Test
+    fun newFolderDialog_siblingDuplicate_showsInlineErrorAndDisablesCreate() {
+        composeRule.setContent {
+            NewFolderDialog(onConfirm = {}, onDismiss = {}, isNameTaken = { it == "Docs" })
+        }
+
+        composeRule.onNode(hasSetTextAction()).performTextInput("Docs")
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText(NAME_DUPLICATE_MESSAGE).assertIsDisplayed()
+        composeRule.onNodeWithText("创建").assertIsNotEnabled()
+    }
+
+    @Test
+    fun newFolderDialog_controlChars_filteredOut() {
+        composeRule.setContent { NewFolderDialog(onConfirm = {}, onDismiss = {}) }
+
+        composeRule.onNode(hasSetTextAction()).performTextInput("a\tb")
+        composeRule.waitForIdle()
+
+        // 节点同时带 label 文本，故只断言输入内容（EditableText）
+        val editable = composeRule.onNode(hasSetTextAction())
+            .fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+        assertEquals("ab", editable)
+    }
+
+    @Test
+    fun renameDialog_lengthCountsLockedExtension() {
+        composeRule.setContent {
+            RenameDialog(currentName = "old.pdf", onConfirm = {}, onDismiss = {}, lockedExtension = ".pdf")
+        }
+
+        // base 64 + ".pdf" 共 68 → 超限（与业务层 requireNameLen 完整名口径一致）
+        composeRule.onNode(hasSetTextAction()).performTextReplacement("x".repeat(MAX_NAME_LEN))
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("名称最多 $MAX_NAME_LEN 个字符").assertIsDisplayed()
+        composeRule.onNodeWithText("确定").assertIsNotEnabled()
     }
 }

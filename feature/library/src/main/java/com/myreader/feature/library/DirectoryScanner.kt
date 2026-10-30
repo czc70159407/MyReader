@@ -30,14 +30,14 @@ data class DirectoryScanResult(
     val inaccessibleDirCount: Int,
 )
 
-/** 目录段长度上限（库内 folders.name 无物理约束，仍限长保 UI 可用）。 */
-internal const val MAX_FOLDER_NAME_LEN = 64
-
-/** 目录段规范化：trim、去控制字符、限长、空名回退。 */
+/**
+ * 目录段规范化：trim、去控制字符（复用 T7 名称规则）、限长、空名回退。
+ * 目录导入无人值守 → 超长**截断**；交互式弹窗则报 `inline_name_too_long` 并禁用提交（`NameRules`）。
+ */
 internal fun sanitizeFolderName(raw: String?): String {
-    val cleaned = raw.orEmpty().replace(Regex("[\\p{Cntrl}]"), "").trim()
+    val cleaned = filterNameInput(raw.orEmpty()).trim()
     if (cleaned.isEmpty()) return "未命名目录"
-    return if (cleaned.length > MAX_FOLDER_NAME_LEN) cleaned.take(MAX_FOLDER_NAME_LEN) else cleaned
+    return if (cleaned.length > MAX_NAME_LEN) cleaned.take(MAX_NAME_LEN) else cleaned
 }
 
 /**

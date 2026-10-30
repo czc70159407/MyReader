@@ -36,54 +36,44 @@ private val TREE_MAX_HEIGHT = 360.dp
  * 点击条目 = 选中（高亮）；长按菜单禁用（目录管理在书架页完成，picker 保持单一职责）。
  * [excludedIds]：移动文件夹时传入自身+后代（vm.subtreeIds），选中即禁用确定并提示。
  */
+/**
+ * picker 的可选行为（避免参数膨胀，`LongParameterList`）：
+ * - [excludedIds]：移动文件夹时传入自身+后代（选中即禁用确定并提示）；
+ * - [initialSelectedId]：默认选中项（= 当前浏览目录）；
+ * - [isNameTaken]：T7 新建子目录的同级重名预检（父 = 当前选中项），缺省不做行内提示（业务层兜底）。
+ */
+data class FolderPickerOptions(
+    val excludedIds: Set<Long> = emptySet(),
+    val initialSelectedId: Long? = null,
+    val isNameTaken: (parentId: Long?, name: String) -> Boolean = { _, _ -> false },
+)
+
 @Composable
 fun FolderPickerDialog(
     state: FolderTreeState,
     onConfirm: (Long?) -> Unit,
     onDismiss: () -> Unit,
     onCreateSubFolder: (parentId: Long?, name: String, onCreated: (Long) -> Unit) -> Unit,
-    excludedIds: Set<Long> = emptySet(),
-    initialSelectedId: Long? = null,
+    options: FolderPickerOptions = FolderPickerOptions(),
 ) {
+    val initialSelectedId = options.initialSelectedId
     // key 取 initialSelectedId：同一弹窗槽位为不同 item 连续打开时重置选中，
     // 避免残留上次选中值（M10 review M2）
     var selectedId by remember(initialSelectedId) { mutableStateOf(initialSelectedId) }
     var showNewFolder by remember { mutableStateOf(false) }
-    val invalidSelection = selectedId != null && selectedId in excludedIds
+    val invalidSelection = selectedId != null && selectedId in options.excludedIds
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = "选择目录") },
         text = {
-            Column {
-                RootPickerRow(
-                    selected = selectedId == null,
-                    onClick = { selectedId = null },
-                )
-                FolderTreeList(
-                    state = state,
-                    onFolderClick = { id -> selectedId = id },
-                    onFolderLongPress = {},   // picker 内禁长按管理
-                    selectedId = selectedId,
-                    modifier = Modifier.heightIn(max = TREE_MAX_HEIGHT),
-                )
-                TextButton(onClick = { showNewFolder = true }) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.size(4.dp))
-                    Text(text = "新建子目录")
-                }
-                if (invalidSelection) {
-                    Text(
-                        text = "不能移动到自身或其子目录",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
+            PickerContent(
+                state = state,
+                selectedId = selectedId,
+                invalidSelection = invalidSelection,
+                onSelect = { selectedId = it },
+                onNewFolder = { showNewFolder = true },
+            )
         },
         confirmButton = {
             TextButton(
@@ -104,7 +94,45 @@ fun FolderPickerDialog(
                 onCreateSubFolder(selectedId, name) { newId -> selectedId = newId }
             },
             onDismiss = { showNewFolder = false },
+            isNameTaken = { name -> options.isNameTaken(selectedId, name) },
         )
+    }
+}
+
+/** 弹窗正文（根目录行 + 目录树 + 新建子目录入口 + 禁选提示），从主函数抽出以控制方法长度 */
+@Composable
+private fun PickerContent(
+    state: FolderTreeState,
+    selectedId: Long?,
+    invalidSelection: Boolean,
+    onSelect: (Long?) -> Unit,
+    onNewFolder: () -> Unit,
+) {
+    Column {
+        RootPickerRow(selected = selectedId == null, onClick = { onSelect(null) })
+        FolderTreeList(
+            state = state,
+            onFolderClick = onSelect,
+            onFolderLongPress = {},   // picker 内禁长按管理
+            selectedId = selectedId,
+            modifier = Modifier.heightIn(max = TREE_MAX_HEIGHT),
+        )
+        TextButton(onClick = onNewFolder) {
+            Icon(
+                imageVector = Icons.Filled.Add,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(modifier = Modifier.size(4.dp))
+            Text(text = "新建子目录")
+        }
+        if (invalidSelection) {
+            Text(
+                text = "不能移动到自身或其子目录",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 

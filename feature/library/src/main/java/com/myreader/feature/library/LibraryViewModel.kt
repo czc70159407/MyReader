@@ -144,13 +144,26 @@ class LibraryViewModel @Inject constructor(
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** 目录树状态（FolderPickerDialog 选目标用），懒创建避免无弹窗场景开销 */
-    val folderTree: FolderTreeState by lazy { FolderTreeState(repository, viewModelScope) }
+    /**
+     * 目录树状态（FolderPickerDialog 选目标用）。
+     * T7 review：不做懒创建——新建文件夹弹窗的同步重名预检依赖 `all.value` 已有快照，
+     * 惰性创建会使「VM 建立后首次打开新建弹窗」读到空表而漏判（业务层兜底仍在，但行内提示失效）。
+     */
+    val folderTree: FolderTreeState = FolderTreeState(repository, viewModelScope)
 
     /** 移动文件夹前置校验用：该目录自身 + 全部后代 id（这些目标禁选，防循环） */
     suspend fun subtreeIds(id: Long): Set<Long> = repository.subtree(id).map { it.id }.toSet()
 
     // ---- 目录 / 文档管理操作 ----
+
+    /** T7：新建文件夹的同步重名预检（弹窗行内提示数据源 = 全量目录快照；业务层仍有兜底） */
+    fun isSiblingFolderNameTaken(parentId: Long?, name: String): Boolean =
+        folderTree.isNameTaken(parentId, name)
+
+    /** T7：非 UI 路径的长度兜底（超长按业务失败提示，不静默截断——截断仅用于无人值守的目录导入） */
+    private fun requireNameLen(name: String) {
+        require(name.length <= MAX_NAME_LEN) { "名称最多 $MAX_NAME_LEN 个字符" }
+    }
 
     /** 同父重名校验（folders 表无 UNIQUE(parentId,name)，业务层拦截静默重名） */
     private suspend fun requireUniqueFolder(parentId: Long?, name: String, excludeId: Long? = null) {
@@ -167,6 +180,7 @@ class LibraryViewModel @Inject constructor(
     fun createSubFolder(parentId: Long?, name: String) = launchOp {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@launchOp ""
+        requireNameLen(trimmed)
         requireUniqueFolder(parentId, trimmed)
         repository.createFolder(parentId, trimmed)
         "已创建文件夹「$trimmed」"
@@ -178,6 +192,7 @@ class LibraryViewModel @Inject constructor(
             try {
                 val trimmed = name.trim()
                 if (trimmed.isEmpty()) return@launch
+                requireNameLen(trimmed)
                 requireUniqueFolder(parentId, trimmed)
                 val id = repository.createFolder(parentId, trimmed)
                 if (parentId != null) folderTree.expanded[parentId] = true
@@ -198,6 +213,7 @@ class LibraryViewModel @Inject constructor(
     fun renameFolder(id: Long, name: String) = launchOp {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@launchOp ""
+        requireNameLen(trimmed)
         val folder = repository.getFolder(id) ?: throw IllegalArgumentException("目录不存在，请刷新后重试")
         requireUniqueFolder(folder.parentId, trimmed, excludeId = id)
         repository.renameFolder(id, trimmed)
@@ -219,6 +235,7 @@ class LibraryViewModel @Inject constructor(
     fun renameDocument(id: Long, title: String) = launchOp {
         val trimmed = title.trim()
         if (trimmed.isEmpty()) return@launchOp ""
+        requireNameLen(trimmed)
         val doc = repository.getDocument(id) ?: throw IllegalArgumentException("文档不存在，请刷新后重试")
         requireUniqueDocTitle(doc.folderId, trimmed, excludeId = id)
         repository.renameDocument(id, trimmed)

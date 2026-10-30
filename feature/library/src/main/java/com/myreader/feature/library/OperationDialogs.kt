@@ -38,6 +38,11 @@ fun RenameDialog(
     var name by remember {
         mutableStateOf(TextFieldValue(baseName, selection = TextRange(0, baseName.length)))
     }
+    // T7：与新建弹窗同一套名称规则——控制字符输入期过滤、超长行内提示并禁用提交；
+    // 长度按**完整名称**计（含锁定扩展名），与业务层 requireNameLen 口径一致；
+    // 重名仍由业务层兜底（dialogs.md §2.3），避免重命名自身被误判为冲突
+    val trimmed = name.text.trim()
+    val error = nameInputError(trimmed + (lockedExtension ?: ""))
     // T5：弹窗打开即聚焦输入框；等一帧避开独立窗口焦点时序，
     // 并在聚焦后重新落一次全选（未聚焦时设置的 selection 可能被收敛到末尾）
     val focusRequester = remember { FocusRequester() }
@@ -54,18 +59,39 @@ fun RenameDialog(
             Column(modifier = Modifier.imePadding()) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { value ->
+                        val filtered = filterNameInput(value.text)
+                        // 过滤后长度可能缩短：选区一并 clamp，避免越界
+                        val max = filtered.length
+                        name = if (filtered == value.text) {
+                            value
+                        } else {
+                            value.copy(
+                                text = filtered,
+                                selection = TextRange(
+                                    value.selection.start.coerceAtMost(max),
+                                    value.selection.end.coerceAtMost(max),
+                                ),
+                            )
+                        }
+                    },
                     label = { Text(text = "名称") },
                     singleLine = true,
                     suffix = lockedExtension?.let { ext -> { Text(text = ext) } },
+                    isError = error != null,
+                    supportingText = if (error != null) {
+                        { Text(text = error) }
+                    } else {
+                        null
+                    },
                     modifier = Modifier.focusRequester(focusRequester).fillMaxWidth(),
                 )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name.text.trim() + (lockedExtension ?: "")) },
-                enabled = name.text.isNotBlank(),
+                onClick = { onConfirm(trimmed + (lockedExtension ?: "")) },
+                enabled = trimmed.isNotEmpty() && error == null,
             ) { Text(text = "确定") }
         },
         dismissButton = {

@@ -20,13 +20,19 @@ import androidx.compose.ui.focus.focusRequester
 
 /**
  * 新建文件夹弹窗：输入名称，确认时非空校验（parentId 由调用方决定——顶栏=当前目录，长按菜单=该文件夹，picker=选中项）。
+ * T7：输入期校验——控制字符过滤、超长给 `inline_name_too_long`；[isNameTaken] 注入同级重名预检
+ * （行内 `inline_name_duplicate`），命中即禁用提交，业务层仍有重名兜底。
  */
 @Composable
 fun NewFolderDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
+    isNameTaken: (String) -> Boolean = { false },
 ) {
     var name by remember { mutableStateOf("") }
+    val trimmed = name.trim()
+    val duplicate = trimmed.isNotEmpty() && isNameTaken(trimmed)
+    val error = nameInputError(trimmed) ?: if (duplicate) NAME_DUPLICATE_MESSAGE else null
     // T5：弹窗打开即聚焦输入框（读屏/键盘用户免一次触达）；
     // 等一帧再请求——AlertDialog 独立窗口首帧可能尚未获得焦点，过早请求会被系统吞掉
     val focusRequester = remember { FocusRequester() }
@@ -42,17 +48,23 @@ fun NewFolderDialog(
             Column(modifier = Modifier.imePadding()) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { name = filterNameInput(it) },
                     label = { Text(text = "文件夹名称") },
                     singleLine = true,
+                    isError = error != null,
+                    supportingText = if (error != null) {
+                        { Text(text = error) }
+                    } else {
+                        null
+                    },
                     modifier = Modifier.focusRequester(focusRequester).fillMaxWidth(),
                 )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name) },
-                enabled = name.isNotBlank(),
+                onClick = { onConfirm(trimmed) },
+                enabled = trimmed.isNotEmpty() && error == null,
             ) { Text(text = "创建") }
         },
         dismissButton = {

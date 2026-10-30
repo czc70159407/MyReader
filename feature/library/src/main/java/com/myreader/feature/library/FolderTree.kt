@@ -58,11 +58,21 @@ class FolderTreeState internal constructor(
     /** 展开状态：缺失或 false = 收起；snapshotFlow 响应变化触发组树 */
     val expanded: SnapshotStateMap<Long, Boolean> = mutableStateMapOf()
 
+    /**
+     * 全量目录快照（T7）：供「新建/重命名」行内重名预检同步读取。
+     * 用 Eagerly 而非 WhileSubscribed——弹窗打开时可能尚无 UI 订阅，`value` 不能是空表。
+     */
+    val all: StateFlow<List<Folder>> = allFolders.stateIn(scope, SharingStarted.Eagerly, emptyList())
+
+    /** 同级重名预检（区分大小写，D7）：命中即弹窗行内提示并禁用主按钮，业务层仍有兜底 */
+    fun isNameTaken(parentId: Long?, name: String): Boolean =
+        all.value.any { it.parentId == parentId && it.name == name }
+
     val flat: StateFlow<List<FolderNode>> = combine(
-        allFolders,
+        all,
         snapshotFlow { expanded.toMap() },
-    ) { all, exp ->
-        buildFlatTree(all, exp.filterValues { it }.keys)
+    ) { folders, exp ->
+        buildFlatTree(folders, exp.filterValues { it }.keys)
     }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun toggle(id: Long) {

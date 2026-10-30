@@ -443,6 +443,13 @@ fun LibraryScreen(
                 showNewFolderInCurrent = false
                 newSubFolderParent = null
             },
+            // T7：同级重名行内提示（长按文件夹菜单创建时 parentId 为该文件夹）
+            isNameTaken = { name ->
+                viewModel.isSiblingFolderNameTaken(
+                    newSubFolderParent?.id ?: viewModel.currentFolderId,
+                    name,
+                )
+            },
         )
     }
 
@@ -502,7 +509,10 @@ fun LibraryScreen(
             onConfirm = { target -> viewModel.confirmImportPick(target) },
             onDismiss = viewModel::cancelImportPick,
             onCreateSubFolder = viewModel::createFolderAndSelect,
-            initialSelectedId = viewModel.currentFolderId,
+            options = FolderPickerOptions(
+                initialSelectedId = viewModel.currentFolderId,
+                isNameTaken = viewModel::isSiblingFolderNameTaken,
+            ),
         )
     }
 
@@ -513,7 +523,10 @@ fun LibraryScreen(
             onConfirm = { target -> viewModel.confirmDirectoryPick(target) },
             onDismiss = viewModel::cancelDirectoryPick,
             onCreateSubFolder = viewModel::createFolderAndSelect,
-            initialSelectedId = viewModel.currentFolderId,
+            options = FolderPickerOptions(
+                initialSelectedId = viewModel.currentFolderId,
+                isNameTaken = viewModel::isSiblingFolderNameTaken,
+            ),
         )
     }
 
@@ -537,7 +550,10 @@ fun LibraryScreen(
             },
             onDismiss = { moveDocTarget = null },
             onCreateSubFolder = viewModel::createFolderAndSelect,
-            initialSelectedId = viewModel.currentFolderId,
+            options = FolderPickerOptions(
+                initialSelectedId = viewModel.currentFolderId,
+                isNameTaken = viewModel::isSiblingFolderNameTaken,
+            ),
         )
     }
 
@@ -585,8 +601,10 @@ fun LibraryScreen(
                         onCreated(newId)
                     }
                 },
-                excludedIds = excludedIds,
-                initialSelectedId = null,
+                options = FolderPickerOptions(
+                    excludedIds = excludedIds,
+                    isNameTaken = viewModel::isSiblingFolderNameTaken,
+                ),
             )
         }
     }

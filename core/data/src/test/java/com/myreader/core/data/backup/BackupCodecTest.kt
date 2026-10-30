@@ -1,10 +1,13 @@
 package com.myreader.core.data.backup
 
+import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import kotlinx.serialization.SerializationException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BackupCodecTest {
@@ -137,5 +140,99 @@ class BackupCodecTest {
     @Test
     fun decode_rejectsMalformedJson() {
         assertThrows(SerializationException::class.java) { BackupCodec.decode("{not json") }
+    }
+
+    // ---- M10：书签往返与 v1 向后兼容 ----
+
+    private fun sampleBookmark(id: Long, documentId: Long, anchor: String? = null) = BookmarkEntity(
+        id = id, documentId = documentId, page = id.toInt(), scrollOffsetY = 0,
+        anchor = anchor, label = "第 ${id + 1} 页", createdAt = 1000L,
+    )
+
+    @Test
+    fun roundTrip_preservesBookmarks() {
+        val bookmarkDtos = listOf(
+            sampleBookmark(11, documentId = 1),
+            sampleBookmark(12, documentId = 1, anchor = "987654321"),
+        )
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            bookmarks = bookmarkDtos.map { it.toDto() },
+        )
+
+        val back = BackupCodec.decode(BackupCodec.encode(manifest))
+
+        assertEquals(2, back.schemaVersion)
+        assertEquals(bookmarkDtos.map { it.toDto() }, back.bookmarks)
+        assertEquals(bookmarkDtos, back.bookmarks.map { it.toEntity() })
+    }
+
+    @Test
+    fun decode_acceptsV1Backup_withoutBookmarksField() {
+        // M10 向后兼容：v1 旧包无 bookmarks 字段 → 允许恢复，书签为空
+        val v1Json = """
+        {
+          "schemaVersion": 1,
+          "exportedAt": 1,
+          "appVersion": "old",
+          "folders": [],
+          "documents": [
+            {
+              "id": 1, "folderId": null, "title": "d", "relPath": "1.pdf", "fileType": "pdf",
+              "mimeType": null, "sourceUri": null, "fileSize": 1, "contentHash": null,
+              "needsPassword": false, "pageCount": 1, "progressType": "page",
+              "currentPage": 0, "scrollOffsetY": 0, "progressPayload": null,
+              "thumbnailRelPath": null, "lastReadAt": null, "addedAt": 1
+            }
+          ]
+        }
+        """.trimIndent()
+
+        val back = BackupCodec.decode(v1Json)
+
+        assertEquals(1, back.documents.size)
+        assertTrue(back.bookmarks.isEmpty())
+    }
+
+    @Test
+    fun decode_rejectsBookmarkPointingToMissingDocument() {
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            // 指向不存在的文档 99 → 恢复事务会因外键失败，边界处提前拒绝
+            bookmarks = listOf(sampleBookmark(5, documentId = 99).toDto()),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
+    }
+
+    @Test
+    fun decode_rejectsIllegalBookmarkAnchor() {
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            bookmarks = listOf(sampleBookmark(5, documentId = 1, anchor = "12a").toDto()),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
+    }
+
+    @Test
+    fun decode_rejectsBookmarkCountOverGlobalLimit() {
+        // 防御：书签总数不得超过「文档数 × 每文档上限」，恶意备份不得灌爆恢复写入
+        val bookmarks = (1..MAX_BOOKMARKS_PER_DOCUMENT + 1).map { i ->
+            sampleBookmark(i.toLong(), documentId = 1).toDto()
+        }
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            bookmarks = bookmarks,
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
     }
 }

@@ -1,7 +1,9 @@
 package com.myreader.core.data.repo
 
+import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.Bookmark
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
 
@@ -17,6 +19,16 @@ internal fun FolderEntity.toModel() = Folder(
     sortOrder = sortOrder,
     createdAt = createdAt,
     updatedAt = updatedAt,
+)
+
+internal fun BookmarkEntity.toModel() = Bookmark(
+    id = id,
+    documentId = documentId,
+    page = page,
+    scrollOffsetY = scrollOffsetY,
+    anchor = anchor,
+    label = label,
+    createdAt = createdAt,
 )
 
 internal fun DocumentEntity.toModel() = LibraryItem(

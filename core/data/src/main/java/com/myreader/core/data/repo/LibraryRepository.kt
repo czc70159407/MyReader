@@ -1,8 +1,11 @@
 package com.myreader.core.data.repo
 
+import com.myreader.core.model.Bookmark
+import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -47,6 +50,24 @@ interface LibraryRepository {
     suspend fun renameDocument(id: Long, title: String)     // 仅改展示名
     suspend fun moveDocument(id: Long, newFolderId: Long?)
     suspend fun deleteDocument(id: Long)                    // 先事务删记录，提交成功后再删物理文件
+
+    // ---- 书签（M10）----
+    fun observeBookmarks(documentId: Long): Flow<List<Bookmark>>
+    suspend fun bookmarksOf(documentId: Long): List<Bookmark>   // 备份/跳转前快照
+
+    /**
+     * 新增书签（含双轨去重与每文档上限）：重复位置返回 [BookmarkAddResult.DUPLICATE]，
+     * 超出 [MAX_BOOKMARKS_PER_DOCUMENT] 返回 [BookmarkAddResult.LIMIT_REACHED]——均为业务分支，不抛异常。
+     */
+    suspend fun addBookmark(
+        documentId: Long,
+        page: Int,
+        scrollOffsetY: Int,
+        anchor: String?,
+        label: String,
+    ): BookmarkAddResult
+
+    suspend fun deleteBookmark(id: Long)
 
     // ---- 进度 ----
     suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int)   // progressType="page"

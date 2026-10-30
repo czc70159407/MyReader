@@ -130,7 +130,7 @@ class DirectoryImporterTest {
             .allowMainThreadQueries()
             .build()
         val storage = DocumentStorage(tmp.newFolder("library"))
-        repository = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), storage, dispatchers)
+        repository = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
         engine = FakeEngine()
         val router: DocumentEngineRouter = SimpleDocumentEngineRouter(
             engines = mapOf(

@@ -608,6 +608,17 @@ class ReaderViewModelTest {
         override suspend fun renameDocument(id: Long, title: String) = TODO()
         override suspend fun moveDocument(id: Long, newFolderId: Long?) = TODO()
         override suspend fun deleteDocument(id: Long) = TODO()
+        // M10：阅读器尚未接入书签 UI，Fake 仅满足接口（C 阶段补编排用例）
+        override fun observeBookmarks(documentId: Long): Flow<List<com.myreader.core.model.Bookmark>> = TODO()
+        override suspend fun bookmarksOf(documentId: Long): List<com.myreader.core.model.Bookmark> = TODO()
+        override suspend fun addBookmark(
+            documentId: Long,
+            page: Int,
+            scrollOffsetY: Int,
+            anchor: String?,
+            label: String,
+        ): com.myreader.core.model.BookmarkAddResult = TODO()
+        override suspend fun deleteBookmark(id: Long) = TODO()
         override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) {
             savedProgress += Triple(id, page, scrollOffsetY)
         }

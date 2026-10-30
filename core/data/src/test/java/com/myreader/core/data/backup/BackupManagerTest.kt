@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
 import com.myreader.core.storage.DocumentStorage
@@ -51,7 +52,7 @@ class BackupManagerTest {
             MyReaderDatabase::class.java
         ).allowMainThreadQueries().build()
         storage = DocumentStorage(tmp.newFolder("library"))
-        manager = BackupManager(db, db.folderDao(), db.documentDao(), storage, dispatchers)
+        manager = BackupManager(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
     }
 
     @After
@@ -216,6 +217,86 @@ class BackupManagerTest {
         manager.restore(ByteArrayInputStream(baos.toByteArray()))
         assertEquals(1, db.folderDao().all().size)
         assertEquals(1, db.documentDao().all().size)
+    }
+
+    // ---- M10：书签往返与 v1 旧包兼容 ----
+
+    @Test
+    fun exportThenRestore_preservesBookmarks() = runTest {
+        val rel = writePdf(50)
+        db.documentDao().insert(
+            DocumentEntity(
+                id = 50, folderId = null, title = "bm.pdf", relPath = rel, fileType = "pdf",
+                mimeType = null, sourceUri = null, fileSize = 3, contentHash = "h50",
+                needsPassword = false, pageCount = 7, progressType = "page",
+                currentPage = 0, scrollOffsetY = 0, progressPayload = null,
+                thumbnailRelPath = null, lastReadAt = null, addedAt = 1,
+            ),
+        )
+        db.bookmarkDao().insert(
+            BookmarkEntity(
+                id = 71, documentId = 50, page = 2, scrollOffsetY = 120,
+                anchor = null, label = "第 3 页", createdAt = 11,
+            ),
+        )
+        db.bookmarkDao().insert(
+            BookmarkEntity(
+                id = 72, documentId = 50, page = 5, scrollOffsetY = 0,
+                anchor = "987654321", label = "第 6 屏", createdAt = 22,
+            ),
+        )
+
+        val baos = ByteArrayOutputStream()
+        val exp = manager.export(baos, "test")
+        assertEquals(2, exp.bookmarks)
+
+        db.documentDao().delete(50)                  // 级联删书签
+        storage.deleteDocument(rel)
+        assertEquals(0, db.bookmarkDao().all().size)
+
+        val res = manager.restore(ByteArrayInputStream(baos.toByteArray()))
+        assertEquals(2, res.bookmarks)
+
+        val restored = db.bookmarkDao().all().sortedBy { it.id }
+        assertEquals(listOf(71L, 72L), restored.map { it.id })
+        assertEquals(120, restored[0].scrollOffsetY)
+        assertEquals("第 3 页", restored[0].label)
+        assertEquals("987654321", restored[1].anchor)
+    }
+
+    @Test
+    fun restore_acceptsV1BackupWithoutBookmarksField() = runTest {
+        // 升级前导出的 v1 包（无 bookmarks 字段）：恢复成功且书签为空，不报错
+        val v1Json = """
+        {
+          "schemaVersion": 1,
+          "exportedAt": 1,
+          "appVersion": "old",
+          "folders": [],
+          "documents": [
+            {
+              "id": 60, "folderId": null, "title": "legacy", "relPath": "60.pdf", "fileType": "pdf",
+              "mimeType": null, "sourceUri": null, "fileSize": 1, "contentHash": null,
+              "needsPassword": false, "pageCount": 1, "progressType": "page",
+              "currentPage": 0, "scrollOffsetY": 0, "progressPayload": null,
+              "thumbnailRelPath": null, "lastReadAt": null, "addedAt": 1
+            }
+          ]
+        }
+        """.trimIndent()
+        val baos = ByteArrayOutputStream()
+        ZipOutputStream(baos).use { z ->
+            z.putNextEntry(ZipEntry("library.json"))
+            z.write(v1Json.toByteArray())
+            z.closeEntry()
+        }
+
+        val res = manager.restore(ByteArrayInputStream(baos.toByteArray()))
+
+        assertEquals(1, res.documents)
+        assertEquals(0, res.bookmarks)
+        assertEquals(1, db.documentDao().all().size)
+        assertEquals(0, db.bookmarkDao().all().size)
     }
 
     @Test

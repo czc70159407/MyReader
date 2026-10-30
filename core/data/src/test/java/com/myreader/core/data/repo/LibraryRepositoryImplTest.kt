@@ -8,7 +8,9 @@ import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.DocSort
+import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import com.myreader.core.storage.DocumentStorage
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +55,7 @@ class LibraryRepositoryImplTest {
             MyReaderDatabase::class.java
         ).allowMainThreadQueries().build()
         storage = DocumentStorage(tmp.newFolder("library"))
-        repo = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), storage, dispatchers)
+        repo = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
     }
 
     @After
@@ -266,6 +268,73 @@ class LibraryRepositoryImplTest {
         // 首轮冲突行保留，重试轮以新候选 id 写入
         assertEquals(listOf("first", "retried"), db.folderDao().all().map { it.name }.sorted())
         assertEquals("retried", db.folderDao().findById(newId)!!.name)
+    }
+
+    // ---- M10：书签（双轨去重 / 上限 / 级联 / 观察流）----
+
+    @Test
+    fun addBookmark_deduplicatesByAnchorForCfi_andByPageForPaged() = runTest {
+        val docId = addDoc("bm.pdf")
+
+        assertEquals(
+            BookmarkAddResult.ADDED,
+            repo.addBookmark(docId, page = 3, scrollOffsetY = 0, anchor = null, label = "第 4 页"),
+        )
+        // 页码式：同页不同偏移仍判重
+        assertEquals(
+            BookmarkAddResult.DUPLICATE,
+            repo.addBookmark(docId, page = 3, scrollOffsetY = 90, anchor = null, label = "第 4 页"),
+        )
+        // 流式：同锚点不同页（重排后页码漂移）仍判重
+        assertEquals(
+            BookmarkAddResult.ADDED,
+            repo.addBookmark(docId, page = 5, scrollOffsetY = 0, anchor = "123", label = "第 6 屏"),
+        )
+        assertEquals(
+            BookmarkAddResult.DUPLICATE,
+            repo.addBookmark(docId, page = 9, scrollOffsetY = 0, anchor = "123", label = "第 10 屏"),
+        )
+
+        assertEquals(2, repo.bookmarksOf(docId).size)
+    }
+
+    @Test
+    fun addBookmark_enforcesPerDocumentLimit() = runTest {
+        val docId = addDoc("bm.pdf")
+
+        repeat(MAX_BOOKMARKS_PER_DOCUMENT) { i ->
+            assertEquals(
+                BookmarkAddResult.ADDED,
+                repo.addBookmark(docId, page = i, scrollOffsetY = 0, anchor = null, label = "第 ${i + 1} 页"),
+            )
+        }
+        assertEquals(
+            BookmarkAddResult.LIMIT_REACHED,
+            repo.addBookmark(docId, page = 999, scrollOffsetY = 0, anchor = null, label = "第 1000 页"),
+        )
+        assertEquals(MAX_BOOKMARKS_PER_DOCUMENT, repo.bookmarksOf(docId).size)
+    }
+
+    @Test
+    fun deleteDocument_cascadesBookmarks() = runTest {
+        val docId = addDoc("bm.pdf")
+        repo.addBookmark(docId, page = 1, scrollOffsetY = 0, anchor = null, label = "第 2 页")
+
+        repo.deleteDocument(docId)
+
+        assertTrue(repo.bookmarksOf(docId).isEmpty())
+    }
+
+    @Test
+    fun observeBookmarks_emitsCurrentList() = runTest {
+        val docId = addDoc("bm.pdf")
+        repo.addBookmark(docId, page = 2, scrollOffsetY = 0, anchor = null, label = "第 3 页")
+
+        repo.observeBookmarks(docId).test {
+            val list = awaitItem()
+            assertEquals(listOf("第 3 页"), list.map { it.label })
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     @Test

@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.withTransaction
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.dao.BookmarkDao
 import com.myreader.core.data.db.dao.DocumentDao
 import com.myreader.core.data.db.dao.FolderDao
 import com.myreader.core.storage.DocumentStorage
@@ -32,6 +33,7 @@ class BackupManager @Inject constructor(
     private val db: MyReaderDatabase,
     private val folderDao: FolderDao,
     private val documentDao: DocumentDao,
+    private val bookmarkDao: BookmarkDao,
     private val storage: DocumentStorage,
     private val dispatchers: DispatcherProvider,
 ) {
@@ -45,6 +47,8 @@ class BackupManager @Inject constructor(
         val filesWritten: Int,
         val thumbnailsWritten: Int,
         val missingFiles: Int,
+        /** M10：随包导出的书签数 */
+        val bookmarks: Int,
     )
 
     data class RestoreResult(
@@ -54,6 +58,8 @@ class BackupManager @Inject constructor(
         val thumbnailsWritten: Int,
         val missingFiles: Int,
         val bytesWritten: Long,
+        /** M10：随包恢复的书签数（v1 旧包为 0） */
+        val bookmarks: Int,
     )
 
     /** 整段 relPath 白名单（与 BackupCodec / DocumentStorage 同源）。 */
@@ -66,12 +72,14 @@ class BackupManager @Inject constructor(
     ): ExportResult = withContext(dispatchers.io) {
         val folders = folderDao.all()
         val documents = documentDao.all()
+        val bookmarks = bookmarkDao.all()
         val manifest = BackupCodec.BackupManifest(
             schemaVersion = BackupCodec.SCHEMA_VERSION,
             exportedAt = System.currentTimeMillis(),
             appVersion = appVersion,
             folders = folders.map { it.toDto() },
             documents = documents.map { it.toDto() },
+            bookmarks = bookmarks.map { it.toDto() },
         )
 
         var filesWritten = 0
@@ -105,7 +113,14 @@ class BackupManager @Inject constructor(
             zip.closeEntry()
         }
         onProgress(1f, "备份完成")
-        ExportResult(folders.size, documents.size, filesWritten, thumbnailsWritten, missingFiles)
+        ExportResult(
+            folders = folders.size,
+            documents = documents.size,
+            filesWritten = filesWritten,
+            thumbnailsWritten = thumbnailsWritten,
+            missingFiles = missingFiles,
+            bookmarks = bookmarks.size,
+        )
     }
 
     suspend fun restore(
@@ -185,6 +200,8 @@ class BackupManager @Inject constructor(
             db.withTransaction {
                 folderDao.upsertAll(orderedFolders.map { it.toEntity() })
                 documentDao.upsertAll(manifest.documents.map { it.toEntity() })
+                // 书签在文档之后：满足 documentId 外键（v1 旧包为空列表，天然兼容）
+                bookmarkDao.upsertAll(manifest.bookmarks.map { it.toEntity() })
             }
 
             // 4) 提交成功后再把临时物理文件 move 进 library/thumb（同分区瞬时）
@@ -220,6 +237,7 @@ class BackupManager @Inject constructor(
                 thumbnailsWritten = thumbnailsWritten,
                 missingFiles = (fileEntries.size - filesWritten) + (thumbEntries.size - thumbnailsWritten) + orphanCount,
                 bytesWritten = bytesWritten,
+                bookmarks = manifest.bookmarks.size,
             )
         } finally {
             tmp.deleteRecursively()

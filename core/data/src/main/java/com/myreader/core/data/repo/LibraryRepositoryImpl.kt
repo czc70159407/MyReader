@@ -4,13 +4,18 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.withTransaction
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.dao.BookmarkDao
 import com.myreader.core.data.db.dao.DocumentDao
 import com.myreader.core.data.db.dao.FolderDao
+import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.Bookmark
+import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import com.myreader.core.storage.DocumentStorage
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -21,6 +26,7 @@ class LibraryRepositoryImpl @Inject constructor(
     private val db: MyReaderDatabase,
     private val folderDao: FolderDao,
     private val documentDao: DocumentDao,
+    private val bookmarkDao: BookmarkDao,
     private val storage: DocumentStorage,
     private val dispatchers: DispatcherProvider,
 ) : LibraryRepository {
@@ -177,6 +183,49 @@ class LibraryRepositoryImpl @Inject constructor(
         storage.deleteDocument(entity.relPath)
         storage.deleteThumbnail(entity.thumbnailRelPath)
         Unit
+    }
+
+    // ---- 书签（M10）----
+
+    override fun observeBookmarks(documentId: Long): Flow<List<Bookmark>> =
+        bookmarkDao.observeByDocument(documentId).map { list -> list.map { it.toModel() } }
+
+    override suspend fun bookmarksOf(documentId: Long): List<Bookmark> = withContext(dispatchers.io) {
+        bookmarkDao.byDocument(documentId).map { it.toModel() }
+    }
+
+    override suspend fun addBookmark(
+        documentId: Long,
+        page: Int,
+        scrollOffsetY: Int,
+        anchor: String?,
+        label: String,
+    ): BookmarkAddResult = withContext(dispatchers.io) {
+        // 双轨去重（M10-A review）：流式只比锚点（重排后 page 漂移），页码式只比页
+        val duplicate = if (anchor != null) {
+            bookmarkDao.existsAtAnchor(documentId, anchor)
+        } else {
+            bookmarkDao.existsAtPage(documentId, page)
+        }
+        if (duplicate) return@withContext BookmarkAddResult.DUPLICATE
+        if (bookmarkDao.countByDocument(documentId) >= MAX_BOOKMARKS_PER_DOCUMENT) {
+            return@withContext BookmarkAddResult.LIMIT_REACHED
+        }
+        bookmarkDao.insert(
+            BookmarkEntity(
+                documentId = documentId,
+                page = page,
+                scrollOffsetY = scrollOffsetY,
+                anchor = anchor,
+                label = label,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        BookmarkAddResult.ADDED
+    }
+
+    override suspend fun deleteBookmark(id: Long) = withContext(dispatchers.io) {
+        bookmarkDao.delete(id)
     }
 
     // ---- 进度 ----

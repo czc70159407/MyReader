@@ -29,9 +29,15 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 CREATE INDEX IF NOT EXISTS index_bookmarks_documentId ON bookmarks(documentId)
 ```
 
-- **决策点（S0 拍板）**：书签上限（建议每文档 ≤100，超限拒绝并提示）；label 默认值规则（「第 N 页」/epub「第 N 屏」）
+- **决策点（S0 拍板，2026-10-30）**：
+  1. **书签上限**：每文档 **≤100**（`BookmarkDao.countByDocument` 预检，超限拒绝并提示「书签已达上限（100 个）」，不静默丢弃）；
+  2. **label 规则**：页码式「第 N 页」、流式「第 N 屏」；label 为**创建时快照**，重排后不回溯改写（列表排序用 `page`，跳转用 `anchor`）；
+  3. **anchor 规则**：页码式 `page + scrollOffsetY`（anchor null），流式 `anchor = bookmark 十进制串`、`page = 创建时解析页码`（失效回落）；
+  4. **SQL 口径**：手写 `MIGRATION_1_2` 必须逐字对齐 `2.json` 的 `createSql`——Kotlin 字段默认值不生成 SQL `DEFAULT`（草案中的 `scrollOffsetY ... DEFAULT 0` 已按实际 schema 去掉）。
 
 ## M10-A schema v2 + Migration（强制门禁）
+
+> 状态：**已完成（2026-10-30）**——`BookmarkEntity/BookmarkDao`、`MIGRATION_1_2`、`2.json`、DI 注册、`Migration1To2Test`；真机 2/2、build 全绿。证据见根 `AGENTS.md`。
 
 - `MyReaderDatabase` version=2，注册 `BookmarkEntity` / `BookmarkDao`
 - 手写 `MIGRATION_1_2`（仅 CREATE TABLE + CREATE INDEX；documents 表零变更）

@@ -133,9 +133,9 @@
 | `inline_goto_range` | 页码（1 - {pageCount}） | 跳页框 label，常驻显示范围 |
 | `inline_goto_invalid` | 请输入 1 - {pageCount} 的页码 | `[已实现 T6]` 非法输入时的 `supportingText` |
 | `inline_password_wrong` | 密码错误，请重试 | 提交失败后内联，保留已输入内容 |
-| `inline_name_empty` | 名称不能为空 | `[建议]` 失焦或提交时 |
-| `inline_name_too_long` | 名称最多 64 个字符 | `[建议]` 输入期 |
-| `inline_name_duplicate` | 该目录下已存在同名项目 | `[建议]` 输入期替代 L3 |
+| `inline_name_empty` | 名称不能为空 | `[建议]` 失焦或提交时（现状：空/全空格直接禁用主按钮，不额外提示） |
+| `inline_name_too_long` | 名称最多 64 个字符 | `[已实现 T7]` 输入期（新建文件夹 / 重命名，超长禁用提交） |
+| `inline_name_duplicate` | 该目录下已存在同名项目 | `[已实现 T7]` 新建文件夹输入期（重命名仍由业务层 Snackbar 兜底） |
 | `inline_move_invalid` | 不能移动到自身或其子目录 | picker 选中禁选集内条目时 |
 
 ## 8. 对话框正文模板

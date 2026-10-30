@@ -22,6 +22,13 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    testOptions {
+        unitTests {
+            // M10-C：Robolectric + Compose UI 测试需要合并后的 Android 资源与 manifest
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -48,4 +55,9 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
     testImplementation(libs.datastore.preferences)   // ReaderViewModelTest 构造真 SettingsPrefs（纯 JVM File 落盘）
+    // M10-C：BookmarkSheet Compose UI 测试（Robolectric，与 library 模块同型）
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.compose.ui.test.manifest)
 }

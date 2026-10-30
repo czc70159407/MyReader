@@ -11,9 +11,12 @@ import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngine
 import com.myreader.core.document.DocumentEngineRouter
 import com.myreader.core.document.DocumentViewerProvider
+import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.Bookmark
+import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.LibraryItem
 import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
@@ -23,7 +26,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -35,6 +41,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -539,7 +546,133 @@ class ReaderViewModelTest {
         assertEquals(null, vm.displayPageCount.value)
     }
 
+    // ---- M10-C：书签编排 ----
+
+    @Test
+    fun `书签 页码式记录页码偏移与标签`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument(pageCount = 5) }, item())
+        advanceUntilIdle()
+
+        vm.onProgress(ProgressPayload.Page(3, 120))
+        vm.addBookmarkAtCurrent()
+        advanceUntilIdle()
+
+        val call = repo.bookmarkAdds.single()
+        assertEquals(1L, call.documentId)
+        assertEquals(3, call.page)
+        assertEquals(120, call.scrollOffsetY)
+        assertEquals("第 4 页", call.label)
+        assertNull(call.anchor)
+    }
+
+    @Test
+    fun `书签 流式记录loc锚点与屏标签`() = runTest(dispatcher) {
+        writeFile("1.epub")
+        val epubItem = item().copy(fileType = "epub", relPath = "1.epub", progressType = "cfi", pageCount = -1)
+        val vm = newViewModel(ScriptedEngine { FakeDocument(pageCount = 12, reflowable = true) }, epubItem)
+        advanceUntilIdle()
+
+        vm.onProgress(ProgressPayload.Cfi(EpubProgressCodec.encode(loc = "987654", page = 4)))
+        vm.addBookmarkAtCurrent()
+        advanceUntilIdle()
+
+        val call = repo.bookmarkAdds.single()
+        assertEquals("987654", call.anchor)
+        assertEquals(4, call.page)
+        assertEquals("第 5 屏", call.label)
+    }
+
+    @Test
+    fun `书签 重复与上限给出对应提示`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument(pageCount = 5) }, item())
+        advanceUntilIdle()
+
+        val first = async { vm.messages.first() }
+        runCurrent()
+        repo.bookmarkAddResult = BookmarkAddResult.DUPLICATE
+        vm.addBookmarkAtCurrent()
+        advanceUntilIdle()
+        assertEquals("该位置已有书签", first.await())
+
+        val second = async { vm.messages.first() }
+        runCurrent()
+        repo.bookmarkAddResult = BookmarkAddResult.LIMIT_REACHED
+        vm.addBookmarkAtCurrent()
+        advanceUntilIdle()
+        assertEquals("书签已达上限（100 个）", second.await())
+    }
+
+    @Test
+    fun `书签 删除后给出提示`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument(pageCount = 5) }, item())
+        advanceUntilIdle()
+
+        val message = async { vm.messages.first() }
+        runCurrent()
+        vm.deleteBookmark(7L)
+        advanceUntilIdle()
+
+        assertEquals(listOf(7L), repo.deletedBookmarks)
+        assertEquals("已删除书签", message.await())
+    }
+
+    @Test
+    fun `书签 流式无有效锚点时提示且不写库`() = runTest(dispatcher) {
+        writeFile("1.epub")
+        val epubItem = item().copy(fileType = "epub", relPath = "1.epub", progressType = "cfi", pageCount = -1)
+        val vm = newViewModel(ScriptedEngine { FakeDocument(pageCount = 12, reflowable = true) }, epubItem)
+        advanceUntilIdle()
+
+        val message = async { vm.messages.first() }
+        runCurrent()
+        // 无 loc 的 payload（旧格式/损坏）：不得降级成页码式书签污染列表
+        vm.onProgress(ProgressPayload.Cfi(EpubProgressCodec.encode(loc = null, page = 3)))
+        vm.addBookmarkAtCurrent()
+        advanceUntilIdle()
+
+        assertEquals("当前位置无法添加书签", message.await())
+        assertTrue(repo.bookmarkAdds.isEmpty())
+    }
+
+    @Test
+    fun `书签 写库失败给出提示`() = runTest(dispatcher) {
+        writeFile("1.pdf")
+        val vm = newViewModel(ScriptedEngine { FakeDocument(pageCount = 5) }, item())
+        advanceUntilIdle()
+
+        val message = async { vm.messages.first() }
+        runCurrent()
+        repo.bookmarkAddThrow = true
+        vm.addBookmarkAtCurrent()
+        advanceUntilIdle()
+
+        assertEquals("添加书签失败，请重试", message.await())
+    }
+
+    @Test
+    fun `书签 未就绪时添加被忽略`() = runTest(dispatcher) {
+        val vm = newViewModel(ScriptedEngine { FakeDocument() }, item())
+        repo.docItem = null    // 打开失败 → Failed 态
+        advanceUntilIdle()
+
+        vm.addBookmarkAtCurrent()
+        advanceUntilIdle()
+
+        assertTrue(repo.bookmarkAdds.isEmpty())
+    }
+
     // ---- fakes ----
+
+    private data class BookmarkAddCall(
+        val documentId: Long,
+        val page: Int,
+        val scrollOffsetY: Int,
+        val anchor: String?,
+        val label: String,
+    )
 
     private class TestDispatcherProvider(d: CoroutineDispatcher) : DispatcherProvider {
         override val io: CoroutineDispatcher = d
@@ -608,17 +741,28 @@ class ReaderViewModelTest {
         override suspend fun renameDocument(id: Long, title: String) = TODO()
         override suspend fun moveDocument(id: Long, newFolderId: Long?) = TODO()
         override suspend fun deleteDocument(id: Long) = TODO()
-        // M10：阅读器尚未接入书签 UI，Fake 仅满足接口（C 阶段补编排用例）
-        override fun observeBookmarks(documentId: Long): Flow<List<com.myreader.core.model.Bookmark>> = TODO()
-        override suspend fun bookmarksOf(documentId: Long): List<com.myreader.core.model.Bookmark> = TODO()
+        // M10-C：书签可编排 fake（默认 ADDED，可切换 DUPLICATE/LIMIT_REACHED；可模拟写库异常）
+        var bookmarkAddResult: BookmarkAddResult = BookmarkAddResult.ADDED
+        var bookmarkAddThrow = false
+        val bookmarkAdds = mutableListOf<BookmarkAddCall>()
+        val deletedBookmarks = mutableListOf<Long>()
+
+        override fun observeBookmarks(documentId: Long): Flow<List<Bookmark>> = MutableStateFlow(emptyList())
+        override suspend fun bookmarksOf(documentId: Long): List<Bookmark> = emptyList()
         override suspend fun addBookmark(
             documentId: Long,
             page: Int,
             scrollOffsetY: Int,
             anchor: String?,
             label: String,
-        ): com.myreader.core.model.BookmarkAddResult = TODO()
-        override suspend fun deleteBookmark(id: Long) = TODO()
+        ): BookmarkAddResult {
+            if (bookmarkAddThrow) error("boom")
+            bookmarkAdds += BookmarkAddCall(documentId, page, scrollOffsetY, anchor, label)
+            return bookmarkAddResult
+        }
+        override suspend fun deleteBookmark(id: Long) {
+            deletedBookmarks += id
+        }
         override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) {
             savedProgress += Triple(id, page, scrollOffsetY)
         }

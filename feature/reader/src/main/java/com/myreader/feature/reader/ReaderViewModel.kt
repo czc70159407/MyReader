@@ -11,11 +11,15 @@ import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngineRouter
 import com.myreader.core.document.DocumentException
 import com.myreader.core.document.DocumentViewerProvider
+import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.FileTypes
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.Bookmark
+import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
 import androidx.compose.ui.graphics.ImageBitmap
@@ -26,11 +30,15 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -112,6 +120,120 @@ class ReaderViewModel @Inject constructor(
     fun onPageCountChanged(count: Int) {
         if (_displayPageCount.value != count) _displayPageCount.value = count
     }
+
+    // ---- 书签（M10-C）----
+
+    /** 书签面板快照（本地 SQLite，Ready 后持续观察；顶栏「已收藏」态与面板共用） */
+    private val _bookmarks = MutableStateFlow<List<Bookmark>>(emptyList())
+    val bookmarks: StateFlow<List<Bookmark>> = _bookmarks.asStateFlow()
+
+    private val _bookmarksLoading = MutableStateFlow(false)
+    val bookmarksLoading: StateFlow<Boolean> = _bookmarksLoading.asStateFlow()
+
+    private val _bookmarksError = MutableStateFlow(false)
+    val bookmarksError: StateFlow<Boolean> = _bookmarksError.asStateFlow()
+
+    /** 一次性提示（添加/重复/上限/删除）：由 ReaderScreen Snackbar 消费 */
+    private val _messages = Channel<String>(Channel.BUFFERED)
+    val messages: Flow<String> = _messages.receiveAsFlow()
+
+    private var bookmarkJob: Job? = null
+
+    /** Ready 建立后启动书签观察（幂等）；观察流异常时标记错误，面板给「重试」出口 */
+    private fun startBookmarkObserver() {
+        if (bookmarkJob != null) return
+        _bookmarksError.value = false
+        _bookmarksLoading.value = true
+        bookmarkJob = viewModelScope.launch {
+            repository.observeBookmarks(docId)
+                .catch {
+                    _bookmarksLoading.value = false
+                    _bookmarksError.value = true
+                    bookmarkJob = null
+                }
+                .collect {
+                    _bookmarks.value = it
+                    _bookmarksLoading.value = false
+                }
+        }
+    }
+
+    /** 面板「加载失败」重试：先取消旧观察再重建 */
+    fun retryBookmarks() {
+        bookmarkJob?.cancel()
+        bookmarkJob = null
+        startBookmarkObserver()
+    }
+
+    /**
+     * 以当前位置添加书签：页码式记 page + 垂直偏移；流式记 `loc`（bookmark 串）为锚，page 仅展示/回退。
+     * 重复位置与上限由仓储返回业务结果，转 Snackbar（不抛异常）。
+     */
+    fun addBookmarkAtCurrent() {
+        val ready = _state.value as? ReaderUiState.Ready ?: return
+        val payload = currentProgress.value ?: ready.initialProgress
+        val draft = when (payload) {
+            is ProgressPayload.Page -> AddDraft(
+                page = payload.page,
+                scrollOffsetY = payload.scrollOffsetY,
+                anchor = null,
+                label = "第 ${payload.page + 1} 页",
+            )
+            is ProgressPayload.Cfi -> {
+                val decoded = EpubProgressCodec.decode(payload.cfi)
+                val loc = decoded?.loc
+                if (decoded == null || loc == null) {
+                    // 无有效锚点（payload 损坏/缺 loc）：不写库——否则会降级成页码式书签污染列表，
+                    // 且备份恢复侧要求 anchor 为十进制串（BackupCodec 校验）
+                    _messages.trySend("当前位置无法添加书签")
+                    return
+                }
+                AddDraft(page = decoded.page, scrollOffsetY = 0, anchor = loc, label = "第 ${decoded.page + 1} 屏")
+            }
+        }
+        viewModelScope.launch {
+            // 写入失败（DB/磁盘）不得让协程异常冒泡崩溃：转 Snackbar（与 LibraryViewModel.launchOp 同口径）
+            val message = try {
+                when (repository.addBookmark(
+                    documentId = docId,
+                    page = draft.page,
+                    scrollOffsetY = draft.scrollOffsetY,
+                    anchor = draft.anchor,
+                    label = draft.label,
+                )) {
+                    BookmarkAddResult.ADDED -> "已添加书签"
+                    BookmarkAddResult.DUPLICATE -> "该位置已有书签"
+                    BookmarkAddResult.LIMIT_REACHED -> "书签已达上限（$MAX_BOOKMARKS_PER_DOCUMENT 个）"
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                "添加书签失败，请重试"
+            }
+            _messages.send(message)
+        }
+    }
+
+    fun deleteBookmark(id: Long) {
+        viewModelScope.launch {
+            val message = try {
+                repository.deleteBookmark(id)
+                "已删除书签"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                "删除书签失败，请重试"
+            }
+            _messages.send(message)
+        }
+    }
+
+    private data class AddDraft(
+        val page: Int,
+        val scrollOffsetY: Int,
+        val anchor: String?,
+        val label: String,
+    )
 
     init {
         openDocument()
@@ -252,6 +374,8 @@ class ReaderViewModel @Inject constructor(
                 reflowable = doc.reflowable,
                 initialProgress = initialProgress,
             )
+            // M10-C：Ready 后开始观察书签（顶栏已收藏态 + 面板共用；密码重试产生新 Ready 时幂等复用）
+            startBookmarkObserver()
         }
     }
 

@@ -14,6 +14,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
@@ -25,6 +27,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -49,6 +53,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.Bookmark
 import com.myreader.core.model.ReaderMode
 
 /**
@@ -67,6 +72,10 @@ fun ReaderScreen(
     val mode by viewModel.mode.collectAsStateWithLifecycle()
     // 实时排版页数（T3）：epub 水平 relayout 后由视图回调上抛；null 时以 Ready 快照兜底
     val livePageCount by viewModel.displayPageCount.collectAsStateWithLifecycle()
+    // M10-C：书签（Ready 后持续观察；顶栏已收藏态与面板共用）
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
+    val bookmarksLoading by viewModel.bookmarksLoading.collectAsStateWithLifecycle()
+    val bookmarksError by viewModel.bookmarksError.collectAsStateWithLifecycle()
 
     // 进度保底：ON_PAUSE / ON_STOP / 离开组合时即时落库
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -129,6 +138,11 @@ fun ReaderScreen(
             var uiProgress by remember { mutableStateOf(s.initialProgress) }
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
+            var showBookmarks by remember { mutableStateOf(false) }
+            val snackbarHostState = remember { SnackbarHostState() }
+            LaunchedEffect(Unit) {
+                viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
+            }
 
             // 展示页数：打开快照兜底，relayout 后以视图回调的实时值为准（T3）。
             // 不 copy Ready 回写 pageCount——Ready 变化会重置 key(s) 内全套会话状态（uiProgress 回退）
@@ -140,7 +154,16 @@ fun ReaderScreen(
                 is ProgressPayload.Cfi -> EpubProgressCodec.decode(p.cfi)?.page ?: 0
             }
 
+            // 顶栏书签图标态：当前页/锚点是否已收藏（与面板列表同一判据）
+            val currentBookmarkKey: Pair<Int, String?>? = when (val p = uiProgress) {
+                is ProgressPayload.Page -> p.page to null
+                is ProgressPayload.Cfi -> EpubProgressCodec.decode(p.cfi)?.let { it.page to it.loc }
+            }
+            val currentBookmarked = currentBookmarkKey != null &&
+                bookmarks.any { it.page == currentBookmarkKey.first && it.anchor == currentBookmarkKey.second }
+
             Scaffold(
+                snackbarHost = { SnackbarHost(snackbarHostState) },
                 topBar = {
                     TopAppBar(
                         title = {
@@ -158,6 +181,17 @@ fun ReaderScreen(
                             }
                         },
                         actions = {
+                            // M10-C：书签面板入口；图标实心/描边反映「当前页已收藏」
+                            IconButton(onClick = { showBookmarks = true }) {
+                                Icon(
+                                    imageVector = if (currentBookmarked) {
+                                        Icons.Filled.Bookmark
+                                    } else {
+                                        Icons.Filled.BookmarkBorder
+                                    },
+                                    contentDescription = "书签",
+                                )
+                            }
                             IconButton(onClick = { showOutline = true }) {
                                 Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "目录")
                             }
@@ -190,6 +224,41 @@ fun ReaderScreen(
                 }
             }
 
+            if (showBookmarks) {
+                // 首次加载且无数据 → 加载态；已有数据时后台刷新不闪加载态；异常优先展示重试
+                val panelState: BookmarkPanelState = when {
+                    bookmarksError -> BookmarkPanelState.Failed
+                    bookmarksLoading && bookmarks.isEmpty() -> BookmarkPanelState.Loading
+                    else -> BookmarkPanelState.Ready(bookmarks)
+                }
+                BookmarkSheet(
+                    state = panelState,
+                    actions = BookmarkSheetActions(
+                        onAdd = viewModel::addBookmarkAtCurrent,
+                        onJump = { bookmark: Bookmark ->
+                            val progress = if (bookmark.anchor != null) {
+                                // 流式：以 bookmark 串重建 payload，渲染端解析锚点定位（跨重排稳定）
+                                ProgressPayload.Cfi(
+                                    EpubProgressCodec.encode(loc = bookmark.anchor, page = bookmark.page),
+                                )
+                            } else {
+                                // 页码式：clamp 防历史/备份越界；垂直偏移原样恢复
+                                ProgressPayload.Page(
+                                    page = bookmark.page.coerceIn(0, (pageCount - 1).coerceAtLeast(0)),
+                                    scrollOffsetY = bookmark.scrollOffsetY.coerceAtLeast(0),
+                                )
+                            }
+                            uiProgress = progress
+                            // 与大纲跳页同策略：页码式立即落库；流式由渲染端 reposition 后回发 CFI
+                            if (!s.reflowable) viewModel.onProgress(progress)
+                            showBookmarks = false
+                        },
+                        onDelete = viewModel::deleteBookmark,
+                        onRetry = viewModel::retryBookmarks,
+                        onDismiss = { showBookmarks = false },
+                    ),
+                )
+            }
             if (showOutline) {
                 OutlineSheet(
                     load = { viewModel.loadOutline() },

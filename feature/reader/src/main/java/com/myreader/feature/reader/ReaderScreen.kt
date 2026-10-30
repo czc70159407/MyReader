@@ -249,7 +249,10 @@ fun ReaderScreen(
                                 )
                             }
                             uiProgress = progress
-                            // 与大纲跳页同策略：页码式立即落库；流式由渲染端 reposition 后回发 CFI
+                            // 与大纲跳页同策略：页码式立即落库；流式由渲染端 reposition 后回发 CFI。
+                            // M10-D review 实测：试过流式也立即落库，但渲染端回发必然覆盖（落库值换成
+                            // 当前会话新生成的 mark），该改动无净效果已回退；跨会话的旧 mark 在
+                            // MuPDFCore.bookmarkToPage 中恒返回 -2，故流式恢复实际依赖 page 回落。
                             if (!s.reflowable) viewModel.onProgress(progress)
                             showBookmarks = false
                         },

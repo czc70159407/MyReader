@@ -45,8 +45,9 @@ private const val PLACEHOLDER_RATIO = 4f / 3f
  * 进度：firstVisibleItemIndex + 项内像素偏移 → [ProgressPayload.Page] 回写（防抖落库由 VM 承担）。
  * 恢复：一次性 scrollToItem(initialPage, initialOffsetY)——LazyList 锚定「item 顶部 + 像素偏移」，
  * 后续占位高度收敛为实测高度不影响锚点；跨宽度的旧偏移存在近似误差（已知限制，见 docs/ui-design.md）。
- * 外部跳页（跳页框/大纲写 uiPage）：经 initialProgress 差分触发 scrollToItem(page, 0)——
- * [lastEmittedPage] 守卫区分「自身滚动回流」（page 相等 no-op）与「外部跳页」，防跳转回环。
+ * 外部跳页（跳页框/大纲/书签写 uiProgress）：经 initialProgress 差分触发 scrollToItem(page, offset)——
+ * [lastEmitted]（page + 项内偏移对）守卫区分「自身滚动回流」（值与最近发射一致则 no-op）与「外部跳页」，
+ * 防跳转回环；书签跳转需落到页内偏移，故不能只比 page（M10-D 抓出：仅比 page 会忽略偏移且回写覆盖为 0）。
  *
  * M9 重排（reflowable，如 epub）：进度回调改走 CFI 锚点（[EpubLocationResolver]）；
  * 垂直模式沿用 MuPDFCore 默认固定排版（312×504pt）不 relayout，故 [Document.pageCount] 稳定、
@@ -76,8 +77,8 @@ internal fun MuPdfVerticalView(
     }
     val initOffsetY = (initialProgress as? ProgressPayload.Page)?.scrollOffsetY ?: 0
 
-    // 滚动回流守卫：初始 = 恢复页；snapshotFlow 发射时同步更新（见下方 collect）
-    var lastEmittedPage by remember(doc) { mutableStateOf(initPage) }
+    // 滚动回流守卫：初始 = 恢复锚点（page + 项内偏移）；snapshotFlow 发射时同步更新（见下方 collect）
+    var lastEmitted by remember(doc) { mutableStateOf(initPage to initOffsetY) }
     // 恢复完成前抑制进度回写，避免首帧 (0,0) 覆盖库中进度（与 TxtViewerProvider 同款守卫，T4；
     // 此前仅靠 lastEmittedPage 初值 + VM 600ms 防抖间接兜底，同类竞态两视图封堵程度不一致）
     var restored by remember(doc) { mutableStateOf(false) }
@@ -92,13 +93,15 @@ internal fun MuPdfVerticalView(
         restored = true   // 锚定完成后才放行 snapshotFlow 回写（T4）
     }
 
-    // 外部跳页差分：initPage 变化且非自身滚动回流时，滚到目标页顶部
-    LaunchedEffect(doc, initPage) {
-        if (initPage != lastEmittedPage) {
-            listState.scrollToItem(initPage, 0)
-            // 跳页后即使目标页==当前页也强制回发一次，避免「跳后立刻退出」落旧进度（M9 review #9）
-            lastEmittedPage = initPage
-            val payload = resolver?.progressForPage(initPage) ?: ProgressPayload.Page(initPage, 0)
+    // 外部跳页差分：(page, 项内偏移) 变化且非自身滚动回流时，滚到目标锚点并回发实际目标
+    LaunchedEffect(doc, initPage, initOffsetY) {
+        val target = initPage to initOffsetY
+        if (target != lastEmitted) {
+            listState.scrollToItem(initPage, initOffsetY)
+            // 跳页后即使目标锚点==当前锚点也强制回发一次，避免「跳后立刻退出」落旧进度（M9 review #9）
+            lastEmitted = target
+            val payload = resolver?.progressForPage(initPage)
+                ?: ProgressPayload.Page(initPage, initOffsetY)
             latestCallback(payload)
         }
     }
@@ -109,7 +112,7 @@ internal fun MuPdfVerticalView(
             .distinctUntilChanged()
             .collect { (index, offset) ->
                 if (!restored) return@collect   // 恢复期（含 scrollToItem 触发的中间帧）不回写（T4）
-                lastEmittedPage = index
+                lastEmitted = index to offset
                 // 重排文档回调 CFI 锚点；页码式回调页码 + 项内像素偏移
                 val payload = resolver?.progressForPage(index) ?: ProgressPayload.Page(index, offset)
                 latestCallback(payload)

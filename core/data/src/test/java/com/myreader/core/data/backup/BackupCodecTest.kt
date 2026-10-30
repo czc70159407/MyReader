@@ -221,6 +221,23 @@ class BackupCodecTest {
     }
 
     @Test
+    fun decode_acceptsNegativeBookmarkAnchor() {
+        // M10-D 真机抓出：epub 的 bookmark 串为 long，实测常为负值；无符号校验会让
+        // 含 epub 书签的备份整体恢复失败（真机报「非法书签锚点」并中断恢复）
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            bookmarks = listOf(
+                sampleBookmark(5, documentId = 1, anchor = "-5476376651105784552").toDto(),
+            ),
+        )
+
+        val back = BackupCodec.decode(BackupCodec.encode(manifest))
+
+        assertEquals("-5476376651105784552", back.bookmarks.single().anchor)
+    }
+
+    @Test
     fun decode_rejectsBookmarkCountOverGlobalLimit() {
         // 防御：书签总数不得超过「文档数 × 每文档上限」，恶意备份不得灌爆恢复写入
         val bookmarks = (1..MAX_BOOKMARKS_PER_DOCUMENT + 1).map { i ->

@@ -242,7 +242,9 @@ class BackupManagerTest {
         db.bookmarkDao().insert(
             BookmarkEntity(
                 id = 72, documentId = 50, page = 5, scrollOffsetY = 0,
-                anchor = "987654321", label = "第 6 屏", createdAt = 22,
+                // 负锚点：epub bookmark 串为 long，实测常为负值。M10-D 真机曾因校验拒绝负号
+                // 导致含 epub 书签的备份整体恢复失败，此处做端到端回归（Codec 层另有单测）
+                anchor = "-5476376651105784552", label = "第 6 屏", createdAt = 22,
             ),
         )
 
@@ -261,7 +263,7 @@ class BackupManagerTest {
         assertEquals(listOf(71L, 72L), restored.map { it.id })
         assertEquals(120, restored[0].scrollOffsetY)
         assertEquals("第 3 页", restored[0].label)
-        assertEquals("987654321", restored[1].anchor)
+        assertEquals("-5476376651105784552", restored[1].anchor)
     }
 
     @Test

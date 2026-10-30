@@ -64,8 +64,8 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         val listState = rememberLazyListState()
         val latestCallback by rememberUpdatedState(onProgressChanged)
 
-        // 初始 = 恢复页；区分「自身滚动回流」与「外部跳页」
-        var lastEmitted by remember(txtDoc) { mutableStateOf(start.page) }
+        // 初始 = 恢复锚点（page + 项内偏移）；区分「自身滚动回流」与「外部跳页」
+        var lastEmitted by remember(txtDoc) { mutableStateOf(start.page to start.scrollOffsetY) }
         // 恢复完成前抑制回写，避免首帧 (0,0) 覆盖恢复进度（M9 review M6）
         var restored by remember(txtDoc) { mutableStateOf(false) }
 
@@ -75,9 +75,13 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
             restored = true
         }
 
-        // 外部跳页差分：initialProgress.page 变化且非自身回流 → 滚到目标页顶部
-        LaunchedEffect(txtDoc, start.page) {
-            if (start.page != lastEmitted) listState.scrollToItem(start.page, 0)
+        // 外部跳页差分：(page, 项内偏移) 变化且非自身回流 → 滚到目标锚点（书签跳转需落到页内偏移）
+        LaunchedEffect(txtDoc, start.page, start.scrollOffsetY) {
+            val target = start.page to start.scrollOffsetY
+            if (target != lastEmitted) {
+                listState.scrollToItem(start.page, start.scrollOffsetY)
+                lastEmitted = target
+            }
         }
 
         // 进度回写：每帧发射（distinctUntilChanged 去重），防抖落库由 VM 承担
@@ -86,7 +90,7 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
                 .distinctUntilChanged()
                 .collect { (index, offset) ->
                     if (!restored) return@collect
-                    lastEmitted = index
+                    lastEmitted = index to offset
                     latestCallback(ProgressPayload.Page(index, offset))
                 }
         }

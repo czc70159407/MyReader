@@ -26,8 +26,12 @@ object BackupCodec {
     /** 书签 label 上限（不可信输入防御：防超长文案撑爆面板） */
     private const val MAX_BOOKMARK_LABEL_LEN = 200
 
-    /** 流式书签锚点格式：bookmark 十进制串（`MuPDFCore.pageToBookmark`） */
-    private val BOOKMARK_ANCHOR_PATTERN = Regex("^\\d{1,20}$")
+    /**
+     * 流式书签锚点格式：bookmark 十进制串（`MuPDFCore.pageToBookmark`）。
+     * **必须允许负号**——`makeBookmark` 返回 long，实测 epub 锚点常为负（如 -5476376651105784552）；
+     * M10-D 真机抓出：无符号校验会让含 epub 书签的备份整体恢复失败（IllegalArgumentException）。
+     */
+    private val BOOKMARK_ANCHOR_PATTERN = Regex("^-?\\d{1,20}$")
 
     /** JSON 配置：容错未知字段（向前兼容新增字段）、pretty 便于调试与人工核查。 */
     private val json = Json { ignoreUnknownKeys = true; prettyPrint = true }

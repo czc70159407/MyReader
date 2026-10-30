@@ -75,6 +75,38 @@ class EpubProgressCodecTest {
     }
 
     @Test
+    fun `v2 比例分量可往返`() {
+        val s = EpubProgressCodec.encode(
+            loc = "-547637665110",
+            page = 6,
+            ratio = EpubProgressCodec.RatioAnchor(chapter = 1, pageInChapter = 2, chapterPages = 4),
+        )
+        val d = EpubProgressCodec.decode(s)!!
+        assertEquals(2, d.version)
+        assertTrue(d.hasRatio)
+        assertEquals(1, d.chIdx)
+        assertEquals(2, d.pageInChap)
+        assertEquals(4, d.chapPages)
+    }
+
+    @Test
+    fun `v1 旧 payload 无比例分量时 hasRatio 为 false`() {
+        val d = EpubProgressCodec.decode("""{"v":1,"loc":"42","page":3}""")!!
+        assertEquals(1, d.version)
+        assertTrue(!d.hasRatio)
+        assertEquals(3, d.page)
+    }
+
+    @Test
+    fun `比例分量不自洽只降级比例不丢整条进度`() {
+        // 章内页 9 ≥ 章页数 4：格式合法但语义脏 → 比例置 -1，page/loc 仍可用
+        val d = EpubProgressCodec.decode("""{"v":2,"page":5,"chIdx":1,"pageInChap":9,"chapPages":4}""")!!
+        assertTrue(!d.hasRatio)
+        assertEquals(5, d.page)
+        assertEquals(-1, d.chIdx)
+    }
+
+    @Test
     fun `chapter 含特殊字符可往返`() {
         val s = EpubProgressCodec.encode(loc = "9", page = 1, chapter = "第 1 章 \"引号\" \\ 斜杠")
         val d = EpubProgressCodec.decode(s)!!

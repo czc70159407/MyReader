@@ -39,8 +39,14 @@ class MuPdfLocationProbeTest {
         }
     }
 
-    /** 与 [com.artifex.mupdf.viewer.MuPDFCore] 构造函数一致的默认排版（312×504pt，em=10）。 */
-    private fun openFixedLayout(): Document = Document.openDocument(file.absolutePath, "epub").apply {
+    /**
+     * 与 [com.artifex.mupdf.viewer.MuPDFCore] 构造函数一致的默认排版（312×504pt，em=10）。
+     *
+     * 只用单参 `openDocument(path)`：fitz 1.28.2 的 `openDocument(String, String)` 重载**不可用**——
+     * 真机实测 JNI 报 `Archive.pointer not valid for java.lang.String`（native 把 magic 传进了
+     * archive 形参）并 SIGABRT 崩溃；生产侧走 `MuPDFCore(byte[], magic)` 不受影响。
+     */
+    private fun openFixedLayout(): Document = Document.openDocument(file.absolutePath).apply {
         layout(312f, 504f, 10f)
     }
 

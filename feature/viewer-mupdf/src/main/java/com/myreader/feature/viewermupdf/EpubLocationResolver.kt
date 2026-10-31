@@ -55,15 +55,27 @@ class EpubLocationResolver(private val core: MuPDFCore) {
         return exact ?: ratioPage(decoded)
     }
 
-    /** 同排版精确命中：还原后回读 Location 必须与锚点一致（防 MuPDF 静默串到相邻章）。 */
+    /**
+     * 同排版精确命中。两条都必须成立：
+     * 1. 还原后回读 Location 与锚点一致（防 MuPDF 静默串到相邻章）；
+     * 2. **该章页数与抓取时相同**——`Location.page` 是章内页码，章自身重新分页后
+     *    同一 `(chapter, pageInChapter)` 指向的内容已变（真机：竖屏 12 页时章 0 有 4 页，
+     *    横屏 30 页时章 0 约 10 页，仅靠条件 1 会留在章内 30% 处而非原 87% 处）。
+     */
     private fun exactPage(decoded: EpubProgressCodec.EpubProgress): Int? {
+        val chapterPagesNow = chapterRange(decoded.chIdx)?.getOrNull(1)
         val page = core.pageFromLocation(decoded.chIdx, decoded.pageInChap)
         val back = if (page >= 0) core.pageToLocation(page) else null
         val matched = back != null && back[0] == decoded.chIdx && back[1] == decoded.pageInChap
-        return page.takeIf { it >= 0 && matched }
+        val samePagination = chapterPagesNow == decoded.chapPages
+        return page.takeIf { it >= 0 && matched && samePagination }
     }
 
-    /** 章页数变化（relayout）时按章内比例折算到新排版页码。 */
+    /**
+     * 章页数变化（relayout）时按章内比例折算到新排版页码。
+     * 公式与 `MuPDFCore.layout()` 的旧页 remap **同口径**（`(cp + 0.5) / 旧章页数`），
+     * 两侧改动需同步，否则「旋转后位置」与「重进后位置」会不一致。
+     */
     private fun ratioPage(decoded: EpubProgressCodec.EpubProgress): Int? {
         val range = chapterRange(decoded.chIdx)?.takeIf { it[1] > 0 } ?: return null
         val ratio = (decoded.pageInChap + PAGE_MIDPOINT) / decoded.chapPages

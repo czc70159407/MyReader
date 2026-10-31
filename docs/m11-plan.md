@@ -1,6 +1,7 @@
 # M11 执行计划（v1.4：epub 锚点稳健性 / 比例锚点）
 
-> 状态：**S0 已完成（2026-10-31，分支 P 采纳）**——fitz API 边界 + 真机跨会话/跨排版探针均已取证，见 §3。
+> 状态：**已完成（2026-10-31）**——S0 预研（分支 P）、A-1~A-3 代码、六项真机验收全部通过；
+> 验收中修 2 缺陷（精确路径未校验章页数、旋转 remap 未按比例，见 §7.1）。遗留：`versionName` 升 1.4.0。
 > 前序：M10（v1.3，书签 + 首个 Room Migration）已完成，见 [m10-plan.md](m10-plan.md)。
 
 ## 1. 问题陈述
@@ -143,7 +144,7 @@ v1 / v2 包导入路径不变（v2 包内十进制 anchor 按旧格式读）。*
 > 实现差异：①`EpubProgressCodec.encode` 的比例三分量打包为 `RatioAnchor`（6 参数触发 detekt
 > `LongParameterList`）；②`EpubLocationResolver` 对 `chapterRange` 做「按页数失效」的缓存，避免每次
 > 进度回发都整册扫描；③`MuPDFCore.layout()` 旧页 remap 已改 Location 路径（原 mark 路径同源失效）。
-> 真机验收（§7）待做。
+> 真机验收（§7）已全部通过（2026-10-31，含验收中抓出的 2 个缺陷修复）。
 
 ### A-1 进度链路（`core:document` + `feature:viewer-mupdf`）
 - `EpubProgressCodec`：v2 字段与 `decode(1..2)`；`encode(loc, page, chapter, chIdx, pageInChap, chapPages)`（后三者带默认值，旧调用点免改）
@@ -174,6 +175,25 @@ v1 / v2 包导入路径不变（v2 包内十进制 anchor 按旧格式读）。*
 | JVM | `ReaderViewModelTest`（流式书签写新格式、跳转解析） |
 
 ## 7. 真机验收（一加 PKC110 / Android 16）
+
+> **进度（2026-10-31）**：1~6 **全部通过**。验收中抓出并修复 2 个真实缺陷（见 §7.1）。
+>
+> | # | 场景 | 实测 |
+> |---|---|---|
+> | 1 | epub 垂直加书签 → force-stop → 重进 → 点书签 | 书签 `cp:0:3:4`（DB 核对，`user_version=2` 未变）；重进 4/12；跳转后页面节点 bounds `[0,318][1080,2063]` 与跳转前**逐像素一致** |
+> | 2 | epub 水平加书签 → 横竖屏往返 ×2 → 点书签 | 竖屏 9/30、横屏 18/63（章内比例一致 ≈87.5%）、往返后仍 9/30；点书签稳定回落 9/30 |
+> | 3 | 读到第 8 屏 → 退出 → 转屏 → 重进 | 重进 8/12（竖屏固定排版）；横屏切水平 → 40/63，与起始页同属章 1 末段（比例一致） |
+> | 4 | 备份 v3 往返 | 导出 `myreader-backup.zip` 90,545 B（`schemaVersion=3` + 2 文档 + 4 书签，含 `cp:0:3:4` 与两条旧十进制串）→ 卸载重装（空书架）→ 恢复 → 文档/目录/书签/进度**以备份包为基准逐字段 MATCH** |
+> | 5 | v2 旧包导入 | 恢复 M10 的 `myreader-backup_3.zip`（`schemaVersion=2`）不崩：文档 2、书签仍 4 条，其中不在旧包内的 `cp:0:3:4` 未受影响（合并语义符合预期） |
+> | 6 | R8 release 冒烟 | `app-release.apk` 20,414,160 B → 安装后从 v3 备份恢复成功 → epub 打开 4/12 → 跳页 9 → 点书签回落 4/12，落点 bounds `[0,318][1080,2063]` 与创建时一致；logcat 无 `FATAL`/`ANR` |
+>
+> ### 7.1 验收抓出的缺陷（已修）
+> 1. **精确路径未校验章页数**（`EpubProgressCodec` v2 + resolver）：`Location.page` 是章内相对页码，
+>    切模式后章重新分页，只比对「回读 Location 一致」会让位置停在章内 30% 处（实测：书签应为 87.5%，
+>    切水平后显示 4/30）。修复：`exactPage` 追加「该章页数与抓取时相同」条件，否则走比例折算。
+> 2. **`MuPDFCore.layout()` 旧页 remap 未按比例**：旋转后只按 `pageInChapter` 还原，
+>    横屏停在 9/63 而非 ~18/63（内容漂移）。修复：remap 先判章页数是否变化，变化则按
+>    `(pageInChapter + 0.5) / 旧章页数` 折算；补插桩用例 `layoutRemap_keepsContentRatioAcrossPagination`。
 
 1. epub 垂直：第 3 屏加书签 → `am force-stop` → 重进 → 落点 bounds 与创建时一致
 2. epub 水平：加书签 → 横竖屏往返 ×2 → 点书签 → 落到同一段落

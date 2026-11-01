@@ -20,6 +20,7 @@ import com.myreader.core.data.db.MyReaderDatabase
 import com.myreader.core.data.prefs.LibraryPrefs
 import com.myreader.core.data.repo.LibraryRepositoryImpl
 import com.myreader.core.document.CorruptDocumentException
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngine
 import com.myreader.core.document.DocumentEngineRouter
@@ -151,6 +152,8 @@ class LibraryViewModelTest {
             onPageCountChanged: (Int) -> Unit,
             onTapContent: () -> Unit,
             onUserScroll: () -> Unit,
+            onTextSelected: (AnnotationDraft) -> Unit,
+            annotations: List<AnnotationDraft>,
             modifier: Modifier,
         ) = Unit
 

@@ -13,6 +13,7 @@ import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
 import com.myreader.core.data.repo.LibraryRepositoryImpl
 import com.myreader.core.document.CorruptDocumentException
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngine
 import com.myreader.core.document.DocumentEngineRouter
@@ -97,6 +98,8 @@ class DirectoryImporterTest {
             onPageCountChanged: (Int) -> Unit,
             onTapContent: () -> Unit,
             onUserScroll: () -> Unit,
+            onTextSelected: (AnnotationDraft) -> Unit,
+            annotations: List<AnnotationDraft>,
             modifier: androidx.compose.ui.Modifier,
         ) = Unit
 

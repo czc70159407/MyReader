@@ -140,6 +140,8 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 
 > **A 数据层已落地（2026-11-01）**：`AnnotationEntity`/`AnnotationDao` + `MyReaderDatabase` **v3**（entities 加 `AnnotationEntity`）+ **`MIGRATION_2_3`**（CREATE TABLE / CREATE INDEX 与 Room 生成的 `3.json` 逐字一致，外键 CASCADE）+ `LibraryRepository.addAnnotation`（**同页同 quad 去重 + 上限 `MAX_ANNOTATIONS_PER_DOCUMENT=200`**）+ `EntityMappers` 映射（未知 type 回落 HIGHLIGHT）。JVM 单测（`AnnotationDaoTest` 5 例 / `EntityMappersTest` 补 2 例）通过，`build` BUILD SUCCESSFUL（detekt 全绿）；**`Migration2To3Test` 真机通过**（2 例：v2 种子数据零丢失 + annotations 表可写 + 外键 CASCADE）。
 
+> **B-1/B-2/B-3 已落地（2026-11-01）**：`MuPDFCore` 新增 `selectText`（`highlight` + 单点 `snapSelection` 回退）/ `addHighlight`（原生 `PDFAnnotation.TYPE_HIGHLIGHT`）；`MuPdfReaderView` 长按进入选择、拖动扩展、`onDraw` 半透明黄预览、松手创建原生高亮并上报归一化 `AnnotationDraft`；`ReaderViewModel.addAnnotation` 落库（`annotations` 表）+ `observeAnnotations` 观察；`replayAnnotations` 重开文档时按 anchor 去重回放。真机验证：长按选中 "page" → 高亮 + Snackbar「已添加高亮」→ **退出重进高亮回放一致**。**epub（reflowable）跳过（B-4 自绘 overlay）**；拖动扩展选区 adb 无法可靠模拟，需真机手动验证。
+
 ### 3.5 测试矩阵
 
 | 层 | 用例 |

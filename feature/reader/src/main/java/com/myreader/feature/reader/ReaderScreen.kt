@@ -61,6 +61,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.model.Bookmark
@@ -88,6 +89,8 @@ fun ReaderScreen(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
     val bookmarksLoading by viewModel.bookmarksLoading.collectAsStateWithLifecycle()
     val bookmarksError by viewModel.bookmarksError.collectAsStateWithLifecycle()
+    // M12：高亮/笔记（Ready 后持续观察；渲染端回放）
+    val annotations by viewModel.annotations.collectAsStateWithLifecycle()
 
     // 进度保底：ON_PAUSE / ON_STOP / 离开组合时即时落库
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -217,6 +220,9 @@ fun ReaderScreen(
                         onTapContent = { topBarVisible = !topBarVisible },
                         // 触摸探索（TalkBack）开启时禁用自动隐藏，避免探索触摸误触（reader.md §6.3）
                         onUserScroll = { if (!touchExplorationEnabled) topBarVisible = false },
+                        // M12 高亮/笔记：选中完成 → 落库；已存高亮 → 渲染端回放
+                        onTextSelected = viewModel::addAnnotation,
+                        annotations = annotations.map { AnnotationDraft(it.page, it.anchor, it.text) },
                         modifier = Modifier.fillMaxSize(),
                     )
                     // M12 沉浸模式：顶栏 overlay + 淡入淡出——内容区尺寸恒定（不 relayout 不闪）；

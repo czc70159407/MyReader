@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.ProgressPayload
@@ -51,6 +52,8 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         onPageCountChanged: (Int) -> Unit,
         onTapContent: () -> Unit,
         onUserScroll: () -> Unit,
+        onTextSelected: (AnnotationDraft) -> Unit,
+        annotations: List<AnnotationDraft>,
         modifier: Modifier,
     ) {
         val txtDoc = doc as? TxtDocument

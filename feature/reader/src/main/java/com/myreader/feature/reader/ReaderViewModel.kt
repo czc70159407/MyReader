@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.prefs.SettingsPrefs
 import com.myreader.core.data.repo.LibraryRepository
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngineRouter
 import com.myreader.core.document.DocumentException
@@ -16,10 +17,15 @@ import com.myreader.core.document.FileTypes
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.ANNOTATION_COLOR_YELLOW
+import com.myreader.core.model.Annotation
+import com.myreader.core.model.AnnotationAddResult
+import com.myreader.core.model.AnnotationType
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.MAX_ANNOTATIONS_PER_DOCUMENT
 import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
@@ -146,6 +152,50 @@ class ReaderViewModel @Inject constructor(
     val messages: Flow<String> = _messages.receiveAsFlow()
 
     private var bookmarkJob: Job? = null
+
+    // ---- 高亮/笔记（M12）----
+
+    /** 高亮/笔记快照（本地 SQLite，Ready 后持续观察；渲染端回放 + 列表共用） */
+    private val _annotations = MutableStateFlow<List<Annotation>>(emptyList())
+    val annotations: StateFlow<List<Annotation>> = _annotations.asStateFlow()
+
+    private var annotationJob: Job? = null
+
+    /** Ready 建立后启动高亮观察（幂等） */
+    private fun startAnnotationObserver() {
+        if (annotationJob != null) return
+        annotationJob = viewModelScope.launch {
+            repository.observeAnnotations(docId).collect { _annotations.value = it }
+        }
+    }
+
+    /**
+     * 选中文本后落库（M12 B-3）：重复位置/上限由仓储返回业务结果，转 Snackbar（不抛异常）。
+     */
+    fun addAnnotation(draft: AnnotationDraft) {
+        viewModelScope.launch {
+            val message = try {
+                when (repository.addAnnotation(
+                    documentId = docId,
+                    type = AnnotationType.HIGHLIGHT,
+                    page = draft.page,
+                    anchor = draft.anchor,
+                    color = ANNOTATION_COLOR_YELLOW,
+                    text = draft.text,
+                    note = null,
+                )) {
+                    AnnotationAddResult.ADDED -> "已添加高亮"
+                    AnnotationAddResult.DUPLICATE -> "该位置已有高亮"
+                    AnnotationAddResult.LIMIT_REACHED -> "高亮已达上限（$MAX_ANNOTATIONS_PER_DOCUMENT 个）"
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                "添加高亮失败，请重试"
+            }
+            _messages.send(message)
+        }
+    }
 
     /** Ready 建立后启动书签观察（幂等）；观察流异常时标记错误，面板给「重试」出口 */
     private fun startBookmarkObserver() {
@@ -394,6 +444,8 @@ class ReaderViewModel @Inject constructor(
             )
             // M10-C：Ready 后开始观察书签（顶栏已收藏态 + 面板共用；密码重试产生新 Ready 时幂等复用）
             startBookmarkObserver()
+            // M12：Ready 后观察高亮/笔记（渲染端回放 + 列表共用；密码重试幂等复用）
+            startAnnotationObserver()
         }
     }
 

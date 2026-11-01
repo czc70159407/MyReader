@@ -3,6 +3,7 @@ package com.myreader.feature.viewermupdf
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PointF
 import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
@@ -19,7 +20,9 @@ import com.artifex.mupdf.fitz.Quad
 import com.artifex.mupdf.viewer.MuPDFCore
 import com.artifex.mupdf.viewer.PageAdapter
 import com.artifex.mupdf.viewer.ReaderView
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.ProgressPayload
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -42,6 +45,41 @@ private const val SELECTION_PREVIEW_COLOR: Int = 0x66FFEB3B
 
 /** M12 高亮 annotation 颜色（RGB 0..1，黄色；M12 单色起步） */
 private val HIGHLIGHT_RGB = floatArrayOf(1f, 0.92f, 0.23f)
+
+/** quad 顶点分量数（ul/ur/ll/lr 各 2 个 float） */
+private const val QUAD_FLOATS = 8
+
+/** M12：归一化 quad 编码（相对页面宽高 0..1，4 位小数） */
+private fun encodeAnchor(quads: Array<Quad>, pageWidth: Float, pageHeight: Float): String =
+    quads.joinToString(separator = ",", prefix = "[", postfix = "]") { q ->
+        listOf(
+            q.ul_x / pageWidth, q.ul_y / pageHeight,
+            q.ur_x / pageWidth, q.ur_y / pageHeight,
+            q.ll_x / pageWidth, q.ll_y / pageHeight,
+            q.lr_x / pageWidth, q.lr_y / pageHeight,
+        ).joinToString(separator = ",", prefix = "[", postfix = "]") {
+            String.format(Locale.US, "%.4f", it)
+        }
+    }
+
+/** M12：归一化 quad 解码（乘页面尺寸还原为 pt）；格式非法返回 null */
+@Suppress("MagicNumber")
+private fun decodeAnchor(anchor: String, pageSize: PointF): Array<Quad>? {
+    val rows = Regex("\\[([^\\[\\]]+)\\]").findAll(anchor).map { it.groupValues[1] }.toList()
+    if (rows.isEmpty()) return null
+    val out = mutableListOf<Quad>()
+    for (row in rows) {
+        val nums = row.split(",").mapNotNull { it.trim().toFloatOrNull() }
+        if (nums.size != QUAD_FLOATS) continue
+        out += Quad(
+            nums[0] * pageSize.x, nums[1] * pageSize.y,
+            nums[2] * pageSize.x, nums[3] * pageSize.y,
+            nums[4] * pageSize.x, nums[5] * pageSize.y,
+            nums[6] * pageSize.x, nums[7] * pageSize.y,
+        )
+    }
+    return out.takeIf { it.isNotEmpty() }?.toTypedArray()
+}
 
 /**
  * AndroidView 桥接 MuPDF [ReaderView]（瓦片渲染 + BitmapPool，预渲染窗口 ±1 页由其内部管理）。
@@ -67,14 +105,18 @@ internal fun MuPdfReaderView(
     onPageCountChanged: (Int) -> Unit,
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
+    onTextSelected: (AnnotationDraft) -> Unit,
+    annotations: List<AnnotationDraft>,
     modifier: Modifier = Modifier,
 ) {
     // factory 只执行一次：经 State 转发保证匿名子类始终回调最新 lambda；adapterRef 供释放
     val latestCallback by rememberUpdatedState(onProgressChanged)
     val latestPageCountCallback by rememberUpdatedState(onPageCountChanged)
-    // M12 沉浸模式：上游 ReaderView 在中间点按 / 拖动时经 protected 钩子暴露（1.28.2 无 setViewListener）
+    // M12 沉浸模式：上游 ReaderView 在中间点按 / 拖动时经 protected hook 暴露（1.28.2 无 setViewListener）
     val latestTapCallback by rememberUpdatedState(onTapContent)
     val latestScrollCallback by rememberUpdatedState(onUserScroll)
+    // M12 高亮/笔记：选中完成回调（归一化锚点草稿）
+    val latestSelectionCallback by rememberUpdatedState(onTextSelected)
     val adapterRef = remember { mutableStateOf<PageAdapter?>(null) }
     val resolver = remember(core) { if (reflowable) EpubLocationResolver(core) else null }
     // 重排协程作用域：rememberCoroutineScope 与组合同生命周期，组合离开即取消——
@@ -104,6 +146,9 @@ internal fun MuPdfReaderView(
                 private var selAnchorX = 0f
                 private var selAnchorY = 0f
                 private var selQuads: Array<Quad>? = null
+                private var selText: String? = null
+                /** 已回放高亮的 anchor 键（page|anchor），防重组重复创建 */
+                private val replayedAnchors = mutableSetOf<String>()
                 private val selPaint = Paint().apply {
                     color = SELECTION_PREVIEW_COLOR
                     style = Paint.Style.FILL
@@ -159,20 +204,48 @@ internal fun MuPdfReaderView(
                     val y0 = (selAnchorY - pv.top) / sy
                     val x1 = (curX - pv.left) / sx
                     val y1 = (curY - pv.top) / sy
-                    selQuads = core.selectText(getDisplayedViewIndex(), x0, y0, x1, y1)?.quads
+                    val sel = core.selectText(getDisplayedViewIndex(), x0, y0, x1, y1)
+                    selQuads = sel?.quads
+                    selText = sel?.text
                     invalidate()
                 }
 
-                /** 松手：创建原生高亮 annotation 并重绘当前页 */
+                /** 松手：创建原生高亮、重绘，并上报归一化锚点草稿（落库） */
                 private fun finishSelection() {
                     val quads = selQuads
+                    val text = selText
                     selecting = false
                     selQuads = null
+                    selText = null
                     invalidate()
-                    if (quads != null && quads.isNotEmpty()) {
-                        core.addHighlight(getDisplayedViewIndex(), quads, HIGHLIGHT_RGB)
-                        refresh()
+                    if (quads == null || quads.isEmpty()) return
+                    val page = getDisplayedViewIndex()
+                    core.addHighlight(page, quads, HIGHLIGHT_RGB)
+                    refresh()
+                    val size = core.getPageSize(page)
+                    if (size.x > 0f && size.y > 0f) {
+                        val anchor = encodeAnchor(quads, size.x, size.y)
+                        replayedAnchors.add("$page|$anchor")   // 本地已绘制，回放不再重复
+                        latestSelectionCallback(AnnotationDraft(page = page, anchor = anchor, text = text ?: ""))
                     }
+                }
+
+                /** 回放库中高亮（只处理当前页；翻页后重组再回放新页），按 anchor 去重 */
+                fun replayAnnotations(list: List<AnnotationDraft>) {
+                    if (reflowable) return
+                    val current = getDisplayedViewIndex()
+                    var dirty = false
+                    list.asSequence()
+                        .filter { it.page == current && replayedAnchors.add("${it.page}|${it.anchor}") }
+                        .forEach { a ->
+                            val size = core.getPageSize(a.page)
+                            val quads = if (size.x > 0f && size.y > 0f) decodeAnchor(a.anchor, size) else null
+                            if (quads != null && quads.isNotEmpty()) {
+                                core.addHighlight(a.page, quads, HIGHLIGHT_RGB)
+                                dirty = true
+                            }
+                        }
+                    if (dirty) refresh()
                 }
 
                 override fun onDraw(canvas: Canvas) {
@@ -278,6 +351,8 @@ internal fun MuPdfReaderView(
             if (view.getDisplayedViewIndex() != initialPage) {
                 view.setDisplayedViewIndex(initialPage)
             }
+            // M12 高亮回放：库中已保存的高亮绘制为原生 annotation（当前页，幂等）
+            view.replayAnnotations(annotations)
         },
         modifier = modifier,
     )

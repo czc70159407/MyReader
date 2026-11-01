@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.ProgressPayload
@@ -35,6 +36,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         onPageCountChanged: (Int) -> Unit,
         onTapContent: () -> Unit,
         onUserScroll: () -> Unit,
+        onTextSelected: (AnnotationDraft) -> Unit,
+        annotations: List<AnnotationDraft>,
         modifier: Modifier,
     ) {
         val muDoc = doc as MuPdfDocument
@@ -56,6 +59,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 onPageCountChanged = onPageCountChanged,
                 onTapContent = onTapContent,
                 onUserScroll = onUserScroll,
+                onTextSelected = onTextSelected,
+                annotations = annotations,
                 modifier = modifier,
             )
             // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）。

@@ -7,6 +7,7 @@ import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.prefs.SettingsPrefs
 import com.myreader.core.data.repo.LibraryRepository
 import com.myreader.core.document.CorruptDocumentException
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentEngine
 import com.myreader.core.document.DocumentEngineRouter
@@ -727,6 +728,8 @@ class ReaderViewModelTest {
             onPageCountChanged: (Int) -> Unit,
             onTapContent: () -> Unit,
             onUserScroll: () -> Unit,
+            onTextSelected: (AnnotationDraft) -> Unit,
+            annotations: List<AnnotationDraft>,
             modifier: androidx.compose.ui.Modifier,
         ) = Unit
         override suspend fun thumbnail(doc: Document): ImageBitmap = throw UnsupportedOperationException()

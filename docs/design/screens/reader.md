@@ -120,7 +120,7 @@ stateDiagram-v2
 
 `[建议 P2]`：增加「重试」；MISSING 记录场景增加「删除此记录」。
 
-## 6. 沉浸模式（D4：预研完成，结论=可行，已排期 M12 Part A）
+## 6. 沉浸模式（D4：已实现并真机验收通过）
 
 目标：垂直长文档阅读时释放顶栏 64dp。
 
@@ -152,15 +152,15 @@ stateDiagram-v2
 
 ### 6.4 实现工作量与契约变更
 
-沿用 T3 `onPageCountChanged` 的契约扩展先例，`DocumentViewerProvider.Content` 追加两个带默认值的回调（全实现与测试 fake 同步）：
+沿用 T3 `onPageCountChanged` 的契约扩展先例，`DocumentViewerProvider.Content` 追加两个回调（**不带默认值**——接口注释明确「Compose 接口默认参数 + 实现会生成冲突重载桥」，全 6 个实现点同步签名）：
 
 ```kotlin
-onTapContent: () -> Unit = {},
-onUserScroll: () -> Unit = {},
+onTapContent: () -> Unit,
+onUserScroll: () -> Unit,
 ```
 
-- 实现侧：`MuPdfReaderView`（覆写 `onTapMainDocArea` / `onDocMotion`，经 `rememberUpdatedState` 转发）、`MuPdfVerticalView`、`TxtViewerProvider`（`pointerInput` + `semantics`）。
-- 状态侧：`ReaderScreen` 持有 `topBarVisible`（`rememberSaveable`，旋转保持）；大纲/跳页关闭时置 `true`。
+- 实现侧：`MuPdfReaderView`（覆写 `onTapMainDocArea` / `onDocMotion`，经 `rememberUpdatedState` 转发）、`MuPdfVerticalView`、`TxtViewerProvider`（`pointerInput` + `detectTapGestures` + `isScrollInProgress` 监听）。
+- 状态侧：`ReaderScreen` 持有 `topBarVisible`（`rememberSaveable`，旋转保持）；顶栏以 **overlay 浮层 + `fadeIn`/`fadeOut`** 呈现——内容区尺寸恒定不 relayout（显隐不闪），`TopAppBar` 半透明背景（`surface` 92% alpha）+ `windowInsets(0)` 减轻遮挡感；隐藏态语义动作 `onClick(label="显示工具栏")` 落在内容区 `Box`。大纲/跳页关闭时置 `true`。
 - 测试侧：4 个 fake 签名同步；`ReaderViewModelTest` 无需改（状态在 Screen 层）。
 - 预估：1 个会话（含真机验收）。
 
@@ -172,7 +172,7 @@ onUserScroll: () -> Unit = {},
 4. 大纲跳页 → 顶栏可见（页码反馈可读）；
 5. 开启 TalkBack → 滚动不自动隐藏；双击内容区可切换顶栏；
 6. 旋转 / 分屏 → 显隐状态保持，渲染不白屏；
-7. 字体 200% / 深色 → 显隐切换无布局跳动（内容区尺寸恒定）。
+7. 字体 200% / 深色 → 顶栏淡入淡出、内容区尺寸恒定（显隐前后渲染区 bounds 完全一致，不 relayout 不闪）。
 
 ## 7. 书签（`[已实现 M10-C]`）
 

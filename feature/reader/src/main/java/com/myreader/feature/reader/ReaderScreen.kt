@@ -1,7 +1,13 @@
 package com.myreader.feature.reader
 
+import android.content.Context
+import android.view.accessibility.AccessibilityManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
@@ -10,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -32,6 +39,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -39,10 +47,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -144,6 +154,13 @@ fun ReaderScreen(
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
             var showBookmarks by remember { mutableStateOf(false) }
+            // M12 沉浸模式：顶栏显隐（旋转保持）；触摸探索开启时禁用自动隐藏（reader.md §6.3）
+            var topBarVisible by rememberSaveable { mutableStateOf(true) }
+            val context = LocalContext.current
+            val touchExplorationEnabled = remember(context) {
+                (context.getSystemService(Context.ACCESSIBILITY_SERVICE) as? AccessibilityManager)
+                    ?.isTouchExplorationEnabled == true
+            }
             val snackbarHostState = remember { SnackbarHostState() }
             LaunchedEffect(Unit) {
                 viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
@@ -169,52 +186,25 @@ fun ReaderScreen(
 
             Scaffold(
                 snackbarHost = { SnackbarHost(snackbarHostState) },
-                topBar = {
-                    TopAppBar(
-                        title = {
-                            Column {
-                                Text(text = s.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(
-                                    text = "${(uiPage + 1).coerceAtMost(pageCount)} / $pageCount",
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            }
-                        },
-                        navigationIcon = {
-                            IconButton(onClick = onBack) {
-                                Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "返回")
-                            }
-                        },
-                        actions = {
-                            // M10-C：书签面板入口；图标实心/描边反映「当前页已收藏」
-                            IconButton(onClick = { showBookmarks = true }) {
-                                Icon(
-                                    imageVector = if (currentBookmarked) {
-                                        Icons.Filled.Bookmark
-                                    } else {
-                                        Icons.Filled.BookmarkBorder
-                                    },
-                                    contentDescription = "书签",
-                                )
-                            }
-                            IconButton(onClick = { showOutline = true }) {
-                                Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "目录")
-                            }
-                            IconButton(onClick = { showGoTo = true }) {
-                                Icon(imageVector = Icons.Filled.FindInPage, contentDescription = "跳页")
-                            }
-                            // 阅读模式实时切换（M7）：会话内生效不回写偏好；当前进度经 initialProgress 保持
-                            IconButton(onClick = viewModel::toggleMode) {
-                                Icon(
-                                    imageVector = Icons.Filled.SwapHoriz,
-                                    contentDescription = "切换阅读模式",
-                                )
-                            }
-                        },
-                    )
-                },
             ) { padding ->
-                Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding)
+                        .then(
+                            // M12 沉浸模式：顶栏隐藏时暴露语义动作，读屏双击内容区可唤出（reader.md §6.3）
+                            if (!topBarVisible) {
+                                Modifier.semantics {
+                                    onClick(label = "显示工具栏") {
+                                        topBarVisible = true
+                                        true
+                                    }
+                                }
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
                     s.viewer.Content(
                         doc = s.doc,
                         initialProgress = uiProgress,
@@ -224,8 +214,35 @@ fun ReaderScreen(
                             viewModel.onProgress(payload)
                         },
                         onPageCountChanged = viewModel::onPageCountChanged,
+                        onTapContent = { topBarVisible = !topBarVisible },
+                        // 触摸探索（TalkBack）开启时禁用自动隐藏，避免探索触摸误触（reader.md §6.3）
+                        onUserScroll = { if (!touchExplorationEnabled) topBarVisible = false },
                         modifier = Modifier.fillMaxSize(),
                     )
+                    // M12 沉浸模式：顶栏 overlay + 淡入淡出——内容区尺寸恒定（不 relayout 不闪）；
+                    // 半透明背景减轻遮挡感（内容透过可见）。
+                    AnimatedVisibility(
+                        visible = topBarVisible,
+                        enter = fadeIn(),
+                        exit = fadeOut(),
+                        modifier = Modifier.align(Alignment.TopCenter),
+                    ) {
+                        ReaderTopBar(
+                            state = ReaderTopBarState(
+                                title = s.title,
+                                uiPage = uiPage,
+                                pageCount = pageCount,
+                                currentBookmarked = currentBookmarked,
+                            ),
+                            actions = ReaderTopBarActions(
+                                onBack = onBack,
+                                onBookmarks = { showBookmarks = true },
+                                onOutline = { showOutline = true },
+                                onGoTo = { showGoTo = true },
+                                onToggleMode = viewModel::toggleMode,
+                            ),
+                        )
+                    }
                 }
             }
 
@@ -295,6 +312,85 @@ fun ReaderScreen(
             }
         }
     }
+}
+
+/** 顶栏展示数据（打包规避 detekt LongParameterList） */
+private data class ReaderTopBarState(
+    val title: String,
+    val uiPage: Int,
+    val pageCount: Int,
+    val currentBookmarked: Boolean,
+)
+
+/** 顶栏动作回调（打包规避 detekt LongParameterList，与 BookmarkSheetActions 同法） */
+private data class ReaderTopBarActions(
+    val onBack: () -> Unit,
+    val onBookmarks: () -> Unit,
+    val onOutline: () -> Unit,
+    val onGoTo: () -> Unit,
+    val onToggleMode: () -> Unit,
+)
+
+/**
+ * 阅读器顶栏（M12 沉浸模式改为浮层）：标题/页码双行 + 返回/书签/目录/跳页/模式五动作。
+ * 浮层形态不占内容区布局，显隐切换时内容区尺寸恒定（reader.md §6.5 验收 7）。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderTopBar(
+    state: ReaderTopBarState,
+    actions: ReaderTopBarActions,
+    modifier: Modifier = Modifier,
+) {
+    TopAppBar(
+        // M12 沉浸模式：overlay 浮层在内容区之上，去掉 statusBar inset（避免与 Scaffold padding 重复叠加）；
+        // 半透明背景让下方内容透过可见、减轻遮挡感，同时不改变内容区布局 → 不 relayout 不闪。
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        ),
+        windowInsets = WindowInsets(0.dp),
+        title = {
+            Column {
+                Text(text = state.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    text = "${(state.uiPage + 1).coerceAtMost(state.pageCount)} / ${state.pageCount}",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        },
+        navigationIcon = {
+            IconButton(onClick = actions.onBack) {
+                Icon(imageVector = Icons.Filled.ArrowBack, contentDescription = "返回")
+            }
+        },
+        actions = {
+            // M10-C：书签面板入口；图标实心/描边反映「当前页已收藏」
+            IconButton(onClick = actions.onBookmarks) {
+                Icon(
+                    imageVector = if (state.currentBookmarked) {
+                        Icons.Filled.Bookmark
+                    } else {
+                        Icons.Filled.BookmarkBorder
+                    },
+                    contentDescription = "书签",
+                )
+            }
+            IconButton(onClick = actions.onOutline) {
+                Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "目录")
+            }
+            IconButton(onClick = actions.onGoTo) {
+                Icon(imageVector = Icons.Filled.FindInPage, contentDescription = "跳页")
+            }
+            // 阅读模式实时切换（M7）：会话内生效不回写偏好；当前进度经 initialProgress 保持
+            IconButton(onClick = actions.onToggleMode) {
+                Icon(
+                    imageVector = Icons.Filled.SwapHoriz,
+                    contentDescription = "切换阅读模式",
+                )
+            }
+        },
+        modifier = modifier,
+    )
 }
 
 /**

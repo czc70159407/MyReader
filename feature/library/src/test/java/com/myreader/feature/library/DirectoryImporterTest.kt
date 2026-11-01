@@ -95,6 +95,8 @@ class DirectoryImporterTest {
             mode: ReaderMode,
             onProgressChanged: (ProgressPayload) -> Unit,
             onPageCountChanged: (Int) -> Unit,
+            onTapContent: () -> Unit,
+            onUserScroll: () -> Unit,
             modifier: androidx.compose.ui.Modifier,
         ) = Unit
 

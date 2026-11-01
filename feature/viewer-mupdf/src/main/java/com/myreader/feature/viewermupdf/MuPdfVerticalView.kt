@@ -2,6 +2,7 @@ package com.myreader.feature.viewermupdf
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.myreader.core.document.Document
@@ -54,16 +56,22 @@ private const val PLACEHOLDER_RATIO = 4f / 3f
  * LazyColumn 项数不变——重排拟合由水平 ReaderView 承担（见 [MuPdfReaderView]）。
  */
 @Composable
+@Suppress("LongParameterList", "LongMethod")
 internal fun MuPdfVerticalView(
     doc: Document,
     reflowable: Boolean,
     initialProgress: ProgressPayload,
     onProgressChanged: (ProgressPayload) -> Unit,
+    onTapContent: () -> Unit,
+    onUserScroll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
     val loader = remember(doc) { VerticalPageLoader(doc) }
     val latestCallback by rememberUpdatedState(onProgressChanged)
+    // M12 沉浸模式：静止点按切换顶栏、滚动隐藏顶栏（LazyColumn 无内建手势，外层 pointerInput 可行）
+    val latestTapCallback by rememberUpdatedState(onTapContent)
+    val latestScrollCallback by rememberUpdatedState(onUserScroll)
     val resolver = remember(doc) { if (reflowable) EpubLocationResolver((doc as MuPdfDocument).core) else null }
 
     // 初始恢复锚点：重排文档把 Cfi 解析为当前排版页码；页码式取 Page(page/offset)
@@ -119,6 +127,13 @@ internal fun MuPdfVerticalView(
             }
     }
 
+    // M12 沉浸模式：滚动开始时回调隐藏顶栏（distinctUntilChanged 只发一次）
+    LaunchedEffect(doc) {
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { scrolling -> if (scrolling) latestScrollCallback() }
+    }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
@@ -131,7 +146,10 @@ internal fun MuPdfVerticalView(
 
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                // M12 沉浸模式：静止点按 → 切换顶栏（滚动会取消 tap，无手势冲突）
+                .pointerInput(Unit) { detectTapGestures(onTap = { latestTapCallback() }) },
         ) {
             items(doc.pageCount) { page ->
                 VerticalPageItem(loader = loader, page = page, widthPx = widthPx)

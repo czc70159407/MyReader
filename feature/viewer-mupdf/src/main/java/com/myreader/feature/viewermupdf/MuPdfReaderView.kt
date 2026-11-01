@@ -52,11 +52,16 @@ internal fun MuPdfReaderView(
     initialProgress: ProgressPayload,
     onProgressChanged: (ProgressPayload) -> Unit,
     onPageCountChanged: (Int) -> Unit,
+    onTapContent: () -> Unit,
+    onUserScroll: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // factory 只执行一次：经 State 转发保证匿名子类始终回调最新 lambda；adapterRef 供释放
     val latestCallback by rememberUpdatedState(onProgressChanged)
     val latestPageCountCallback by rememberUpdatedState(onPageCountChanged)
+    // M12 沉浸模式：上游 ReaderView 在中间点按 / 拖动时经 protected 钩子暴露（1.28.2 无 setViewListener）
+    val latestTapCallback by rememberUpdatedState(onTapContent)
+    val latestScrollCallback by rememberUpdatedState(onUserScroll)
     val adapterRef = remember { mutableStateOf<PageAdapter?>(null) }
     val resolver = remember(core) { if (reflowable) EpubLocationResolver(core) else null }
     // 重排协程作用域：rememberCoroutineScope 与组合同生命周期，组合离开即取消——
@@ -86,6 +91,18 @@ internal fun MuPdfReaderView(
                     // 重排文档回调 CFI 锚点（跨重排稳定）；页码式回调页码
                     val payload = resolver?.progressForPage(i) ?: ProgressPayload.Page(i)
                     latestCallback(payload)
+                }
+
+                // M12 沉浸模式：中间区点按 → 切换顶栏（边缘区仍翻页，上游自行处理不回调）
+                override fun onTapMainDocArea() {
+                    super.onTapMainDocArea()
+                    latestTapCallback()
+                }
+
+                // M12 沉浸模式：拖动 / 滚动 / 缩放 → 隐藏顶栏
+                override fun onDocMotion() {
+                    super.onDocMotion()
+                    latestScrollCallback()
                 }
 
                 @Suppress("ReturnCount")

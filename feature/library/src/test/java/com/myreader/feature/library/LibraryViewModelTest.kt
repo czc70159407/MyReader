@@ -149,6 +149,8 @@ class LibraryViewModelTest {
             mode: ReaderMode,
             onProgressChanged: (ProgressPayload) -> Unit,
             onPageCountChanged: (Int) -> Unit,
+            onTapContent: () -> Unit,
+            onUserScroll: () -> Unit,
             modifier: Modifier,
         ) = Unit
 

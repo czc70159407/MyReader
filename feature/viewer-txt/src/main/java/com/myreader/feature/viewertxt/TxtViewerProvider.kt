@@ -1,5 +1,6 @@
 package com.myreader.feature.viewertxt
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +20,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentViewerProvider
@@ -47,6 +49,8 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         mode: ReaderMode,
         onProgressChanged: (ProgressPayload) -> Unit,
         onPageCountChanged: (Int) -> Unit,
+        onTapContent: () -> Unit,
+        onUserScroll: () -> Unit,
         modifier: Modifier,
     ) {
         val txtDoc = doc as? TxtDocument
@@ -63,6 +67,9 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         val start = (initialProgress as? ProgressPayload.Page) ?: ProgressPayload.Page(0)
         val listState = rememberLazyListState()
         val latestCallback by rememberUpdatedState(onProgressChanged)
+        // M12 沉浸模式：静止点按切换顶栏、滚动隐藏顶栏（LazyColumn 无内建手势）
+        val latestTapCallback by rememberUpdatedState(onTapContent)
+        val latestScrollCallback by rememberUpdatedState(onUserScroll)
 
         // 初始 = 恢复锚点（page + 项内偏移）；区分「自身滚动回流」与「外部跳页」
         var lastEmitted by remember(txtDoc) { mutableStateOf(start.page to start.scrollOffsetY) }
@@ -95,7 +102,19 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
                 }
         }
 
-        LazyColumn(state = listState, modifier = modifier.fillMaxSize()) {
+        // M12 沉浸模式：滚动开始时回调隐藏顶栏（distinctUntilChanged 只发一次）
+        LaunchedEffect(txtDoc) {
+            snapshotFlow { listState.isScrollInProgress }
+                .distinctUntilChanged()
+                .collect { scrolling -> if (scrolling) latestScrollCallback() }
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = modifier
+                .fillMaxSize()
+                .pointerInput(Unit) { detectTapGestures(onTap = { latestTapCallback() }) },
+        ) {
             items(txtDoc.pageCount) { page ->
                 Box(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                     Text(text = txtDoc.pageText(page).ifBlank { "（空页）" })

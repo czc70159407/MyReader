@@ -16,7 +16,10 @@ interface DocumentViewerProvider {
      *
      * @param onPageCountChanged 会话内排版页数发生变化时回调（典型：epub 水平模式 relayout
      *   完成后页数与打开时快照不一致）；打开初值无需回调（调用方以 Ready.pageCount 持有快照，
-     *   经实时值覆盖展示）。实现须在主线程调用。 */
+     *   经实时值覆盖展示）。实现须在主线程调用。
+     * @param onTapContent 内容区点按（水平模式非边缘区 / 垂直模式静止点按）→ 切换顶栏显隐（M12 沉浸模式）。
+     *   水平模式边缘点按仍翻页、不回调；垂直模式滚动会取消 tap，无手势冲突。
+     * @param onUserScroll 用户翻页 / 滚动 / 缩放 → 隐藏顶栏（M12 沉浸模式）。实现应在主线程调用。 */
     @Composable
     @Suppress("LongParameterList")
     fun Content(
@@ -25,6 +28,8 @@ interface DocumentViewerProvider {
         mode: ReaderMode,
         onProgressChanged: (ProgressPayload) -> Unit,
         onPageCountChanged: (Int) -> Unit,
+        onTapContent: () -> Unit,
+        onUserScroll: () -> Unit,
         modifier: Modifier,
     )
 

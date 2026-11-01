@@ -33,6 +33,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         mode: ReaderMode,
         onProgressChanged: (ProgressPayload) -> Unit,
         onPageCountChanged: (Int) -> Unit,
+        onTapContent: () -> Unit,
+        onUserScroll: () -> Unit,
         modifier: Modifier,
     ) {
         val muDoc = doc as MuPdfDocument
@@ -52,6 +54,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 initialProgress = initialProgress,
                 onProgressChanged = onProgressChanged,
                 onPageCountChanged = onPageCountChanged,
+                onTapContent = onTapContent,
+                onUserScroll = onUserScroll,
                 modifier = modifier,
             )
             // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）。
@@ -61,6 +65,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 reflowable = reflowable,
                 initialProgress = initialProgress,
                 onProgressChanged = onProgressChanged,
+                onTapContent = onTapContent,
+                onUserScroll = onUserScroll,
                 modifier = modifier,
             )
         }

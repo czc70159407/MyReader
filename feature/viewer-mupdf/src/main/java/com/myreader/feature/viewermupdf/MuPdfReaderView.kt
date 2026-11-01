@@ -173,7 +173,7 @@ internal fun MuPdfReaderView(
                     invalidate()
                 }
 
-                /** 松手：创建原生高亮、重绘，并上报归一化锚点草稿（落库） */
+                /** 松手：上报归一化锚点草稿（落库后由 replayAnnotations 统一绘制，避免本地/回放双份） */
                 private fun finishSelection() {
                     val quads = selQuads
                     val text = selText
@@ -183,37 +183,36 @@ internal fun MuPdfReaderView(
                     invalidate()
                     if (quads == null || quads.isEmpty()) return
                     val page = getDisplayedViewIndex()
-                    core.addHighlight(page, quads, HIGHLIGHT_RGB)
-                    refresh()
                     val size = core.getPageSize(page)
                     if (size.x > 0f && size.y > 0f) {
                         val anchor = AnnotationAnchorCodec.encode(quads, size.x, size.y)
-                        replayedAnchors.add("$page|$anchor")   // 本地已绘制，回放不再重复
                         latestSelectionCallback(AnnotationDraft(page = page, anchor = anchor, text = text ?: ""))
                     }
                 }
 
-                /** 回放库中高亮（只处理当前页；翻页后重组再回放新页），按 anchor 去重 */
+                /** 回放库中高亮：与已绘制集合比对，一致则 no-op；新增/删除时清空该页全量重放（幂等） */
                 fun replayAnnotations(list: List<AnnotationDraft>) {
                     if (reflowable) return
                     val current = getDisplayedViewIndex()
+                    val desired = list.filter { it.page == current }
+                        .associateBy { "${it.page}|${it.anchor}" }
+                    val drawn = replayedAnchors.filter { it.startsWith("$current|") }.toSet()
+                    if (desired.keys == drawn) return
+                    replayedAnchors.removeAll(drawn)
+                    core.clearHighlights(current)
                     var dirty = false
-                    list.asSequence()
-                        .filter { it.page == current && replayedAnchors.add("${it.page}|${it.anchor}") }
-                        .forEach { a ->
-                            val size = core.getPageSize(a.page)
-                            val quads = if (size.x > 0f && size.y > 0f) {
-                                AnnotationAnchorCodec.decode(a.anchor)
-                                    ?.let { AnnotationAnchorCodec.toQuads(it, size.x, size.y) }
-                            } else {
-                                null
-                            }
-                            if (quads != null && quads.isNotEmpty()) {
-                                core.addHighlight(a.page, quads, HIGHLIGHT_RGB)
-                                dirty = true
-                            }
+                    desired.values.forEach { a ->
+                        val size = core.getPageSize(a.page)
+                        if (size.x <= 0f || size.y <= 0f) return@forEach
+                        val quads = AnnotationAnchorCodec.decode(a.anchor)
+                            ?.let { AnnotationAnchorCodec.toQuads(it, size.x, size.y) }
+                        if (quads != null && quads.isNotEmpty()) {
+                            core.addHighlight(a.page, quads, HIGHLIGHT_RGB)
+                            replayedAnchors.add("${a.page}|${a.anchor}")
+                            dirty = true
                         }
-                    if (dirty) refresh()
+                    }
+                    if (dirty || drawn.isNotEmpty()) refresh()
                 }
 
                 override fun onDraw(canvas: Canvas) {

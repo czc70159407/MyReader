@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -64,6 +65,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.Annotation
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.ReaderMode
@@ -157,6 +159,7 @@ fun ReaderScreen(
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
             var showBookmarks by remember { mutableStateOf(false) }
+            var showAnnotations by remember { mutableStateOf(false) }
             // M12 沉浸模式：顶栏显隐（旋转保持）；触摸探索开启时禁用自动隐藏（reader.md §6.3）
             var topBarVisible by rememberSaveable { mutableStateOf(true) }
             val context = LocalContext.current
@@ -243,6 +246,7 @@ fun ReaderScreen(
                             actions = ReaderTopBarActions(
                                 onBack = onBack,
                                 onBookmarks = { showBookmarks = true },
+                                onAnnotations = { showAnnotations = true },
                                 onOutline = { showOutline = true },
                                 onGoTo = { showGoTo = true },
                                 onToggleMode = viewModel::toggleMode,
@@ -289,6 +293,23 @@ fun ReaderScreen(
                     ),
                 )
             }
+            if (showAnnotations) {
+                AnnotationSheet(
+                    state = AnnotationPanelState.Ready(annotations),
+                    actions = AnnotationSheetActions(
+                        onJump = { annotation: Annotation ->
+                            val target = annotation.page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
+                            val progress = ProgressPayload.Page(target, 0)
+                            uiProgress = progress
+                            // 与书签跳转同策略：页码式立即落库；流式由渲染端 reposition 后回发
+                            if (!s.reflowable) viewModel.onProgress(progress)
+                            showAnnotations = false
+                        },
+                        onDelete = viewModel::deleteAnnotation,
+                        onDismiss = { showAnnotations = false },
+                    ),
+                )
+            }
             if (showOutline) {
                 OutlineSheet(
                     load = { viewModel.loadOutline() },
@@ -332,6 +353,7 @@ private data class ReaderTopBarState(
 private data class ReaderTopBarActions(
     val onBack: () -> Unit,
     val onBookmarks: () -> Unit,
+    val onAnnotations: () -> Unit,
     val onOutline: () -> Unit,
     val onGoTo: () -> Unit,
     val onToggleMode: () -> Unit,
@@ -380,6 +402,10 @@ private fun ReaderTopBar(
                     },
                     contentDescription = "书签",
                 )
+            }
+            // M12-C2：高亮/笔记面板入口
+            IconButton(onClick = actions.onAnnotations) {
+                Icon(imageVector = Icons.Filled.Brush, contentDescription = "高亮与笔记")
             }
             IconButton(onClick = actions.onOutline) {
                 Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "目录")

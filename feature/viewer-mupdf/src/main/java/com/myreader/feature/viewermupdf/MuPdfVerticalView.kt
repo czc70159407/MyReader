@@ -261,7 +261,7 @@ private fun VerticalPageItem(
         val start = selStart
         val end = selEnd
         selQuads = if (start != null && end != null) {
-            selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight) ?: emptyList()
+            selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)?.quads ?: emptyList()
         } else {
             emptyList()
         }
@@ -292,13 +292,13 @@ private fun VerticalPageItem(
                                 selQuads = emptyList()
                                 if (start != null && end != null) {
                                     scope.launch {
-                                        val quads = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
-                                        if (!quads.isNullOrEmpty()) {
+                                        val result = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
+                                        if (result != null && result.quads.isNotEmpty()) {
                                             onTextSelected(
                                                 AnnotationDraft(
                                                     page = page,
-                                                    anchor = AnnotationAnchorCodec.encodeNormalized(quads),
-                                                    text = "",
+                                                    anchor = AnnotationAnchorCodec.encodeNormalized(result.quads),
+                                                    text = result.text,
                                                 ),
                                             )
                                         }
@@ -347,7 +347,10 @@ private fun VerticalPageItem(
     }
 }
 
-/** 选择：View px 起止点 → 页面 pt → 归一化 quads（每项 8 个 0..1 值）；无文本/未就绪返回 null */
+/** 选择结果：归一化 quads（每项 8 个 0..1 值）+ 选中文本快照 */
+private data class SelectionResult(val quads: List<FloatArray>, val text: String)
+
+/** 选择：View px 起止点 → 页面 pt → 归一化 quads；无文本/未就绪返回 null */
 @Suppress("LongParameterList", "ComplexCondition", "ReturnCount")
 private suspend fun selectQuads(
     core: MuPDFCore?,
@@ -358,12 +361,12 @@ private suspend fun selectQuads(
     sy: Float,
     ptWidth: Float,
     ptHeight: Float,
-): List<FloatArray>? {
+): SelectionResult? {
     if (core == null || sx <= 0f || sy <= 0f || ptWidth <= 0f || ptHeight <= 0f) return null
     val sel = withContext(Dispatchers.Default) {
         core.selectText(page, start.x / sx, start.y / sy, end.x / sx, end.y / sy)
     } ?: return null
-    return sel.quads.map { q ->
+    val quads = sel.quads.map { q ->
         floatArrayOf(
             q.ul_x / ptWidth, q.ul_y / ptHeight,
             q.ur_x / ptWidth, q.ur_y / ptHeight,
@@ -371,4 +374,5 @@ private suspend fun selectQuads(
             q.lr_x / ptWidth, q.lr_y / ptHeight,
         )
     }
+    return SelectionResult(quads = quads, text = sel.text ?: "")
 }

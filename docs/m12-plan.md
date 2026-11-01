@@ -144,6 +144,8 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 
 > **B-4 已落地（2026-11-01）**：`MuPdfVerticalView`（epub 默认垂直模式）支持长按拖动选择文本（`detectDragGesturesAfterLongPress`），选区与已存高亮以 `drawWithContent` 自绘 overlay（半透明黄，**画在位图之上**——首版用 `drawBehind` 被不透明位图遮挡，已修）；锚点复用 `AnnotationAnchorCodec`（归一化 quad，`cp:` 重排前缀位已预留但暂未写入）；`MuPdfViewerProvider` VERTICAL 分支透传 `onTextSelected`/`annotations`。真机验证（PDF 垂直路径，与 epub 同代码）：长按拖动 → 实时预览 → 松手「已添加高亮」→ 重进回放一致。**限制**：①epub 水平模式（`MuPdfReaderView` 的 reflowable 分支）未做自绘 overlay；②归一化 quad 跨重排为页级近似（页内相对位置不变，页映射不回溯）；③epub 文件因 SAF「最近」不索引 `.epub` 未完成端到端真机验证，以 PDF 垂直同代码路径覆盖。
 
+> **C 已落地（2026-11-01；C-1 降级）**：新增 `AnnotationSheet`（`ModalBottomSheet`，复用 `BookmarkSheet` 模式）+ 顶栏「高亮与笔记」入口（`Icons.Filled.Brush`）+ `ReaderViewModel.deleteAnnotation`；列表项显示页码 / 摘录（60 字截断）/ 时间，点击跳转、尾部删除。**联动修复**：水平模式原生 annotation 删除后残留 → `MuPDFCore.clearHighlights(page)` + `replayAnnotations` 改为「已绘制集合 vs 期望集合」比对，不一致即清空该页全量重放（幂等），新建高亮也统一走重放（`finishSelection` 不再本地绘制）；垂直模式（Compose 自绘）本就随 `annotations` 流自动刷新。真机验证：面板 2 条 → 跳转第 5 页 → 删除 → 列表与页面高亮同步消失。**C-1 降级**：选择工具栏（改色 / 加笔记 / 取消）未做，选择后直接创建黄色高亮 + Snackbar；改色与笔记 UI 顺延至笔记功能。
+
 ### 3.5 测试矩阵
 
 | 层 | 用例 |

@@ -197,6 +197,21 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /** 删除高亮/笔记（面板入口）：失败转 Snackbar，不抛异常 */
+    fun deleteAnnotation(id: Long) {
+        viewModelScope.launch {
+            val message = try {
+                repository.deleteAnnotation(id)
+                "已删除高亮"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                "删除高亮失败，请重试"
+            }
+            _messages.send(message)
+        }
+    }
+
     /** Ready 建立后启动书签观察（幂等）；观察流异常时标记错误，面板给「重试」出口 */
     private fun startBookmarkObserver() {
         if (bookmarkJob != null) return

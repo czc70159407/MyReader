@@ -1,7 +1,9 @@
 package com.myreader.core.data.repo
 
+import com.myreader.core.data.db.entity.AnnotationEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.AnnotationType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -72,5 +74,45 @@ class EntityMappersTest {
         assertEquals("thumb/1.png", item.thumbnailRelPath)
         assertEquals(20L, item.lastReadAt)
         assertEquals(10L, item.addedAt)
+    }
+
+    @Test
+    fun annotationEntity_toModel_preservesEveryField() {
+        val entity = AnnotationEntity(
+            id = 1L,
+            documentId = 2L,
+            type = "NOTE",
+            page = 3,
+            anchor = "[[0.0,0.0,0.5,0.0,0.0,0.1,0.5,0.1]]",
+            color = -256,
+            text = "选中文本",
+            note = "我的笔记",
+            createdAt = 4L,
+        )
+        val model = entity.toModel()
+        assertEquals(1L, model.id)
+        assertEquals(2L, model.documentId)
+        assertEquals(AnnotationType.NOTE, model.type)
+        assertEquals(3, model.page)
+        assertEquals("[[0.0,0.0,0.5,0.0,0.0,0.1,0.5,0.1]]", model.anchor)
+        assertEquals(-256, model.color)
+        assertEquals("选中文本", model.text)
+        assertEquals("我的笔记", model.note)
+        assertEquals(4L, model.createdAt)
+    }
+
+    @Test
+    fun annotationEntity_unknownType_fallsBackToHighlight() {
+        val entity = AnnotationEntity(
+            id = 1L,
+            documentId = 2L,
+            type = "UNKNOWN",
+            page = 0,
+            anchor = "[]",
+            color = -256,
+            text = "t",
+            createdAt = 5L,
+        )
+        assertEquals(AnnotationType.HIGHLIGHT, entity.toModel().type)
     }
 }

@@ -135,7 +135,9 @@ class DocumentImporterTest {
         db = Room.inMemoryDatabaseBuilder(context, MyReaderDatabase::class.java).allowMainThreadQueries().build()
         libraryDir = tmp.newFolder("library")
         storage = DocumentStorage(libraryDir)
-        repository = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
+        repository = LibraryRepositoryImpl(
+            db, db.folderDao(), db.documentDao(), db.bookmarkDao(), db.annotationDao(), storage, dispatchers,
+        )
         engine = FakeEngine(FakeEngine.Behavior.OK)
         val router = SimpleDocumentEngineRouter(
             engines = mapOf(

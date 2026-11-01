@@ -3,6 +3,7 @@ package com.myreader.di
 import android.content.Context
 import androidx.room.Room
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.dao.AnnotationDao
 import com.myreader.core.data.db.dao.BookmarkDao
 import com.myreader.core.data.db.dao.DocumentDao
 import com.myreader.core.data.db.dao.FolderDao
@@ -22,7 +23,10 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): MyReaderDatabase =
         // 不用 fallbackToDestructiveMigration（工作规则 3：阅读进度是核心数据）
         Room.databaseBuilder(context, MyReaderDatabase::class.java, "myreader.db")
-            .addMigrations(MyReaderDatabase.MIGRATION_1_2)   // M10：v1→v2 仅新增 bookmarks 表
+            .addMigrations(
+                MyReaderDatabase.MIGRATION_1_2,   // M10：v1→v2 仅新增 bookmarks 表
+                MyReaderDatabase.MIGRATION_2_3,   // M12：v2→v3 仅新增 annotations 表
+            )
             .build()
 
     @Provides
@@ -33,4 +37,7 @@ object DatabaseModule {
 
     @Provides
     fun provideBookmarkDao(db: MyReaderDatabase): BookmarkDao = db.bookmarkDao()
+
+    @Provides
+    fun provideAnnotationDao(db: MyReaderDatabase): AnnotationDao = db.annotationDao()
 }

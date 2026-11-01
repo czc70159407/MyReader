@@ -138,6 +138,8 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 | **D 备份+验收**（0.5 会话） | D-1 | `BackupCodec.SCHEMA_VERSION = 4` + 高亮/笔记导出/恢复 + v3 兼容 | JVM |
 | | D-2 | 真机验收（备份往返 / 升级安装 v2→v3 / R8 冒烟） | 真机 |
 
+> **A 数据层已落地（2026-11-01）**：`AnnotationEntity`/`AnnotationDao` + `MyReaderDatabase` **v3**（entities 加 `AnnotationEntity`）+ **`MIGRATION_2_3`**（CREATE TABLE / CREATE INDEX 与 Room 生成的 `3.json` 逐字一致，外键 CASCADE）+ `LibraryRepository.addAnnotation`（**同页同 quad 去重 + 上限 `MAX_ANNOTATIONS_PER_DOCUMENT=200`**）+ `EntityMappers` 映射（未知 type 回落 HIGHLIGHT）。JVM 单测（`AnnotationDaoTest` 5 例 / `EntityMappersTest` 补 2 例）通过，`build` BUILD SUCCESSFUL（detekt 全绿）。**`Migration2To3Test` 已写、待真机执行**（验收时设备断开）。
+
 ### 3.5 测试矩阵
 
 | 层 | 用例 |

@@ -1,8 +1,11 @@
 package com.myreader.core.data.repo
 
+import com.myreader.core.data.db.entity.AnnotationEntity
 import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.Annotation
+import com.myreader.core.model.AnnotationType
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
@@ -28,6 +31,19 @@ internal fun BookmarkEntity.toModel() = Bookmark(
     scrollOffsetY = scrollOffsetY,
     anchor = anchor,
     label = label,
+    createdAt = createdAt,
+)
+
+/** 高亮/笔记映射：type 存枚举名，未知值回落 HIGHLIGHT（防御旧数据/手改库） */
+internal fun AnnotationEntity.toModel() = Annotation(
+    id = id,
+    documentId = documentId,
+    type = runCatching { AnnotationType.valueOf(type) }.getOrDefault(AnnotationType.HIGHLIGHT),
+    page = page,
+    anchor = anchor,
+    color = color,
+    text = text,
+    note = note,
     createdAt = createdAt,
 )
 

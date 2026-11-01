@@ -4,18 +4,24 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.withTransaction
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.dao.AnnotationDao
 import com.myreader.core.data.db.dao.BookmarkDao
 import com.myreader.core.data.db.dao.DocumentDao
 import com.myreader.core.data.db.dao.FolderDao
+import com.myreader.core.data.db.entity.AnnotationEntity
 import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.Annotation
+import com.myreader.core.model.AnnotationAddResult
+import com.myreader.core.model.AnnotationType
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.MAX_ANNOTATIONS_PER_DOCUMENT
 import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import com.myreader.core.storage.DocumentStorage
 import kotlinx.coroutines.flow.Flow
@@ -23,12 +29,13 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LongParameterList")
 class LibraryRepositoryImpl @Inject constructor(
     private val db: MyReaderDatabase,
     private val folderDao: FolderDao,
     private val documentDao: DocumentDao,
     private val bookmarkDao: BookmarkDao,
+    private val annotationDao: AnnotationDao,
     private val storage: DocumentStorage,
     private val dispatchers: DispatcherProvider,
 ) : LibraryRepository {
@@ -238,6 +245,50 @@ class LibraryRepositoryImpl @Inject constructor(
 
     override suspend fun deleteBookmark(id: Long) = withContext(dispatchers.io) {
         bookmarkDao.delete(id)
+    }
+
+    // ---- 高亮/笔记（M12）----
+
+    override fun observeAnnotations(documentId: Long): Flow<List<Annotation>> =
+        annotationDao.observeByDocument(documentId).map { list -> list.map { it.toModel() } }
+
+    override suspend fun annotationsOf(documentId: Long): List<Annotation> = withContext(dispatchers.io) {
+        annotationDao.byDocument(documentId).map { it.toModel() }
+    }
+
+    override suspend fun addAnnotation(
+        documentId: Long,
+        type: AnnotationType,
+        page: Int,
+        anchor: String,
+        color: Int,
+        text: String,
+        note: String?,
+    ): AnnotationAddResult = withContext(dispatchers.io) {
+        // 去重：同页 + 同归一化 quad 串即同位置
+        if (annotationDao.existsAtAnchor(documentId, page, anchor)) {
+            return@withContext AnnotationAddResult.DUPLICATE
+        }
+        if (annotationDao.countByDocument(documentId) >= MAX_ANNOTATIONS_PER_DOCUMENT) {
+            return@withContext AnnotationAddResult.LIMIT_REACHED
+        }
+        annotationDao.insert(
+            AnnotationEntity(
+                documentId = documentId,
+                type = type.name,
+                page = page,
+                anchor = anchor,
+                color = color,
+                text = text,
+                note = note,
+                createdAt = System.currentTimeMillis(),
+            ),
+        )
+        AnnotationAddResult.ADDED
+    }
+
+    override suspend fun deleteAnnotation(id: Long) = withContext(dispatchers.io) {
+        annotationDao.delete(id)
     }
 
     // ---- 进度 ----

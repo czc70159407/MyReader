@@ -184,7 +184,9 @@ class LibraryViewModelTest {
         context = ApplicationProvider.getApplicationContext()
         db = Room.inMemoryDatabaseBuilder(context, MyReaderDatabase::class.java).allowMainThreadQueries().build()
         storage = DocumentStorage(tmp.newFolder("library"))
-        repository = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
+        repository = LibraryRepositoryImpl(
+            db, db.folderDao(), db.documentDao(), db.bookmarkDao(), db.annotationDao(), storage, dispatchers,
+        )
         val router = SimpleDocumentEngineRouter(
             engines = mapOf("pdf" to FakeEngine(FakeEngine.Behavior.OK)),
             viewers = mapOf("pdf" to FakeViewer()),

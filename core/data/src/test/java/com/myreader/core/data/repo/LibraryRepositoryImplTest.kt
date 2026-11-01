@@ -55,7 +55,9 @@ class LibraryRepositoryImplTest {
             MyReaderDatabase::class.java
         ).allowMainThreadQueries().build()
         storage = DocumentStorage(tmp.newFolder("library"))
-        repo = LibraryRepositoryImpl(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
+        repo = LibraryRepositoryImpl(
+            db, db.folderDao(), db.documentDao(), db.bookmarkDao(), db.annotationDao(), storage, dispatchers,
+        )
     }
 
     @After

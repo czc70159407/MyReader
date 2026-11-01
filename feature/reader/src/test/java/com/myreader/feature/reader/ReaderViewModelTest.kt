@@ -15,6 +15,9 @@ import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.Annotation
+import com.myreader.core.model.AnnotationAddResult
+import com.myreader.core.model.AnnotationType
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.LibraryItem
@@ -780,6 +783,20 @@ class ReaderViewModelTest {
         override suspend fun deleteBookmark(id: Long) {
             deletedBookmarks += id
         }
+        // M12：高亮/笔记 fake（默认空，测试可按需扩展）
+        override fun observeAnnotations(documentId: Long): Flow<List<Annotation>> = MutableStateFlow(emptyList())
+        override suspend fun annotationsOf(documentId: Long): List<Annotation> = emptyList()
+        @Suppress("LongParameterList")
+        override suspend fun addAnnotation(
+            documentId: Long,
+            type: AnnotationType,
+            page: Int,
+            anchor: String,
+            color: Int,
+            text: String,
+            note: String?,
+        ): AnnotationAddResult = AnnotationAddResult.ADDED
+        override suspend fun deleteAnnotation(id: Long) = Unit
         override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) {
             savedProgress += Triple(id, page, scrollOffsetY)
         }

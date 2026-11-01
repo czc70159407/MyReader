@@ -1,5 +1,8 @@
 package com.myreader.core.data.repo
 
+import com.myreader.core.model.Annotation
+import com.myreader.core.model.AnnotationAddResult
+import com.myreader.core.model.AnnotationType
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.DocSort
@@ -70,6 +73,28 @@ interface LibraryRepository {
     ): BookmarkAddResult
 
     suspend fun deleteBookmark(id: Long)
+
+    // ---- 高亮/笔记（M12）----
+    fun observeAnnotations(documentId: Long): Flow<List<Annotation>>
+    suspend fun annotationsOf(documentId: Long): List<Annotation>   // 备份/跳转前快照
+
+    /**
+     * 新增高亮/笔记（含同页同归一化 quad 去重与每文档上限）：重复位置返回
+     * [AnnotationAddResult.DUPLICATE]，超出 [MAX_ANNOTATIONS_PER_DOCUMENT] 返回
+     * [AnnotationAddResult.LIMIT_REACHED]——均为业务分支，不抛异常。
+     */
+    @Suppress("LongParameterList")
+    suspend fun addAnnotation(
+        documentId: Long,
+        type: AnnotationType,
+        page: Int,
+        anchor: String,
+        color: Int,
+        text: String,
+        note: String?,
+    ): AnnotationAddResult
+
+    suspend fun deleteAnnotation(id: Long)
 
     // ---- 进度 ----
     suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int)   // progressType="page"

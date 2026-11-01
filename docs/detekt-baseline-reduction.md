@@ -269,10 +269,10 @@ T7 已收紧（新违规即 build 失败），存量 173 条分布于 9 个模�
 
 | 批次 | 模块 | 规则 | 手法 | 削减前→后 | commit SHA | 日期 |
 |---|---|---|---|---|---|---|
-| 阶段0 | 全部 | 基线冻结 | 统计 173 + detekt/build 全绿 | 0/173 | 未提交（待用户决策） | 2026-10-31 |
-| 阶段1 | 9 模块 | FunctionNaming / EmptyFunctionBlock / TooManyFunctions | 删死条目 + config 豁免 + `@Suppress` | 173→125 | 未提交（待用户决策） | 2026-10-31 |
-| 阶段2 | 9 模块 | MaxLineLength / MagicNumber / UseCheckOrError / UseRequire / VariableNaming / UnusedPrivateProperty / ComplexCondition | 换行 + 具名化 + `check`/`require` + 删除 | 125→49 | 未提交（待用户决策） | 2026-10-31 |
-| 阶段3 | 7 模块 | SwallowedException / ReturnCount / NestedBlockDepth / TooGenericExceptionCaught（+连带 6 条） | `@Suppress` 就地标注 + detectBom/normalize/decode 重构 | 49→22 | 未提交（待用户决策） | 2026-10-31 |
-| 阶段4 | 6 模块 | LongParameterList / CyclomaticComplexMethod / LongMethod / LoopWithTooManyJumpStatements | `@Suppress` 就地标注 | 22→3 | 未提交（待用户决策） | 2026-10-31 |
-| 阶段5 | core:data | CyclomaticComplexMethod / LongMethod / LoopWithTooManyJumpStatements | 拆解 restore 为 5 个子函数 | 3→0 | 未提交（待用户决策） | 2026-10-31 |
-| 阶段6 | 全部 | 收尾 | 删 9 个 baseline 文件 + 移除 `baseline =` 配置 | 0→0（纯 config 门禁） | 未提交（待用户决策） | 2026-10-31 |
+| 阶段0 | 全部 | 基线冻结 | 统计 173 + detekt/build 全绿 | 0/173 | b353391 | 2026-10-31 |
+| 阶段1 | 9 模块 | FunctionNaming / EmptyFunctionBlock / TooManyFunctions | 删死条目 + config 豁免 + `@Suppress` | 173→125 | b353391 | 2026-10-31 |
+| 阶段2 | 9 模块 | MaxLineLength / MagicNumber / UseCheckOrError / UseRequire / VariableNaming / UnusedPrivateProperty / ComplexCondition | 换行 + 具名化 + `check`/`require` + 删除 | 125→49 | b353391 | 2026-10-31 |
+| 阶段3 | 7 模块 | SwallowedException / ReturnCount / NestedBlockDepth / TooGenericExceptionCaught（+连带 6 条） | `@Suppress` 就地标注 + detectBom/normalize/decode 重构 | 49→22 | b353391 | 2026-10-31 |
+| 阶段4 | 6 模块 | LongParameterList / CyclomaticComplexMethod / LongMethod / LoopWithTooManyJumpStatements | `@Suppress` 就地标注 | 22→3 | b353391 | 2026-10-31 |
+| 阶段5 | core:data | CyclomaticComplexMethod / LongMethod / LoopWithTooManyJumpStatements | 拆解 restore 为 5 个子函数 | 3→0 | b353391 | 2026-10-31 |
+| 阶段6 | 全部 | 收尾 | 删 9 个 baseline 文件 + 移除 `baseline =` 配置 | 0→0（纯 config 门禁） | b353391 | 2026-10-31 |

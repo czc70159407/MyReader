@@ -1,5 +1,11 @@
 package com.myreader.feature.viewermupdf
 
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.view.GestureDetector
+import android.view.HapticFeedbackConstants
+import android.view.MotionEvent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -9,6 +15,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import com.artifex.mupdf.fitz.Quad
 import com.artifex.mupdf.viewer.MuPDFCore
 import com.artifex.mupdf.viewer.PageAdapter
 import com.artifex.mupdf.viewer.ReaderView
@@ -29,6 +36,12 @@ private const val POINTS_PER_INCH = 72
 
 /** 重排排版最小尺寸（pt）：防极小分屏导致页数爆炸/除零 */
 private const val MIN_LAYOUT_PT = 100
+
+/** M12 文本选择拖动预览色（半透明黄，ARGB 0xAARRGGBB） */
+private const val SELECTION_PREVIEW_COLOR: Int = 0x66FFEB3B
+
+/** M12 高亮 annotation 颜色（RGB 0..1，黄色；M12 单色起步） */
+private val HIGHLIGHT_RGB = floatArrayOf(1f, 0.92f, 0.23f)
 
 /**
  * AndroidView 桥接 MuPDF [ReaderView]（瓦片渲染 + BitmapPool，预渲染窗口 ±1 页由其内部管理）。
@@ -85,6 +98,98 @@ internal fun MuPdfReaderView(
             object : ReaderView(ctx) {
                 private var refreshPending: Runnable? = null
                 private var layoutJob: Job? = null
+
+                // M12 B-1/B-2：文本选择（长按 + 拖动）；选区在 onDraw 绘制，松手创建原生高亮
+                private var selecting = false
+                private var selAnchorX = 0f
+                private var selAnchorY = 0f
+                private var selQuads: Array<Quad>? = null
+                private val selPaint = Paint().apply {
+                    color = SELECTION_PREVIEW_COLOR
+                    style = Paint.Style.FILL
+                }
+                private val selPath = Path()
+                private val selectDetector = GestureDetector(
+                    ctx,
+                    object : GestureDetector.SimpleOnGestureListener() {
+                        override fun onLongPress(e: MotionEvent) {
+                            // epub（reflowable）暂不支持原生高亮（B-4 自绘 overlay）
+                            if (reflowable) return
+                            selecting = true
+                            selAnchorX = e.x
+                            selAnchorY = e.y
+                            updateSelection(e.x, e.y)
+                            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        }
+                    },
+                )
+
+                init {
+                    // 选区在 onDraw 叠加绘制（ReaderView 默认 ViewGroup 不绘制自身）
+                    setWillNotDraw(false)
+                }
+
+                override fun onTouchEvent(event: MotionEvent): Boolean {
+                    if (!selecting) selectDetector.onTouchEvent(event)
+                    if (selecting) {
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_MOVE -> updateSelection(event.x, event.y)
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finishSelection()
+                            else -> Unit
+                        }
+                        return true
+                    }
+                    return super.onTouchEvent(event)
+                }
+
+                /** 显示页尺寸换算比（px / pt）；页面未就绪时为 1 */
+                private fun scaleOf(): Pair<Float, Float> {
+                    val pv = getDisplayedView() ?: return 1f to 1f
+                    val size = core.getPageSize(getDisplayedViewIndex())
+                    val sx = if (size.x > 0f) pv.width / size.x else 1f
+                    val sy = if (size.y > 0f) pv.height / size.y else 1f
+                    return sx to sy
+                }
+
+                /** 选区更新：View 坐标 → 页面坐标（pt）→ 吸附词边界取 quad */
+                private fun updateSelection(curX: Float, curY: Float) {
+                    val pv = getDisplayedView() ?: return
+                    val (sx, sy) = scaleOf()
+                    val x0 = (selAnchorX - pv.left) / sx
+                    val y0 = (selAnchorY - pv.top) / sy
+                    val x1 = (curX - pv.left) / sx
+                    val y1 = (curY - pv.top) / sy
+                    selQuads = core.selectText(getDisplayedViewIndex(), x0, y0, x1, y1)?.quads
+                    invalidate()
+                }
+
+                /** 松手：创建原生高亮 annotation 并重绘当前页 */
+                private fun finishSelection() {
+                    val quads = selQuads
+                    selecting = false
+                    selQuads = null
+                    invalidate()
+                    if (quads != null && quads.isNotEmpty()) {
+                        core.addHighlight(getDisplayedViewIndex(), quads, HIGHLIGHT_RGB)
+                        refresh()
+                    }
+                }
+
+                override fun onDraw(canvas: Canvas) {
+                    super.onDraw(canvas)
+                    val quads = selQuads ?: return
+                    val pv = getDisplayedView() ?: return
+                    val (sx, sy) = scaleOf()
+                    for (q in quads) {
+                        selPath.reset()
+                        selPath.moveTo(pv.left + q.ul_x * sx, pv.top + q.ul_y * sy)
+                        selPath.lineTo(pv.left + q.ur_x * sx, pv.top + q.ur_y * sy)
+                        selPath.lineTo(pv.left + q.lr_x * sx, pv.top + q.lr_y * sy)
+                        selPath.lineTo(pv.left + q.ll_x * sx, pv.top + q.ll_y * sy)
+                        selPath.close()
+                        canvas.drawPath(selPath, selPaint)
+                    }
+                }
 
                 override fun onMoveToChild(i: Int) {
                     super.onMoveToChild(i)

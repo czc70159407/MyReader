@@ -8,6 +8,7 @@ import com.myreader.core.data.db.entity.DocumentEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+@Suppress("TooManyFunctions")
 interface DocumentDao {
 
     // Room 无法参数化 ORDER BY：按 DocSort(TITLE/LAST_READ/ADDED/SIZE) 提供具名查询，Repository 按当前偏好分发

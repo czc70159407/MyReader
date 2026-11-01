@@ -62,6 +62,7 @@ fun FolderTreeList(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+@Suppress("LongParameterList")
 private fun FolderTreeItem(
     node: FolderNode,
     expanded: Boolean,

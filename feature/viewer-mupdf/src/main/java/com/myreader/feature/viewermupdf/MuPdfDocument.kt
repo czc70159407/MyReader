@@ -13,6 +13,15 @@ import com.myreader.core.document.OutlineEntry
  */
 class MuPdfDocument(val core: MuPDFCore) : Document {
 
+    private companion object {
+        /** 大纲缩进：每级 4 空格（上游 flattenOutlineNodes 生成） */
+        const val OUTLINE_INDENT_SPACES = 4
+
+        /** 页尺寸异常时的 4:3 兜底宽高比 */
+        const val FALLBACK_ASPECT_WIDTH = 4
+        const val FALLBACK_ASPECT_HEIGHT = 3
+    }
+
     /** getter：重排文档（epub）layout() 后页数会变化，必须每次取实时值（M9 review 修复 S1） */
     override val pageCount: Int get() = core.countPages()
 
@@ -55,7 +64,7 @@ class MuPdfDocument(val core: MuPDFCore) : Document {
         val root = mutableListOf<Node>()
         val stack = ArrayDeque<MutableList<Node>>().apply { addLast(root) }
         for (item in core.getOutline()) {
-            val depth = (item.title.length - item.title.trimStart(' ').length) / 4
+            val depth = (item.title.length - item.title.trimStart(' ').length) / OUTLINE_INDENT_SPACES
             val title = item.title.trimStart(' ')
             while (stack.size > depth + 1) stack.removeLast()
             while (stack.size < depth + 1) {
@@ -80,7 +89,11 @@ class MuPdfDocument(val core: MuPDFCore) : Document {
     /** 渲染指定页为指定宽度的位图（缩略图/预览用）；高度按页面点尺寸等比换算 */
     fun renderPageBitmap(page: Int, width: Int): Bitmap {
         val size = core.getPageSize(page)
-        val height = if (size.y > 0) (width * size.y / size.x).toInt().coerceAtLeast(1) else width * 4 / 3
+        val height = if (size.y > 0) {
+            (width * size.y / size.x).toInt().coerceAtLeast(1)
+        } else {
+            width * FALLBACK_ASPECT_WIDTH / FALLBACK_ASPECT_HEIGHT
+        }
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         core.drawPage(bitmap, page, width, height, 0, 0, width, height, null)
         return bitmap

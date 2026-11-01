@@ -38,6 +38,9 @@ class DocumentImporter @Inject constructor(
 ) {
     companion object {
         private const val TAG = "DocumentImporter"
+
+        /** 缩略图 PNG 压缩质量（PNG 无损，参数仅为 API 占位）。 */
+        private const val THUMBNAIL_PNG_QUALITY = 90
     }
 
     /**
@@ -81,6 +84,7 @@ class DocumentImporter @Inject constructor(
      * 导入单个文档。
      * @param force true 时跳过 hash 查重（用户确认「仍导入」后的重导路径）
      */
+    @Suppress("SwallowedException", "TooGenericExceptionCaught", "LongMethod", "CyclomaticComplexMethod")
     suspend fun import(uri: Uri, targetFolderId: Long? = null, force: Boolean = false): Result =
         withContext(dispatchers.io) {
             val displayName = queryDisplayName(uri)
@@ -88,7 +92,10 @@ class DocumentImporter @Inject constructor(
             val size = querySize(uri)
             // 安全审计 L1：uri/展示名含用户隐私（文件名/来源路径），仅 debug 打印
             if (BuildConfig.DEBUG) {
-                android.util.Log.i(TAG, "import start: uri=$uri name=$displayName mime=$mimeType size=$size force=$force")
+                android.util.Log.i(
+                    TAG,
+                    "import start: uri=$uri name=$displayName mime=$mimeType size=$size force=$force",
+                )
             }
             var copy: DocumentStorage.CopyResult? = null
             var thumbnailRelPath: String? = null
@@ -160,7 +167,10 @@ class DocumentImporter @Inject constructor(
                 }
 
                 // 7. 入库（relPath 沿用复制时的 docId）
-                android.util.Log.i(TAG, "验证通过: pageCount=$pageCount needsPassword=$needsPassword thumb=$thumbnailRelPath")
+                android.util.Log.i(
+                    TAG,
+                    "验证通过: pageCount=$pageCount needsPassword=$needsPassword thumb=$thumbnailRelPath",
+                )
                 val title = displayName ?: "未命名文档"
                 repository.addDocument(
                     id = docId,
@@ -177,7 +187,12 @@ class DocumentImporter @Inject constructor(
                     thumbnailRelPath = thumbnailRelPath,
                     needsPassword = needsPassword,
                 )
-                Result(uri, if (needsPassword) Status.IMPORTED_PASSWORD_MARKED else Status.IMPORTED, docId, title = title)
+                Result(
+                    uri,
+                    if (needsPassword) Status.IMPORTED_PASSWORD_MARKED else Status.IMPORTED,
+                    docId,
+                    title = title,
+                )
             } catch (e: CancellationException) {
                 // 协程取消（如导入中离开页面）：清理半成品后原样重抛，保持结构化并发
                 copy?.let { storage.deleteDocument(it.relPath) }
@@ -228,7 +243,7 @@ class DocumentImporter @Inject constructor(
         val dir = storage.thumbDir().apply { if (!exists()) mkdirs() }
         val file = File(dir, "$docId.png")
         FileOutputStream(file).use { out ->
-            image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 90, out)
+            image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, THUMBNAIL_PNG_QUALITY, out)
         }
         return "${DocumentStorage.THUMB_DIR_NAME}/$docId.png"
     }

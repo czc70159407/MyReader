@@ -24,8 +24,15 @@ class TxtDocumentEngine @Inject constructor() : DocumentEngine {
     companion object {
         /** 单文件体积上限（字节），超过拒收以防 OOM（全文解码约 3~4 倍 + 分页再复制） */
         private const val MAX_BYTES = 16L * 1024 * 1024
+
+        /** UTF-8 BOM 字节数（用于探测与跳过） */
+        private const val UTF8_BOM_LEN = 3
+
+        /** UTF-16 BOM 字节数 */
+        private const val UTF16_BOM_LEN = 2
     }
 
+    @Suppress("TooGenericExceptionCaught")
     override fun open(path: String, fileType: String, password: String?): Document {
         val file = File(path)
         if (file.length() > MAX_BYTES) {
@@ -44,13 +51,14 @@ class TxtDocumentEngine @Inject constructor() : DocumentEngine {
     private fun decodeText(bytes: ByteArray): String {
         val bom = detectBom(bytes)
         return when (bom) {
-            "UTF-8" -> String(bytes, 3, bytes.size - 3, Charsets.UTF_8)
+            "UTF-8" -> String(bytes, UTF8_BOM_LEN, bytes.size - UTF8_BOM_LEN, Charsets.UTF_8)
             "UTF-16LE" -> String(bytes, 2, bytes.size - 2, Charsets.UTF_16LE)
             "UTF-16BE" -> String(bytes, 2, bytes.size - 2, Charsets.UTF_16BE)
             else -> decodeWithoutBom(bytes)
         }
     }
 
+    @Suppress("SwallowedException")
     private fun decodeWithoutBom(bytes: ByteArray): String {
         // 严格 UTF-8：任何非法字节即报错，不静默产生 U+FFFD
         try {
@@ -63,14 +71,29 @@ class TxtDocumentEngine @Inject constructor() : DocumentEngine {
             // 仅「非法字节序列」才回落常见中文编码；OOM 等非编码原因必须传播，
             // 否则会被误判为「非 UTF-8 编码」而产出乱码（M10 review H7）
             return runCatching { String(bytes, charset("GBK")) }
-                .getOrElse { runCatching { String(bytes, charset("Big5")) }.getOrDefault(String(bytes, Charsets.ISO_8859_1)) }
+                .getOrElse {
+                    runCatching { String(bytes, charset("Big5")) }
+                        .getOrDefault(String(bytes, Charsets.ISO_8859_1))
+                }
         }
     }
 
-    private fun detectBom(bytes: ByteArray): String? {
-        if (bytes.size >= 3 && bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()) return "UTF-8"
-        if (bytes.size >= 2 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()) return "UTF-16LE"
-        if (bytes.size >= 2 && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()) return "UTF-16BE"
-        return null
+    private fun detectBom(bytes: ByteArray): String? = when {
+        hasUtf8Bom(bytes) -> "UTF-8"
+        hasUtf16LeBom(bytes) -> "UTF-16LE"
+        hasUtf16BeBom(bytes) -> "UTF-16BE"
+        else -> null
     }
+
+    /** 是否为 UTF-8 BOM（EF BB BF）；拆出辅助函数以降低条件复杂度。 */
+    private fun hasUtf8Bom(bytes: ByteArray): Boolean {
+        if (bytes.size < UTF8_BOM_LEN) return false
+        return bytes[0] == 0xEF.toByte() && bytes[1] == 0xBB.toByte() && bytes[2] == 0xBF.toByte()
+    }
+
+    private fun hasUtf16LeBom(bytes: ByteArray): Boolean =
+        bytes.size >= UTF16_BOM_LEN && bytes[0] == 0xFF.toByte() && bytes[1] == 0xFE.toByte()
+
+    private fun hasUtf16BeBom(bytes: ByteArray): Boolean =
+        bytes.size >= UTF16_BOM_LEN && bytes[0] == 0xFE.toByte() && bytes[1] == 0xFF.toByte()
 }

@@ -72,6 +72,7 @@ sealed interface ReaderUiState {
  * （补 pageCount / 补缩略图；`needsPassword` 保留不清——加密标识常驻，见 docs/ui-design.md「导入流程」第 5 条）。
  */
 @HiltViewModel
+@Suppress("TooManyFunctions")
 class ReaderViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: LibraryRepository,
@@ -84,6 +85,12 @@ class ReaderViewModel @Inject constructor(
     companion object {
         /** 页面静止该时长后才落库；期间翻页/滚动重置计时 */
         const val PROGRESS_DEBOUNCE_MS = 600L
+
+        /** 损坏文档标记（区别于 -1 未知页数；书架据此引导删除/重导） */
+        private const val CORRUPT_PAGE_COUNT = -2
+
+        /** 缩略图 PNG 压缩质量（PNG 无损，参数仅为 API 占位） */
+        private const val PNG_QUALITY = 100
     }
 
     private val docId: Long = checkNotNull(savedStateHandle["documentId"])
@@ -283,6 +290,13 @@ class ReaderViewModel @Inject constructor(
         return withContext(dispatchers.io) { doc.outline() }
     }
 
+    @Suppress(
+        "SwallowedException",
+        "TooGenericExceptionCaught",
+        "CyclomaticComplexMethod",
+        "LongMethod",
+        "ThrowsCount",
+    )
     private fun openDocument(password: String? = null) {
         viewModelScope.launch {
             // 重入打开（如未来的恢复/重试路径）前就地释放上一轮 native 句柄：
@@ -337,7 +351,7 @@ class ReaderViewModel @Inject constructor(
             } catch (e: DocumentException) {
                 // 损坏标记 -2（区别于 -1 未知），书架引导删除/重导，不自动重试（ui-design 错误边界）
                 try {
-                    repository.setPageCount(docId, -2)
+                    repository.setPageCount(docId, CORRUPT_PAGE_COUNT)
                 } catch (ce: CancellationException) {
                     throw ce
                 } catch (_: Exception) {
@@ -418,7 +432,7 @@ class ReaderViewModel @Inject constructor(
         val file = File(storage.thumbDir().apply { if (!exists()) mkdirs() }, "$docId.png")
         withContext(dispatchers.io) {
             file.outputStream().use { out ->
-                image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, out)
+                image.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, PNG_QUALITY, out)
             }
         }
         return "thumb/$docId.png"

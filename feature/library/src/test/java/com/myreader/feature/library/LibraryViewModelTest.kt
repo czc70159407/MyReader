@@ -127,14 +127,30 @@ class LibraryViewModelTest {
         override fun gotoPage(page: Int) {}
         override suspend fun pageSize(page: Int): androidx.compose.ui.geometry.Size =
             androidx.compose.ui.geometry.Size(595f, 842f)
-        override fun drawPage(bitmap: Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int) {}
+        override fun drawPage(
+            bitmap: Bitmap,
+            page: Int,
+            width: Int,
+            height: Int,
+            patchX: Int,
+            patchY: Int,
+            patchW: Int,
+            patchH: Int,
+        ) {}
         override suspend fun outline(): List<OutlineEntry> = emptyList()
         override fun close() {}
     }
 
     private class FakeViewer : DocumentViewerProvider {
         @Composable
-        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, onPageCountChanged: (Int) -> Unit, modifier: Modifier) = Unit
+        override fun Content(
+            doc: Document,
+            initialProgress: ProgressPayload,
+            mode: ReaderMode,
+            onProgressChanged: (ProgressPayload) -> Unit,
+            onPageCountChanged: (Int) -> Unit,
+            modifier: Modifier,
+        ) = Unit
 
         override suspend fun thumbnail(doc: Document): ImageBitmap =
             Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).asImageBitmap()
@@ -179,7 +195,13 @@ class LibraryViewModelTest {
             scope = CoroutineScope(UnconfinedTestDispatcher(mainDispatcherRule.testScheduler) + Job()),
         ) { File(tmp.newFolder("prefs"), "library.preferences_pb") }
         prefs = LibraryPrefs(dataStore)
-        viewModel = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, directoryImporter, prefs)   // 根目录
+        viewModel = LibraryViewModel(
+            SavedStateHandle(emptyMap()),
+            repository,
+            importer,
+            directoryImporter,
+            prefs,
+        )   // 根目录
     }
 
     @After
@@ -544,7 +566,13 @@ class LibraryViewModelTest {
     fun breadcrumb_showsAncestorChain_andFallsBackWhenFolderDeleted() = runTest(mainDispatcherRule.testScheduler) {
         val a = repository.createFolder(null, "A")
         val b = repository.createFolder(a, "B")
-        val vm = LibraryViewModel(SavedStateHandle(mapOf("folderId" to b)), repository, importer, directoryImporter, prefs)
+        val vm = LibraryViewModel(
+            SavedStateHandle(mapOf("folderId" to b)),
+            repository,
+            importer,
+            directoryImporter,
+            prefs,
+        )
 
         vm.breadcrumb.test {
             // CI run #33 实证：stateIn 首帧在慢机上可能已被上游填成 [A, B]，
@@ -577,7 +605,13 @@ class LibraryViewModelTest {
         awaitPrefsSort(DocSort.SIZE)
 
         // 重建 VM（同偏好实例）：重启语义读回 SIZE
-        val vm2 = LibraryViewModel(SavedStateHandle(emptyMap()), repository, importer, directoryImporter, prefs)
+        val vm2 = LibraryViewModel(
+            SavedStateHandle(emptyMap()),
+            repository,
+            importer,
+            directoryImporter,
+            prefs,
+        )
         keepAlive(vm2.documents)
         awaitDocOrder(vm2) { it == listOf("b.pdf", "a.pdf") }
     }
@@ -649,7 +683,13 @@ class LibraryViewModelTest {
 
         // 非根目录 VM：recent 恒空（VM 层 gate，stateIn 初值即空）
         val fid = repository.createFolder(null, "F")
-        val vm2 = LibraryViewModel(SavedStateHandle(mapOf("folderId" to fid)), repository, importer, directoryImporter, prefs)
+        val vm2 = LibraryViewModel(
+            SavedStateHandle(mapOf("folderId" to fid)),
+            repository,
+            importer,
+            directoryImporter,
+            prefs,
+        )
         assertTrue(vm2.recent.value.isEmpty())
     }
 

@@ -14,6 +14,9 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** 同名自动重命名的最大尝试次数（防御性上限，避免死循环）。 */
+private const val MAX_RENAME_ATTEMPTS = 1000
+
 /** 目录导入进度（UI 展示「正在扫描目录…」/「正在导入 3/42…」）。 */
 data class DirectoryImportProgress(val current: Int, val total: Int, val phase: Phase) {
     enum class Phase { SCANNING, IMPORTING }
@@ -87,6 +90,7 @@ class DirectoryImporter @Inject constructor(
      * - 导入阶段取消：保留已导入文档与已创建目录（不做空目录清理），部分汇总经
      *   [onPartialSummary] 上交后 `CancellationException` 继续传播——不得吞掉转为错误文案。
      */
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     internal suspend fun importTree(
         source: DirectoryTreeSource,
         targetFolderId: Long?,
@@ -289,7 +293,7 @@ class DirectoryImporter @Inject constructor(
             do {
                 candidate = "$base ($k)$ext"
                 k++
-            } while (map.containsKey(candidate) && k < 1000)
+            } while (map.containsKey(candidate) && k < MAX_RENAME_ATTEMPTS)
             repository.renameDocument(docId, candidate)
             map.getOrPut(candidate) { mutableSetOf() } += docId
             renamed++

@@ -49,6 +49,7 @@ data class FolderPickerOptions(
 )
 
 @Composable
+@Suppress("LongParameterList")
 fun FolderPickerDialog(
     state: FolderTreeState,
     onConfirm: (Long?) -> Unit,

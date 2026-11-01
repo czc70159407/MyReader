@@ -63,13 +63,10 @@ object FileTypes {
             ?.takeIf { it.contains('.') }
             ?.substringAfterLast('.', "")
             ?.lowercase()
-        if (!ext.isNullOrEmpty()) {
-            fromExtension(ext)?.let { return it }
-            // 有扩展名但未登记（如 .log/.csv/.md）→ 拒收，不靠 mime 兜底误导入（M9 review M2）
-            return null
-        }
         // 无扩展名才用 mime 兜底（如 .txt 经 text/plain 导入）
-        return fromMime(mimeType)
+        if (ext.isNullOrEmpty()) return fromMime(mimeType)
+        // 有扩展名但未登记（如 .log/.csv/.md）→ fromExtension 返回 null 即拒收，不靠 mime 兜底误导入（M9 review M2）
+        return fromExtension(ext)
     }
 
     /** SAF 导入 mime 白名单（保持系统选择器干净；暂不含 application/octet-stream）。 */

@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+@Suppress("TooManyFunctions")
 class LibraryRepositoryImpl @Inject constructor(
     private val db: MyReaderDatabase,
     private val folderDao: FolderDao,
@@ -163,7 +164,10 @@ class LibraryRepositoryImpl @Inject constructor(
         if (id != null) {
             documentDao.insert(buildEntity(id))
         } else {
-            retryOnIdCollision(exists = documentDao::exists, insert = { candidate -> documentDao.insert(buildEntity(candidate)) })
+            retryOnIdCollision(
+                exists = documentDao::exists,
+                insert = { candidate -> documentDao.insert(buildEntity(candidate)) },
+            )
         }
     }
 
@@ -264,12 +268,17 @@ class LibraryRepositoryImpl @Inject constructor(
 
 // ---- 内部工具 ----
 
+/** 实体 ID 生成参数：时间戳左移位宽 / 纳秒低位掩码 / 碰撞重试次数。 */
+private const val ID_TIME_SHIFT = 20
+private const val ID_LOW_BITS_MASK = 0xFFFFFL
+private const val ID_COLLISION_RETRY = 3
+
 /**
  * 实体 ID：时间戳毫秒左移 20 位 + nanoTime 低 20 位，避免自增冲突便于移动。
  * public：导入流程需先按此 id 复制物理文件（relPath = "<id>.<ext>"）再入库，两者必须同 id。
  */
 fun newEntityId(): Long =
-    System.currentTimeMillis() shl 20 or (System.nanoTime() and 0xFFFFF)
+    System.currentTimeMillis() shl ID_TIME_SHIFT or (System.nanoTime() and ID_LOW_BITS_MASK)
 
 /**
  * 带 ID 碰撞重试的插入（同毫秒+纳秒低位相同，概率 ≈2⁻²⁰）。
@@ -283,7 +292,7 @@ internal suspend inline fun retryOnIdCollision(
     exists: suspend (Long) -> Boolean,
     insert: suspend (Long) -> Long,
 ): Long {
-    repeat(3) {
+    repeat(ID_COLLISION_RETRY) {
         val candidate = newEntityId()
         if (!exists(candidate)) {
             try {
@@ -293,7 +302,7 @@ internal suspend inline fun retryOnIdCollision(
             }
         }
     }
-    throw IllegalStateException("实体 ID 生成连续碰撞")
+    error("实体 ID 生成连续碰撞")
 }
 
 /** LIKE 关键词转义：% 与 _ 按字面匹配（配 DocumentDao.search 的 ESCAPE '\'） */

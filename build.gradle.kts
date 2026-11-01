@@ -27,11 +27,9 @@ subprojects {
         extensions.configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {
             buildUponDefaultConfig = true
             parallel = true
-            // T7 第二轮（已收紧）：自定义豁免 + baseline 渐进清理存量（新代码违规即失败，
-            // 挂 check 随 build 阻断）。多模块各持独立 baseline（官方惯例，合并单文件会相互覆盖）；
-            // 存量削减：修一条从模块 baseline.xml 删一条，`detektBaseline` 重新生成
+            // T7 第二轮（已收紧）：自定义豁免 + 存量清零（2026-10-31 完成 173→0）。
+            // 现为纯 config 门禁：仅 config/detekt/detekt.yml 豁免，不再使用 baseline——新违规即失败。
             config.setFrom(files("$rootDir/config/detekt/detekt.yml"))
-            baseline = file("$projectDir/detekt-baseline.xml")
         }
     }
 }

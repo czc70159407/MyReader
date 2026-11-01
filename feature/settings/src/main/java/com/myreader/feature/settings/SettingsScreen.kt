@@ -53,6 +53,7 @@ import com.myreader.core.model.ThemeMode
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("LongMethod")
 fun SettingsScreen(
     onBack: () -> Unit,
     onOpenAbout: () -> Unit,

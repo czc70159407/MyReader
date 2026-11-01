@@ -61,10 +61,14 @@ class SettingsViewModelTest {
     private fun newViewModel(): Triple<SettingsViewModel, SettingsPrefs, LibraryPrefs> {
         val scope = CoroutineScope(UnconfinedTestDispatcher(dispatcher.scheduler) + Job())
         val settings = SettingsPrefs(
-            PreferenceDataStoreFactory.create(scope = scope) { File(tmp.root, "s-${System.nanoTime()}.preferences_pb") },
+            PreferenceDataStoreFactory.create(scope = scope) {
+                File(tmp.root, "s-${System.nanoTime()}.preferences_pb")
+            },
         )
         val library = LibraryPrefs(
-            PreferenceDataStoreFactory.create(scope = scope) { File(tmp.root, "l-${System.nanoTime()}.preferences_pb") },
+            PreferenceDataStoreFactory.create(scope = scope) {
+                File(tmp.root, "l-${System.nanoTime()}.preferences_pb")
+            },
         )
         val db = Room.inMemoryDatabaseBuilder(
             ApplicationProvider.getApplicationContext(), MyReaderDatabase::class.java

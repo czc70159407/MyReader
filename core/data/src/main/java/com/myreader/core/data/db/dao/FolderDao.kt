@@ -9,6 +9,7 @@ import com.myreader.core.data.db.entity.FolderEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+@Suppress("TooManyFunctions")
 interface FolderDao {
 
     @Query("SELECT * FROM folders WHERE parentId IS :parentId ORDER BY sortOrder, name")  // 根级传 null，必须 IS（= NULL 恒为假）

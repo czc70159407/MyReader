@@ -58,7 +58,6 @@ class ReaderViewModelTest {
 
     private lateinit var repo: FakeRepository
     private lateinit var storage: DocumentStorage
-    private lateinit var viewModel: ReaderViewModel
 
     @Before
     fun setUp() {
@@ -700,7 +699,16 @@ class ReaderViewModelTest {
         override suspend fun pageSize(page: Int): androidx.compose.ui.geometry.Size =
             androidx.compose.ui.geometry.Size(595f, 842f)
         @Suppress("UNUSED_PARAMETER")
-        override fun drawPage(bitmap: android.graphics.Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int) {}
+        override fun drawPage(
+            bitmap: android.graphics.Bitmap,
+            page: Int,
+            width: Int,
+            height: Int,
+            patchX: Int,
+            patchY: Int,
+            patchW: Int,
+            patchH: Int,
+        ) {}
         override suspend fun outline(): List<OutlineEntry> = emptyList()
         override fun close() {}
     }
@@ -708,7 +716,14 @@ class ReaderViewModelTest {
     /** 缩略图兜底测试不覆盖成功路径（asAndroidBitmap 需 Android 运行时），仅验证失败不阻断阅读 */
     private class ThrowingViewer : DocumentViewerProvider {
         @androidx.compose.runtime.Composable
-        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, onPageCountChanged: (Int) -> Unit, modifier: androidx.compose.ui.Modifier) = Unit
+        override fun Content(
+            doc: Document,
+            initialProgress: ProgressPayload,
+            mode: ReaderMode,
+            onProgressChanged: (ProgressPayload) -> Unit,
+            onPageCountChanged: (Int) -> Unit,
+            modifier: androidx.compose.ui.Modifier,
+        ) = Unit
         override suspend fun thumbnail(doc: Document): ImageBitmap = throw UnsupportedOperationException()
     }
 

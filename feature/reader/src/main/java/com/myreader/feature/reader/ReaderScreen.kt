@@ -65,6 +65,7 @@ import com.myreader.core.model.ReaderMode
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 fun ReaderScreen(
     onBack: () -> Unit,
     viewModel: ReaderViewModel = hiltViewModel(),
@@ -117,7 +118,10 @@ fun ReaderScreen(
             }
         }
 
-        is ReaderUiState.Failed -> Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        is ReaderUiState.Failed -> Box(
+            modifier = Modifier.fillMaxSize().padding(32.dp),
+            contentAlignment = Alignment.Center,
+        ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = s.message,

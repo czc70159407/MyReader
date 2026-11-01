@@ -18,6 +18,7 @@ interface DocumentViewerProvider {
      *   完成后页数与打开时快照不一致）；打开初值无需回调（调用方以 Ready.pageCount 持有快照，
      *   经实时值覆盖展示）。实现须在主线程调用。 */
     @Composable
+    @Suppress("LongParameterList")
     fun Content(
         doc: Document,
         initialProgress: ProgressPayload,

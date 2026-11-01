@@ -19,6 +19,15 @@ class TxtDocument internal constructor(private val pages: List<String>) : Docume
     /** 布局占位/缩略图用的标称页点尺寸（A4 纵向近似） */
     private companion object {
         val NOMINAL = Size(595f, 842f)
+
+        /** 字号按位图高度 ÷ 该系数估算，并 clamp 到 [MIN, MAX] */
+        const val FONT_SIZE_DIVISOR = 40f
+        const val MIN_FONT_SIZE = 12f
+        const val MAX_FONT_SIZE = 56f
+
+        /** 左右内边距：宽度占比 + 最小像素兜底 */
+        const val PAD_RATIO = 0.06f
+        const val MIN_PAD_PX = 8
     }
 
     override val pageCount: Int = pages.size
@@ -49,9 +58,9 @@ class TxtDocument internal constructor(private val pages: List<String>) : Docume
         val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.BLACK
             // 字号随位图高度粗略缩放（裁剪溢出，验证模块不做精确排版）
-            textSize = (height / 40f).coerceIn(12f, 56f)
+            textSize = (height / FONT_SIZE_DIVISOR).coerceIn(MIN_FONT_SIZE, MAX_FONT_SIZE)
         }
-        val pad = (width * 0.06f).toInt().coerceAtLeast(8)
+        val pad = (width * PAD_RATIO).toInt().coerceAtLeast(MIN_PAD_PX)
         val layout = StaticLayout.Builder
             .obtain(text, 0, text.length, paint, (width - pad * 2).coerceAtLeast(1))
             .build()

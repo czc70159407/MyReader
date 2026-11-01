@@ -6,10 +6,14 @@ import com.myreader.core.document.FileTypes
 /**
  * 目录扫描规模上限（防 ANR / OOM / 磁盘耗尽）：超上限条目计入汇总而非中断整体导入。
  */
+/** 单文件大小上限（MB）与字节换算常量（具名化，避免 data class 默认值裸魔数）。 */
+private const val MAX_FILE_MB = 200L
+private const val BYTES_PER_MB = 1024L * 1024L
+
 data class DirectoryScanLimits(
     val maxFiles: Int = 500,
     val maxDepth: Int = 8,
-    val maxFileBytes: Long = 200L * 1024 * 1024,
+    val maxFileBytes: Long = MAX_FILE_MB * BYTES_PER_MB,
 )
 
 /** 待导入文件：uri + 相对根目录的目录段（用于镜像目录结构）。 */
@@ -46,6 +50,7 @@ internal fun sanitizeFolderName(raw: String?): String {
  */
 object DirectoryScanner {
 
+    @Suppress("NestedBlockDepth", "CyclomaticComplexMethod", "LoopWithTooManyJumpStatements")
     fun scan(
         source: DirectoryTreeSource,
         limits: DirectoryScanLimits = DirectoryScanLimits(),

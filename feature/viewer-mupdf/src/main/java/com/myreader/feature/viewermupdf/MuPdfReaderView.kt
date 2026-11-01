@@ -24,6 +24,12 @@ private const val SIZE_SETTLE_DELAY_MS = 150L
 /** 重排文档排版字号（pt），与 MuPDFCore 默认 layoutEM 一致 */
 private const val REFLOW_EM = 10
 
+/** pt 与 px 换算：每英寸 72 点 */
+private const val POINTS_PER_INCH = 72
+
+/** 重排排版最小尺寸（pt）：防极小分屏导致页数爆炸/除零 */
+private const val MIN_LAYOUT_PT = 100
+
 /**
  * AndroidView 桥接 MuPDF [ReaderView]（瓦片渲染 + BitmapPool，预渲染窗口 ±1 页由其内部管理）。
  *
@@ -39,6 +45,7 @@ private const val REFLOW_EM = 10
  * 避免旋转/分屏后白屏或回首页（对齐上游 DocumentActivity.onSizeChanged）。
  */
 @Composable
+@Suppress("LongParameterList")
 internal fun MuPdfReaderView(
     core: MuPDFCore,
     reflowable: Boolean,
@@ -81,6 +88,7 @@ internal fun MuPdfReaderView(
                     latestCallback(payload)
                 }
 
+                @Suppress("ReturnCount")
                 override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                     super.onSizeChanged(w, h, oldw, oldh)
                     // 尺寸变化需 refresh() 重建全部子 view 与共享位图（configChanges 下 Activity
@@ -101,8 +109,8 @@ internal fun MuPdfReaderView(
                             // relayout 到当前视口（pt = px * 72 / dpi），并把当前页 remap 到新页码
                             val dpi = resources.displayMetrics.densityDpi.coerceAtLeast(1)
                             // 钳最小排版尺寸，防极小分屏导致页数爆炸/除零（M9 review S4）
-                            val lw = (w * 72 / dpi).coerceAtLeast(100)
-                            val lh = (h * 72 / dpi).coerceAtLeast(100)
+                            val lw = (w * POINTS_PER_INCH / dpi).coerceAtLeast(MIN_LAYOUT_PT)
+                            val lh = (h * POINTS_PER_INCH / dpi).coerceAtLeast(MIN_LAYOUT_PT)
                             // 整书重排放后台线程执行，避免阻塞 UI（EPUB 整书秒级重排 → ANR 风险）；
                             // 完成后再回主线程 remap 当前页并 refresh。
                             // 注意：rememberCoroutineScope 默认调度器是 Compose 主线程，必须显式指定

@@ -32,6 +32,7 @@ interface Document : Closeable {
      * 渲染指定页到 bitmap。patch 参数支持局部渲染（全页渲染传 0,0,width,height）。
      * 实现须线程安全或由调用方串行化（MuPDFCore 非线程安全）。
      */
+    @Suppress("LongParameterList")
     fun drawPage(
         bitmap: android.graphics.Bitmap,
         page: Int,

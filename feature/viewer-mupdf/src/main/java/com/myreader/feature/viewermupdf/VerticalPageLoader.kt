@@ -57,6 +57,7 @@ internal class VerticalPageLoader(
      * 渲染页位图：宽度适配，高度按页宽高比等比换算（超长页降分辨率，防 GPU 纹理上限）。
      * 并发双检：取锁后再查一次缓存（另一协程可能已渲染同页）。
      */
+    @Suppress("ReturnCount")
     suspend fun loadBitmap(page: Int, widthPx: Int): Bitmap {
         cachedBitmap(page, widthPx)?.let { return it }
         return mutex.withLock {
@@ -93,7 +94,7 @@ internal class VerticalPageLoader(
         val height = if (size.width > 0f && size.height > 0f) {
             (widthPx * size.height / size.width).toInt().coerceAtLeast(1)
         } else {
-            widthPx * 4 / 3
+            widthPx * FALLBACK_ASPECT_WIDTH / FALLBACK_ASPECT_HEIGHT
         }
         if (height <= MAX_BITMAP_HEIGHT) return widthPx to height
         val scale = MAX_BITMAP_HEIGHT.toFloat() / height
@@ -101,9 +102,16 @@ internal class VerticalPageLoader(
     }
 
     companion object {
+        /** 字节预算为 maxMemory 的 1/8 */
+        private const val BUDGET_DIVISOR = 8L
+
+        /** 页尺寸异常时的 4:3 兜底宽高比 */
+        private const val FALLBACK_ASPECT_WIDTH = 4
+        private const val FALLBACK_ASPECT_HEIGHT = 3
+
         /** LruCache 字节预算：maxMemory/8，clamp 16~48MB（典型设备等效 4~8 页） */
         fun defaultBudgetBytes(): Int =
-            (Runtime.getRuntime().maxMemory() / 8L).toInt().coerceIn(MIN_BUDGET_BYTES, MAX_BUDGET_BYTES)
+            (Runtime.getRuntime().maxMemory() / BUDGET_DIVISOR).toInt().coerceIn(MIN_BUDGET_BYTES, MAX_BUDGET_BYTES)
 
         const val MIN_BUDGET_BYTES = 16 shl 20
         const val MAX_BUDGET_BYTES = 48 shl 20

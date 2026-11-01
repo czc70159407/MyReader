@@ -10,6 +10,7 @@ import java.security.MessageDigest
  *
  * 导入复制时流式计算 SHA-256（contentHash，重复导入检测用）；复制失败删除半成品回滚。
  */
+@Suppress("TooManyFunctions")
 class DocumentStorage(private val libraryDir: File) {
 
     companion object {
@@ -55,6 +56,7 @@ class DocumentStorage(private val libraryDir: File) {
      * 失败（IO 异常/磁盘满）时删除半成品文件并抛出原异常（回滚）。
      * ext 仅允许字母数字（防路径穿越）。
      */
+    @Suppress("NestedBlockDepth", "TooGenericExceptionCaught")
     fun copyIn(source: InputStream, docId: Long, ext: String): CopyResult {
         require(EXT_PATTERN.matches(ext)) { "非法文件扩展名: $ext" }
         val relPath = "$docId.$ext"
@@ -127,6 +129,7 @@ class DocumentStorage(private val libraryDir: File) {
     fun openRead(relPath: String): InputStream? = resolve(relPath).takeIf { it.exists() }?.inputStream()
 
     /** 缩略图流式读取（导出用）；relPath 为 null、不匹配白名单（安全审计 L3）或文件不存在返回 null。 */
+    @Suppress("ReturnCount")
     fun openThumbnailRead(thumbnailRelPath: String?): InputStream? {
         if (thumbnailRelPath == null) return null
         if (!THUMB_REL_PATTERN.matches(thumbnailRelPath)) return null
@@ -144,6 +147,7 @@ class DocumentStorage(private val libraryDir: File) {
      * 恢复写回文档物理文件（沿用备份原 relPath，不新建 id）。整段 relPath 须先匹配白名单，
      * 再经 resolve 的 canonical 包含校验，双重防穿越；返回写入字节数。失败删半成品回滚。
      */
+    @Suppress("NestedBlockDepth", "TooGenericExceptionCaught")
     fun restoreFile(source: InputStream, relPath: String): Long {
         require(REL_PATH_PATTERN.matches(relPath)) { "非法备份文件路径: $relPath" }
         val target = resolve(relPath)

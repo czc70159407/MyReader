@@ -40,6 +40,7 @@ private const val TAG = "LibraryViewModel"
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
+@Suppress("TooManyFunctions")
 class LibraryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: LibraryRepository,
@@ -168,13 +169,14 @@ class LibraryViewModel @Inject constructor(
     /** 同父重名校验（folders 表无 UNIQUE(parentId,name)，业务层拦截静默重名） */
     private suspend fun requireUniqueFolder(parentId: Long?, name: String, excludeId: Long? = null) {
         val duplicate = repository.foldersIn(parentId).first().any { it.name == name && it.id != excludeId }
-        if (duplicate) throw IllegalArgumentException("该目录下已存在同名文件夹")
+        require(!duplicate) { "该目录下已存在同名文件夹" }
     }
 
     /** 同父文档重名校验 */
     private suspend fun requireUniqueDocTitle(folderId: Long?, title: String, excludeId: Long) {
-        val duplicate = repository.docsIn(folderId, DocSort.TITLE).first().any { it.title == title && it.id != excludeId }
-        if (duplicate) throw IllegalArgumentException("该目录下已存在同名文档")
+        val duplicate = repository.docsIn(folderId, DocSort.TITLE).first()
+            .any { it.title == title && it.id != excludeId }
+        require(!duplicate) { "该目录下已存在同名文档" }
     }
 
     fun createSubFolder(parentId: Long?, name: String) = launchOp {
@@ -187,6 +189,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     /** FolderPickerDialog 内新建子目录：创建成功后回调新 id（picker 自动选中）并展开父级 */
+    @Suppress("TooGenericExceptionCaught")
     fun createFolderAndSelect(parentId: Long?, name: String, onCreated: (Long) -> Unit) {
         viewModelScope.launch {
             try {
@@ -255,6 +258,7 @@ class LibraryViewModel @Inject constructor(
     }
 
     /** 统一操作编排：成功发消息，业务校验失败（IllegalArgumentException 带中文 message）走 snackbar，不吞取消 */
+    @Suppress("TooGenericExceptionCaught")
     private fun launchOp(block: suspend () -> String) {
         viewModelScope.launch {
             try {
@@ -309,6 +313,7 @@ class LibraryViewModel @Inject constructor(
 
     private var duplicateDecision: CompletableDeferred<Boolean>? = null
 
+    @Suppress("CyclomaticComplexMethod")
     fun importUris(uris: List<Uri>, targetFolderId: Long?) {
         if (uris.isEmpty() || _importing.value) return
         viewModelScope.launch {
@@ -476,6 +481,7 @@ class LibraryViewModel @Inject constructor(
         importJob?.cancel()
     }
 
+    @Suppress("SwallowedException", "TooGenericExceptionCaught")
     fun importDirectory(uri: Uri, targetFolderId: Long?) {
         if (_importing.value) return
         // 每次导入从零开始节流：避免上次导入的时间戳/phase 吞掉本轮首条进度

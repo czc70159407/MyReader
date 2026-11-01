@@ -73,14 +73,30 @@ class DirectoryImporterTest {
         override val pageCount: Int = 3
         override fun gotoPage(page: Int) {}
         override suspend fun pageSize(page: Int) = androidx.compose.ui.geometry.Size(595f, 842f)
-        override fun drawPage(bitmap: Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int) {}
+        override fun drawPage(
+            bitmap: Bitmap,
+            page: Int,
+            width: Int,
+            height: Int,
+            patchX: Int,
+            patchY: Int,
+            patchW: Int,
+            patchH: Int,
+        ) {}
         override suspend fun outline(): List<OutlineEntry> = emptyList()
         override fun close() {}
     }
 
     private class FakeViewer : DocumentViewerProvider {
         @Composable
-        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, onPageCountChanged: (Int) -> Unit, modifier: androidx.compose.ui.Modifier) = Unit
+        override fun Content(
+            doc: Document,
+            initialProgress: ProgressPayload,
+            mode: ReaderMode,
+            onProgressChanged: (ProgressPayload) -> Unit,
+            onPageCountChanged: (Int) -> Unit,
+            modifier: androidx.compose.ui.Modifier,
+        ) = Unit
 
         override suspend fun thumbnail(doc: Document): ImageBitmap =
             Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).asImageBitmap()
@@ -155,7 +171,9 @@ class DirectoryImporterTest {
     @Test
     fun importDirectory_mirrorsFolderStructure() = runTest {
         // 注册树中所有文件内容（内容互异：同内容会命中 hash 查重被跳过）
-        registerDoc("a.pdf"); registerDoc("b.pdf", "%PDF-1.4 b".toByteArray()); registerDoc("c.epub", "%EPUB fake".toByteArray())
+        registerDoc("a.pdf")
+        registerDoc("b.pdf", "%PDF-1.4 b".toByteArray())
+        registerDoc("c.epub", "%EPUB fake".toByteArray())
         val source = FakeTreeSource(
             mapOf(
                 "root" to listOf(file("a.pdf"), dir("docs")),
@@ -182,7 +200,11 @@ class DirectoryImporterTest {
         assertEquals(1, repository.docsIn(docsFolder.id, com.myreader.core.model.DocSort.TITLE).first().size)
         assertEquals(1, repository.docsIn(subFolder.id, com.myreader.core.model.DocSort.TITLE).first().size)
         // epub 落 cfi 进度类型
-        assertEquals("cfi", repository.docsIn(subFolder.id, com.myreader.core.model.DocSort.TITLE).first().single().progressType)
+        assertEquals(
+            "cfi",
+            repository.docsIn(subFolder.id, com.myreader.core.model.DocSort.TITLE)
+                .first().single().progressType,
+        )
     }
 
     @Test
@@ -209,7 +231,10 @@ class DirectoryImporterTest {
     fun importDirectory_renamesWhenTitleCollidesWithExistingDoc() = runTest {
         // 库中先有同名但不同内容的 book.pdf（预置）
         importer.import(registerDoc("book.pdf", "%PDF-1.4 OTHER".toByteArray()))
-        assertEquals(listOf("book.pdf"), repository.docsIn(null, com.myreader.core.model.DocSort.TITLE).first().map { it.title })
+        assertEquals(
+            listOf("book.pdf"),
+            repository.docsIn(null, com.myreader.core.model.DocSort.TITLE).first().map { it.title },
+        )
 
         // 目录导入另一个 book.pdf（不同内容 → 不触发 hash 跳过）
         registerDoc("book.pdf")

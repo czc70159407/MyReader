@@ -46,6 +46,12 @@ import com.myreader.core.document.FileTypes
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
 
+/** 损坏文档标记（与 ReaderViewModel 同值，书架据此改标题色/状态角标）。 */
+private const val CORRUPT_PAGE_COUNT = -2
+
+/** 最近阅读卡片缩略图宽高比。 */
+private const val RECENT_CARD_ASPECT_RATIO = 0.75f
+
 /**
  * 书架卡片组件（自 LibraryScreen.kt 拆出）：文件夹卡片 + 长按菜单、文档卡片
  * （缩略图/格式角标/状态角标/页码）、最近阅读横向条。
@@ -70,7 +76,7 @@ private fun DocumentStatusBadge(item: LibraryItem, modifier: Modifier) {
             },
             modifier = modifier,
         )
-        item.pageCount == -2 -> StatusBadge(
+        item.pageCount == CORRUPT_PAGE_COUNT -> StatusBadge(
             icon = {
                 Icon(
                     imageVector = Icons.Filled.Warning,
@@ -101,13 +107,13 @@ private fun documentCardDescription(item: LibraryItem): String = buildString {
     when {
         item.pageCount > 0 -> append("，${item.pageCount} 页")
         // 损坏文档不追加格式词（状态词已表达类型未知，避免读成「x.pdf，PDF，已损坏」）
-        item.pageCount == -2 -> Unit
+        item.pageCount == CORRUPT_PAGE_COUNT -> Unit
         else -> append("，${formatLabel(item.fileType)}")
     }
     // 与角标优先级一致：加密优先于损坏（二者同时成立时只读加密）
     when {
         item.needsPassword -> append("，需要密码")
-        item.pageCount == -2 -> append("，已损坏")
+        item.pageCount == CORRUPT_PAGE_COUNT -> append("，已损坏")
     }
 }
 
@@ -117,6 +123,7 @@ private fun cardActions(vararg pairs: Pair<String, () -> Unit>) =
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+@Suppress("LongParameterList")
 internal fun FolderCard(
     folder: Folder,
     onClick: () -> Unit,
@@ -184,6 +191,7 @@ internal fun FolderCard(
 }
 
 @Composable
+@Suppress("LongParameterList")
 internal fun FolderMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
@@ -202,6 +210,7 @@ internal fun FolderMenu(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+@Suppress("LongParameterList")
 internal fun DocumentCard(
     item: LibraryItem,
     onClick: () -> Unit,
@@ -236,7 +245,11 @@ internal fun DocumentCard(
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
             ) {
                 Box(modifier = Modifier.aspectRatio(1f)) {
-                    ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
+                    ThumbnailImage(
+                        relPath = item.thumbnailRelPath,
+                        fileType = item.fileType,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                     // M9：非 PDF 格式在左上角显示格式角标（EPUB / CBZ / XPS）
                     if (item.fileType != FileTypes.PDF) {
                         FormatBadge(label = formatLabel(item.fileType), modifier = Modifier.align(Alignment.TopStart))
@@ -251,7 +264,7 @@ internal fun DocumentCard(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         // D8：损坏卡标题用 onSurfaceVariant（outline 对比度不足）
-                        color = if (item.pageCount == -2) {
+                        color = if (item.pageCount == CORRUPT_PAGE_COUNT) {
                             MaterialTheme.colorScheme.onSurfaceVariant
                         } else {
                             MaterialTheme.colorScheme.onSurface
@@ -329,8 +342,12 @@ internal fun RecentCard(item: LibraryItem, onClick: () -> Unit) {
 
 @Composable
 private fun RecentCardBody(item: LibraryItem) {
-    Box(modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)) {
-        ThumbnailImage(relPath = item.thumbnailRelPath, fileType = item.fileType, modifier = Modifier.fillMaxSize())
+    Box(modifier = Modifier.fillMaxWidth().aspectRatio(RECENT_CARD_ASPECT_RATIO)) {
+        ThumbnailImage(
+            relPath = item.thumbnailRelPath,
+            fileType = item.fileType,
+            modifier = Modifier.fillMaxSize(),
+        )
         // 加密角标常驻（needsPassword 不再清除，见 ReaderViewModel.backfillAfterOpen）；
         // T5：CD 置 null，状态已由整卡描述承担（避免重复播报）
         if (item.needsPassword) {

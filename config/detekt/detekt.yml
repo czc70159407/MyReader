@@ -10,6 +10,10 @@ naming:
   MatchingDeclarationName:
     # 路由常量 object 与 NavHost 同文件为刻意组织（docs/ui-design.md 路由节）
     active: false
+empty-blocks:
+  EmptyFunctionBlock:
+    # 测试替身（Fake*）的空实现属测试本质，不构成缺陷；统一按测试文件豁免（P3 类）。
+    excludes: ['**/*Test.kt']
 style:
   MagicNumber:
     # 常量属性本就以具名承载语义；@Composable 内的布局/动画参数就地可读性优先。

@@ -26,8 +26,14 @@ class MuPdfDocumentEngine @Inject constructor() : DocumentEngine {
     companion object {
         /** 上游 DocumentActivity 同款阈值：8MB 内读 buffer，超出走流 */
         private const val BUFFER_LIMIT = 8L * 1024 * 1024
+
+        /** MuPDFCore 构造时的默认排版：页宽/页高（pt）+ 字号（em） */
+        private const val DEFAULT_LAYOUT_WIDTH = 312
+        private const val DEFAULT_LAYOUT_HEIGHT = 504
+        private const val DEFAULT_LAYOUT_EM = 10
     }
 
+    @Suppress("TooGenericExceptionCaught")
     override fun open(path: String, fileType: String, password: String?): Document {
         val file = File(path)
         val magic = FileTypes.magicOf(fileType)
@@ -49,7 +55,9 @@ class MuPdfDocumentEngine @Inject constructor() : DocumentEngine {
                 throw PasswordRequiredException("文档已加密")
             }
             // 加密文档构造期延迟的 layout 在此补做（pageCount 由 0 还原为真实页数）
-            runCatching { core.layout(-1, 312, 504, 10) }
+            runCatching {
+                core.layout(-1, DEFAULT_LAYOUT_WIDTH, DEFAULT_LAYOUT_HEIGHT, DEFAULT_LAYOUT_EM)
+            }
         }
         return MuPdfDocument(core)
     }

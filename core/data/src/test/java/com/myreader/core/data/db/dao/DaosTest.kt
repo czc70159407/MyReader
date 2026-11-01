@@ -137,6 +137,7 @@ class DocumentDaoTest {
     @After
     fun tearDown() = db.close()
 
+    @Suppress("LongParameterList")
     private fun doc(
         id: Long,
         title: String,

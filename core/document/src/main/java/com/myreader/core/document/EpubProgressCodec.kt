@@ -79,26 +79,36 @@ object EpubProgressCodec {
      * 解码并校验。返回 null 表示不可用（空串 / JSON 损坏 / 版本不在 `1..VERSION` / loc 与 page 均缺失）。
      * 容忍未知字段（向前兼容）；比例分量不自洽时**只降级比例**（置 -1），不丢整条进度。
      */
-    fun decode(payload: String?): EpubProgress? {
+    fun decode(payload: String?): EpubProgress? =
+        parseOrNull(payload)
+            ?.takeIf { it.isDecodable() }
+            ?.toProgress()
+
+    /** 解析 JSON；空串 / 损坏返回 null（容忍未知字段，向前兼容）。 */
+    private fun parseOrNull(payload: String?): Payload? {
         if (payload.isNullOrBlank()) return null
-        val p = try {
+        return try {
             json.decodeFromString(Payload.serializer(), payload)
         } catch (_: Exception) {
-            return null
+            null
         }
-        if (p.v !in MIN_SUPPORTED_VERSION..VERSION) return null
-        // loc 优先；无 loc 时至少要有非负页码兜底，否则视为脏数据
-        val hasLoc = !p.loc.isNullOrBlank()
-        if (!hasLoc && p.page < 0) return null
-        val ratioOk = p.chIdx >= 0 && p.chapPages >= 1 && p.pageInChap in 0 until p.chapPages
+    }
+
+    /** 版本门禁 + 页码底线校验：loc 优先，无 loc 时至少要有非负页码兜底，否则视为脏数据。 */
+    private fun Payload.isDecodable(): Boolean =
+        v in MIN_SUPPORTED_VERSION..VERSION && (!loc.isNullOrBlank() || page >= 0)
+
+    /** 组装对外结果；比例分量不自洽时只降级比例（置 -1），不丢整条进度。 */
+    private fun Payload.toProgress(): EpubProgress {
+        val ratioOk = chIdx >= 0 && chapPages >= 1 && pageInChap in 0 until chapPages
         return EpubProgress(
-            version = p.v,
-            loc = p.loc?.takeIf { it.isNotBlank() },
-            page = p.page.coerceAtLeast(0),
-            chapter = p.chapter,
-            chIdx = if (ratioOk) p.chIdx else -1,
-            pageInChap = if (ratioOk) p.pageInChap else -1,
-            chapPages = if (ratioOk) p.chapPages else -1,
+            version = v,
+            loc = loc?.takeIf { it.isNotBlank() },
+            page = page.coerceAtLeast(0),
+            chapter = chapter,
+            chIdx = if (ratioOk) chIdx else -1,
+            pageInChap = if (ratioOk) pageInChap else -1,
+            chapPages = if (ratioOk) chapPages else -1,
         )
     }
 }

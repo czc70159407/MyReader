@@ -184,7 +184,9 @@ class LibraryComponentsTest {
     @Test
     fun recentCard_clickTriggersCallback() {
         val clicked = mutableListOf<Long>()
-        composeRule.setContent { RecentSection(recent = listOf(item(7, "a.pdf", 0)), onDocumentClick = { clicked.add(it) }) }
+        composeRule.setContent {
+            RecentSection(recent = listOf(item(7, "a.pdf", 0)), onDocumentClick = { clicked.add(it) })
+        }
         composeRule.onNodeWithContentDescription("a.pdf，第 1 页").performClick()
         composeRule.waitForIdle()
 

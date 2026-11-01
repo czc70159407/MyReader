@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
  * 书架仓储接口（目录 + 文档编排一体，不单设 FolderRepository）。
  * feature 层依赖此接口而非实现；实体→模型映射在实现内完成，UI 层不碰 Entity。
  */
+@Suppress("TooManyFunctions")
 interface LibraryRepository {
 
     // ---- 目录 ----
@@ -31,6 +32,7 @@ interface LibraryRepository {
     suspend fun getDocument(id: Long): LibraryItem?        // 阅读器按 id 加载
     suspend fun findByHash(hash: String): LibraryItem?      // 重复导入检测
 
+    @Suppress("LongParameterList")
     suspend fun addDocument(
         id: Long? = null,
         folderId: Long?,

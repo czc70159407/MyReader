@@ -86,6 +86,7 @@ import kotlinx.coroutines.CancellationException
 // ExperimentalFoundationApi 原为 combinedClickable 等卡片件所需，已随拆分移至 LibraryCards.kt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 fun LibraryScreen(
     onDocumentClick: (Long) -> Unit = {},
     onFolderClick: (Long?) -> Unit = {},
@@ -210,7 +211,11 @@ fun LibraryScreen(
                                     withStyle(
                                         SpanStyle(
                                             color = MaterialTheme.colorScheme.onSurface,
-                                            fontWeight = if (i == breadcrumb.lastIndex) FontWeight.Bold else FontWeight.Normal,
+                                            fontWeight = if (i == breadcrumb.lastIndex) {
+                                                FontWeight.Bold
+                                            } else {
+                                                FontWeight.Normal
+                                            },
                                         ),
                                     ) { append(name) }
                                 }

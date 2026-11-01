@@ -20,6 +20,17 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlin.math.max
 
+/** 导出清单写入阶段的进度占比。 */
+private const val MANIFEST_PROGRESS = 0.95f
+
+/** RestoreLimits 默认值（具名化，避免裸魔数）。 */
+private const val MAX_ENTRIES = 512
+private const val MAX_ENTRY_BYTES = 512L * 1024 * 1024
+private const val MAX_TOTAL_BYTES = 1L shl 30
+private const val MAX_JSON_CHARS = 4 * 1024 * 1024
+private const val MAX_RATIO = 100L
+private const val RATIO_FLOOR_BYTES = 8L * 1024 * 1024
+
 /**
  * 备份/恢复编排（M8）。纯逻辑，注入 storage + dao + dispatchers，UI 仅负责提供 SAF 流，
  * 因此完全可在 JVM（Robolectric + inMemory Room + TemporaryFolder）下单测。
@@ -63,7 +74,7 @@ class BackupManager @Inject constructor(
     )
 
     /** 整段 relPath 白名单（与 BackupCodec / DocumentStorage 同源）。 */
-    private val REL_PATH_PATTERN = Regex("^[0-9]+\\.[a-zA-Z0-9]{1,10}$")
+    private val relPathPattern = Regex("^[0-9]+\\.[a-zA-Z0-9]{1,10}$")
 
     suspend fun export(
         output: OutputStream,
@@ -107,7 +118,7 @@ class BackupManager @Inject constructor(
                     }
                 }
             }
-            onProgress(0.95f, "写入备份清单")
+            onProgress(MANIFEST_PROGRESS, "写入备份清单")
             zip.putNextEntry(ZipEntry("library.json"))
             zip.write(BackupCodec.encode(manifest).toByteArray(Charsets.UTF_8))
             zip.closeEntry()
@@ -129,119 +140,171 @@ class BackupManager @Inject constructor(
     ): RestoreResult = withContext(dispatchers.io) {
         val tmp = storage.newBackupTempDir()
         try {
-            // 1) 解压到临时目录（entry name 严格白名单；任何其他/穿越条目一律拒绝）。
-            //    防资源耗尽（zip bomb / 磁盘耗尽）：条目数、单条目解压量、累计解压量、压缩比全部有上限
-            val fileEntries = mutableListOf<String>()   // relPath
-            val thumbEntries = mutableListOf<Long>()     // docId
-            var jsonText: String? = null
-            var entryCount = 0
-            var totalUncompressed = 0L
-            val counting = CountingInputStream(BufferedInputStream(input))
-            ZipInputStream(counting).use { zin ->
-                while (true) {
-                    val entry = zin.nextEntry ?: break
-                    // 目录条目也计数：恶意 zip 可用海量空目录条目拖慢恢复
-                    entryCount++
-                    require(entryCount <= limits.maxEntries) { "备份条目数超出上限（>${limits.maxEntries}），疑似恶意备份" }
-                    if (entry.isDirectory) continue
-                    val compressedBefore = counting.count
-                    val name = entry.name
-                    var written = 0L
-                    when {
-                        name == "library.json" -> {
-                            val text = readBoundedText(zin, limits.maxJsonChars)
-                            written = text.length.toLong()   // 计入解压量，使其同样纳入压缩比检查
-                            jsonText = text
-                        }
-                        name.startsWith("files/") -> {
-                            val rel = name.removePrefix("files/")
-                            require(!rel.contains("..") && REL_PATH_PATTERN.matches(rel)) { "非法备份路径: $name" }
-                            val out = File(tmp, "files/$rel")
-                            out.parentFile?.mkdirs()
-                            out.outputStream().use { written = copyBounded(zin, it, limits.maxEntryBytes) }
-                            fileEntries += rel
-                        }
-                        name.startsWith("thumbs/") -> {
-                            val fn = name.removePrefix("thumbs/")
-                            val id = fn.substringBefore('.').toLongOrNull()
-                            require(id != null && fn == "$id.png") { "非法备份缩略图: $name" }
-                            val out = File(tmp, "thumbs/$fn")
-                            out.parentFile?.mkdirs()
-                            out.outputStream().use { written = copyBounded(zin, it, limits.maxEntryBytes) }
-                            thumbEntries += id
-                        }
-                        else -> throw IllegalArgumentException("备份包含未知条目: $name")
-                    }
-                    totalUncompressed += written
-                    val compressedDelta = counting.count - compressedBefore
-                    if (totalUncompressed > limits.maxTotalBytes) {
-                        throw IllegalStateException("备份累计解压量超出上限（>${limits.maxTotalBytes} 字节），疑似 zip bomb")
-                    }
-                    if (compressedDelta > 0 &&
-                        totalUncompressed > max(limits.ratioFloorBytes, compressedDelta * limits.maxRatio)
-                    ) {
-                        throw IllegalStateException("备份压缩比异常（解压 $written / 压缩 $compressedDelta），疑似 zip bomb")
-                    }
-                }
-            }
-            require(jsonText != null) { "备份缺少 library.json" }
-            val manifest = BackupCodec.decode(jsonText!!)
-
+            // 1) 解压到临时目录（entry name 严格白名单；zip bomb / 磁盘耗尽上限见 extractToTemp）
+            val extracted = extractToTemp(input, tmp)
+            require(extracted.json != null) { "备份缺少 library.json" }
+            val manifest = BackupCodec.decode(extracted.json)
             // 2) 空间预检（临时目录与 library/ 同分区，恢复后净占用≈解压出的 files 总大小）
             val needed = tmp.walkTopDown()
                 .filter { it.isFile && it.parentFile?.name == "files" }
                 .sumOf { it.length() }
-            if (!storage.hasSpaceFor(needed)) {
-                throw IllegalStateException("存储空间不足，无法恢复备份（需约 $needed 字节）")
+            check(storage.hasSpaceFor(needed)) {
+                "存储空间不足，无法恢复备份（需约 $needed 字节）"
             }
-
             // 3) 事务写 DB：目录按拓扑序（父先于子）upsert，文档后插（满足 folderId 外键）
-            val orderedFolders = topoSortFolders(manifest.folders)
-            db.withTransaction {
-                folderDao.upsertAll(orderedFolders.map { it.toEntity() })
-                documentDao.upsertAll(manifest.documents.map { it.toEntity() })
-                // 书签在文档之后：满足 documentId 外键（v1 旧包为空列表，天然兼容）
-                bookmarkDao.upsertAll(manifest.bookmarks.map { it.toEntity() })
-            }
-
+            writeManifest(manifest)
             // 4) 提交成功后再把临时物理文件 move 进 library/thumb（同分区瞬时）
-            var filesWritten = 0
-            var bytesWritten = 0L
-            val manifestRelPaths = manifest.documents.map { it.relPath }.toSet()
-            var orphanCount = 0
-            fileEntries.forEachIndexed { i, rel ->
-                onProgress(i.toFloat() / max(1, fileEntries.size), "恢复文档 $i/${fileEntries.size}")
-                // 仅搬清单中有记录的条目；清单外的 zip 条目视为孤儿跳过，避免库内遗留无引用文件（M9 review S2）
-                if (rel !in manifestRelPaths) {
-                    orphanCount++
-                    return@forEachIndexed
-                }
-                val src = File(tmp, "files/$rel")
-                if (src.exists()) {
-                    bytesWritten += storage.moveIntoLibrary(src, rel)
-                    filesWritten++
-                }
-            }
-            var thumbnailsWritten = 0
-            thumbEntries.forEach { id ->
-                val src = File(tmp, "thumbs/$id.png")
-                if (src.exists()) {
-                    storage.moveIntoThumb(src, id)
-                    thumbnailsWritten++
-                }
-            }
+            val moved = moveIntoLibrary(
+                tmp = tmp,
+                fileEntries = extracted.files,
+                thumbEntries = extracted.thumbs,
+                manifestRelPaths = manifest.documents.map { it.relPath }.toSet(),
+                onProgress = onProgress,
+            )
             RestoreResult(
                 folders = manifest.folders.size,
                 documents = manifest.documents.size,
-                filesWritten = filesWritten,
-                thumbnailsWritten = thumbnailsWritten,
-                missingFiles = (fileEntries.size - filesWritten) + (thumbEntries.size - thumbnailsWritten) + orphanCount,
-                bytesWritten = bytesWritten,
+                filesWritten = moved.files,
+                thumbnailsWritten = moved.thumbs,
+                missingFiles = (extracted.files.size - moved.files) +
+                    (extracted.thumbs.size - moved.thumbs) + moved.orphans,
+                bytesWritten = moved.bytes,
                 bookmarks = manifest.bookmarks.size,
             )
         } finally {
             tmp.deleteRecursively()
         }
+    }
+
+    /** 解压结果：临时目录已就绪，files/thumbs 为条目列表，json 为清单原文。 */
+    private class Extracted(
+        val files: List<String>,
+        val thumbs: List<Long>,
+        val json: String?,
+    )
+
+    /** 单条目解压结果：写入字节数 + 清单原文（仅 library.json 非空）。 */
+    private class EntryResult(val bytes: Long, val json: String?)
+
+    /** 物理文件搬移结果。 */
+    private class Moved(val files: Int, val thumbs: Int, val bytes: Long, val orphans: Int)
+
+    /** 解压到临时目录：严格白名单 + 条目数/单条目大小/累计量/压缩比四重上限（防 zip bomb）。 */
+    private fun extractToTemp(input: InputStream, tmp: File): Extracted {
+        val files = mutableListOf<String>()
+        val thumbs = mutableListOf<Long>()
+        var jsonText: String? = null
+        var entryCount = 0
+        var totalUncompressed = 0L
+        val counting = CountingInputStream(BufferedInputStream(input))
+        ZipInputStream(counting).use { zin ->
+            while (true) {
+                val entry = zin.nextEntry ?: break
+                // 目录条目也计数：恶意 zip 可用海量空目录条目拖慢恢复
+                entryCount++
+                require(entryCount <= limits.maxEntries) { "备份条目数超出上限（>${limits.maxEntries}），疑似恶意备份" }
+                if (!entry.isDirectory) {
+                    val compressedBefore = counting.count
+                    val result = extractEntry(zin, tmp, entry.name, files, thumbs)
+                    jsonText = result.json ?: jsonText
+                    totalUncompressed += result.bytes
+                    checkLimits(totalUncompressed, counting.count - compressedBefore, result.bytes)
+                }
+            }
+        }
+        return Extracted(files, thumbs, jsonText)
+    }
+
+    /** 单条目解压：按前缀分流（清单 / 文档 / 缩略图），未知条目拒绝。返回写入字节数与清单原文。 */
+    private fun extractEntry(
+        zin: ZipInputStream,
+        tmp: File,
+        name: String,
+        files: MutableList<String>,
+        thumbs: MutableList<Long>,
+    ): EntryResult = when {
+        name == "library.json" -> {
+            val text = readBoundedText(zin, limits.maxJsonChars)
+            EntryResult(text.length.toLong(), text)   // 计入解压量，使其同样纳入压缩比检查
+        }
+        name.startsWith("files/") -> {
+            val rel = name.removePrefix("files/")
+            require(!rel.contains("..") && relPathPattern.matches(rel)) { "非法备份路径: $name" }
+            val out = File(tmp, "files/$rel")
+            out.parentFile?.mkdirs()
+            val written = out.outputStream().use { copyBounded(zin, it, limits.maxEntryBytes) }
+            files += rel
+            EntryResult(written, null)
+        }
+        name.startsWith("thumbs/") -> {
+            val fn = name.removePrefix("thumbs/")
+            val id = fn.substringBefore('.').toLongOrNull()
+            require(id != null && fn == "$id.png") { "非法备份缩略图: $name" }
+            val out = File(tmp, "thumbs/$fn")
+            out.parentFile?.mkdirs()
+            val written = out.outputStream().use { copyBounded(zin, it, limits.maxEntryBytes) }
+            thumbs += id
+            EntryResult(written, null)
+        }
+        else -> throw IllegalArgumentException("备份包含未知条目: $name")
+    }
+
+    /** 累计解压量与压缩比双闸（防 zip bomb）。 */
+    private fun checkLimits(totalUncompressed: Long, compressedDelta: Long, written: Long) {
+        check(totalUncompressed <= limits.maxTotalBytes) {
+            "备份累计解压量超出上限（>${limits.maxTotalBytes} 字节），疑似 zip bomb"
+        }
+        check(
+            compressedDelta <= 0 ||
+                totalUncompressed <= max(limits.ratioFloorBytes, compressedDelta * limits.maxRatio),
+        ) {
+            "备份压缩比异常（解压 $written / 压缩 $compressedDelta），疑似 zip bomb"
+        }
+    }
+
+    /** 事务写 DB：目录拓扑序 → 文档 → 书签（满足 folderId / documentId 外键）。 */
+    private suspend fun writeManifest(manifest: BackupCodec.BackupManifest) {
+        val orderedFolders = topoSortFolders(manifest.folders)
+        db.withTransaction {
+            folderDao.upsertAll(orderedFolders.map { it.toEntity() })
+            documentDao.upsertAll(manifest.documents.map { it.toEntity() })
+            bookmarkDao.upsertAll(manifest.bookmarks.map { it.toEntity() })
+        }
+    }
+
+    /** 把临时文件 move 进 library/thumb；清单外条目视为孤儿跳过。返回搬移统计。 */
+    private fun moveIntoLibrary(
+        tmp: File,
+        fileEntries: List<String>,
+        thumbEntries: List<Long>,
+        manifestRelPaths: Set<String>,
+        onProgress: Progress,
+    ): Moved {
+        var filesWritten = 0
+        var bytesWritten = 0L
+        var orphanCount = 0
+        fileEntries.forEachIndexed { i, rel ->
+            onProgress(i.toFloat() / max(1, fileEntries.size), "恢复文档 $i/${fileEntries.size}")
+            // 仅搬清单中有记录的条目；清单外的 zip 条目视为孤儿跳过，避免库内遗留无引用文件（M9 review S2）
+            if (rel !in manifestRelPaths) {
+                orphanCount++
+                return@forEachIndexed
+            }
+            val src = File(tmp, "files/$rel")
+            if (src.exists()) {
+                bytesWritten += storage.moveIntoLibrary(src, rel)
+                filesWritten++
+            }
+        }
+        var thumbnailsWritten = 0
+        thumbEntries.forEach { id ->
+            val src = File(tmp, "thumbs/$id.png")
+            if (src.exists()) {
+                storage.moveIntoThumb(src, id)
+                thumbnailsWritten++
+            }
+        }
+        return Moved(filesWritten, thumbnailsWritten, bytesWritten, orphanCount)
     }
 
     /** 有界复制：单条目解压量超限抛异常（防 zip bomb）。返回写入字节数。 */
@@ -296,16 +359,16 @@ typealias Progress = (fraction: Float, status: String) -> Unit
 /** 恢复期资源上限（防 zip bomb / 磁盘耗尽）。备份包属不可信输入，超限即中止恢复。 */
 data class RestoreLimits(
     /** zip 条目数上限（library.json + files 与 thumbs 下的文档/缩略图条目） */
-    val maxEntries: Int = 512,
+    val maxEntries: Int = MAX_ENTRIES,
     /** 单条目解压字节数上限 */
-    val maxEntryBytes: Long = 512L * 1024 * 1024,
+    val maxEntryBytes: Long = MAX_ENTRY_BYTES,
     /** 全部条目累计解压字节数上限 */
-    val maxTotalBytes: Long = 1L shl 30,
+    val maxTotalBytes: Long = MAX_TOTAL_BYTES,
     /** library.json 字符数上限 */
-    val maxJsonChars: Int = 4 * 1024 * 1024,
+    val maxJsonChars: Int = MAX_JSON_CHARS,
     /** 压缩比上限（单条目 解压/压缩 倍数）；小包按 ratioFloorBytes 豁免，避免小文件误杀 */
-    val maxRatio: Long = 100,
-    val ratioFloorBytes: Long = 8L * 1024 * 1024,
+    val maxRatio: Long = MAX_RATIO,
+    val ratioFloorBytes: Long = RATIO_FLOOR_BYTES,
 )
 
 /** 统计已读（压缩侧）字节，供压缩比检查；ZipInputStream 的原始输入经由此流。 */

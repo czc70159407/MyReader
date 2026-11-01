@@ -88,14 +88,30 @@ class DocumentImporterTest {
         override fun gotoPage(page: Int) {}
         override suspend fun pageSize(page: Int): androidx.compose.ui.geometry.Size =
             androidx.compose.ui.geometry.Size(595f, 842f)
-        override fun drawPage(bitmap: android.graphics.Bitmap, page: Int, width: Int, height: Int, patchX: Int, patchY: Int, patchW: Int, patchH: Int) {}
+        override fun drawPage(
+            bitmap: android.graphics.Bitmap,
+            page: Int,
+            width: Int,
+            height: Int,
+            patchX: Int,
+            patchY: Int,
+            patchW: Int,
+            patchH: Int,
+        ) {}
         override suspend fun outline(): List<OutlineEntry> = emptyList()
         override fun close() {}
     }
 
     private class FakeViewer : DocumentViewerProvider {
         @Composable
-        override fun Content(doc: Document, initialProgress: ProgressPayload, mode: ReaderMode, onProgressChanged: (ProgressPayload) -> Unit, onPageCountChanged: (Int) -> Unit, modifier: androidx.compose.ui.Modifier) = Unit
+        override fun Content(
+            doc: Document,
+            initialProgress: ProgressPayload,
+            mode: ReaderMode,
+            onProgressChanged: (ProgressPayload) -> Unit,
+            onPageCountChanged: (Int) -> Unit,
+            modifier: androidx.compose.ui.Modifier,
+        ) = Unit
 
         override suspend fun thumbnail(doc: Document): ImageBitmap =
             Bitmap.createBitmap(4, 4, Bitmap.Config.ARGB_8888).asImageBitmap()

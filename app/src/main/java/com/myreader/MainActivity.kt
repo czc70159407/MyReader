@@ -30,12 +30,17 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var settingsPrefs: SettingsPrefs
 
+    private companion object {
+        /** 主题首读超时兜底（毫秒）：防磁盘异常导致 ANR。 */
+        const val THEME_READ_TIMEOUT_MS = 300L
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // 主题首读（M7）：本地小文件毫秒级；300ms 超时兜底防磁盘异常 ANR，回落跟随系统。
         // 双保险防首帧闪错色：values/themes.xml 用 DayNight parent，窗口背景先随系统深色
         val initialTheme = runBlocking(Dispatchers.IO) {
-            withTimeoutOrNull(300) { settingsPrefs.themeMode.first() }
+            withTimeoutOrNull(THEME_READ_TIMEOUT_MS) { settingsPrefs.themeMode.first() }
         } ?: ThemeMode.SYSTEM
 
         setContent {

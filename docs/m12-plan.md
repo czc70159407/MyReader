@@ -94,42 +94,51 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 
 ### 3.2 目标 / 非目标
 
-- 目标：PDF 文本高亮（多色）+ 高亮处加笔记；持久化、随备份导出恢复、跨会话稳定。
-- 非目标（本阶段外）：epub 文本级高亮（若 S0 证实 fitz 不支持则降级为页级或砍掉）；手写涂鸦；高亮导出到外部文件；云同步。
+- 目标：PDF 文本高亮（单色黄色起步）+ 高亮处加笔记；持久化、随备份导出恢复、跨会话稳定。
+- 非目标（本阶段外）：epub 高亮（S0-1 若证实 fitz 不支持 reflowable 文本级则砍掉、顺延）；手写涂鸦；高亮导出到外部文件；云同步。
 
-### 3.3 S0 预研（门禁先行，先于任何代码）
+### 3.3 S0 预研（门禁，约 0.5–1 会话，需设备）
+
+> 门禁先行：解包 fitz AAR 读符号 + 真机探针取证，**拍板前不写业务代码**。
 
 **S0-1 fitz annotation API 边界**（解包 `com.artifex.mupdf:fitz:1.28.2` AAR 读 `classes.jar` 符号，同 M11 S0-1 手法）：
 
-| 问题 | 对方案的影响 |
-|---|---|
-| PDF 是否支持 highlight/underline annotation（`PDFAnnotation` / `createAnnotation`）？ | 决定 PDF 高亮是原生渲染还是自绘 overlay |
-| 能否做**文本选择**并拿到选中文本 + 归一化矩形？ | 决定「选中 → 高亮/笔记」交互是否可做 |
-| epub（reflowable）文本选择与高亮：矩形随重排漂移，fitz 是否提供文本级锚点？ | **最大技术风险**，决定 epub 高亮是否降级或砍掉 |
+| 步骤 | 内容 | 产出 |
+|---|---|---|
+| 1 | 解包 AAR，读 `classes.jar` 符号 | 可用类/方法清单 |
+| 2 | 查 PDF annotation：`PDFAnnotation` 类型（Highlight/Ink/Text）、`PDFDocument.createAnnotation`/`deleteAnnotation`/`updateAnnotation` | PDF 高亮原生渲染可行性 |
+| 3 | 查文本选择：`PDFDocument`/`Page` 是否有 `TextSpan`/选中文本 + 归一化矩形 | 「选中→高亮」交互可行性 |
+| 4 | 查 epub（reflowable）文本选择与锚点：重排后矩形漂移，是否有文本级锚点 | epub 高亮是否降级/砍掉 |
 
-**S0-2 数据模型决策**：
-- 是否新建 `annotations` 表 → Room **schema v3** + 手写 `MIGRATION_2_3`（SQL 逐字对齐 `3.json`，同 M10 纪律）。
-- 字段草案：`id` / `documentId`(FK CASCADE) / `type`(HIGHLIGHT\|NOTE) / `anchor`(复用双轨) / `color` / `text`(笔记正文或选中文本) / `createdAt`；上限常量类比 `MAX_BOOKMARKS_PER_DOCUMENT`。
+**S0-2 真机探针**（`MuPdfAnnotationProbeTest`，先取证后转回归）：
+- PDF：选中一段文字 → 拿选中文本 + 矩形 → 创建 highlight → 退出重进验证持久化；
+- epub：垂直/水平选中 → 重排后矩形是否稳定。
 
-**S0-3 锚点决策**：
-- PDF：页码 + 归一化矩形（固定排版稳定）；
-- EPUB：复用 M11 `cp:` 比例锚点（精度屏级）还是引入文本级 CFI（M9 曾设想未落地）——据 S0-1 结论定夺。
+**S0-3 决策拍板**（据 S0-1/2 结论）：
+- 锚点格式：PDF = 页码 + 归一化矩形；epub = 复用 `cp:` 比例锚点 或 降级「页级/屏级」。
+- 数据模型：`annotations` 单表（type 区分 HIGHLIGHT/NOTE）还是分表。
+- 颜色范围：已拍板单色黄色（§3.8）。
+- 交互边界：文本选择手势 vs 水平边缘翻页/垂直滚动的冲突与优先级。
+- 现状对齐：Room `version=2`、`entities=[Folder,Document,Bookmark]`（已复核）；是否与 `Bookmark` 共用 `BookmarkAnchorCodec`。
 
-**S0-4 渲染层手势**：文本选择手势 vs 现有水平边缘翻页/垂直滚动的冲突与优先级。
+### 3.4 阶段分解（详细步骤）
 
-**S0-5 现状对齐**：当前 Room `version = 2`、`entities = [Folder, Document, Bookmark]`（已复核）；高亮/笔记是否与 `Bookmark` 共用 `BookmarkAnchorCodec` 锚点编码，而非另起炉灶。
+| 阶段 | 步骤 | 内容 | 验证 |
+|---|---|---|---|
+| **A 数据层**（0.5 会话） | A-1 | `AnnotationEntity`（`annotations` 表：`documentId` FK CASCADE、`type`、`anchor` 复用双轨、`color`、`text`、`createdAt`）+ `AnnotationDao` | JVM |
+| | A-2 | Room **schema v3** + 手写 `MIGRATION_2_3`（SQL 逐字对齐 `3.json`，同 M10 纪律）+ `3.json` 入库 | `Migration2To3Test` |
+| | A-3 | 仓储 CRUD + 上限常量（类比 `MAX_BOOKMARKS_PER_DOCUMENT`）+ 判重 | JVM |
+| **B 渲染层**（1 会话） | B-1 | PDF 文本选择：`MuPdfReaderView` 覆写选择手势（同沉浸模式钩子法），拿选中文本 + 矩形 | 插桩 |
+| | B-2 | 高亮绘制：原生 annotation（若 S0-1 支持）或自绘 overlay | 真机 |
+| | B-3 | 锚点抓取：选中区域 → 页码 + 矩形（PDF）/ 比例（epub） | 插桩 |
+| | B-4 | epub 高亮（据 S0 结论：支持则文本级，不支持则砍掉顺延） | 真机 |
+| **C UI**（0.5–1 会话） | C-1 | 选择工具栏（高亮颜色 / 加笔记 / 删除） | — |
+| | C-2 | 高亮/笔记列表面板（复用书签 BottomSheet 模式）+ 跳转定位 | — |
+| | C-3 | 接线 `ReaderViewModel` + 文案入 `copy.md` | JVM |
+| **D 备份+验收**（0.5 会话） | D-1 | `BackupCodec.SCHEMA_VERSION = 4` + 高亮/笔记导出/恢复 + v3 兼容 | JVM |
+| | D-2 | 真机验收（备份往返 / 升级安装 v2→v3 / R8 冒烟） | 真机 |
 
-### 3.4 阶段分解草案（类比 M10 四段）
-
-| 阶段 | 内容 |
-|---|---|
-| S0 | 预研拍板（锚点/模型/交互边界） |
-| A | 数据层：schema v3 + `MIGRATION_2_3` + `Annotation` 实体/DAO/仓储 + 备份 `SCHEMA_VERSION=4` |
-| B | 渲染层：文本选择 + 高亮绘制 + 锚点抓取 |
-| C | UI：选择工具栏（颜色/笔记/删除）+ 高亮/笔记列表面板（复用书签 BottomSheet 模式） |
-| D | 真机验收（含备份往返 + 升级安装 + R8 冒烟） |
-
-### 3.5 测试矩阵草案
+### 3.5 测试矩阵
 
 | 层 | 用例 |
 |---|---|
@@ -137,7 +146,7 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 | 插桩 | fitz 文本选择/高亮探针（先取证后转回归）、跨会话/跨排版锚点还原 |
 | JVM | `ReaderViewModel` 高亮/笔记增删改 |
 
-### 3.6 真机验收场景草案
+### 3.6 真机验收场景
 
 1. PDF 选中一段文字 → 高亮 → 退出重进 → 高亮位置/颜色一致；
 2. 高亮处加笔记 → 笔记列表可见 → 点击跳回对应位置；
@@ -149,6 +158,12 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 ### 3.7 B 门禁
 
 `m12-plan.md` §3 拍板评审通过 + S0 预研结论固化（探针日志留档）。
+
+### 3.8 决策记录（2026-11-01 已拍板）
+
+1. **epub 降级预案**：接受——若 S0-1 证实 fitz 不支持 reflowable 文本级高亮，M12 砍成「仅 PDF 高亮/笔记」，epub 高亮顺延。
+2. **颜色范围**：单色（黄色）起步，多色留待后续里程碑。
+3. **备份导出**：高亮/笔记随备份导出（`BackupCodec.SCHEMA_VERSION = 4`）。
 
 ---
 

@@ -72,6 +72,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 onProgressChanged = onProgressChanged,
                 onTapContent = onTapContent,
                 onUserScroll = onUserScroll,
+                onTextSelected = onTextSelected,
+                annotations = annotations,
                 modifier = modifier,
             )
         }

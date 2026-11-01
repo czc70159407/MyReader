@@ -2,6 +2,7 @@ package com.myreader.feature.viewermupdf
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,20 +21,30 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.artifex.mupdf.viewer.MuPDFCore
+import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.ProgressPayload
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** 页间距（dp） */
 private val PAGE_SPACING = 4.dp
@@ -64,9 +75,13 @@ internal fun MuPdfVerticalView(
     onProgressChanged: (ProgressPayload) -> Unit,
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
+    onTextSelected: (AnnotationDraft) -> Unit,
+    annotations: List<AnnotationDraft>,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    // M12 B-4：epub 文本选择/高亮走自绘 overlay（reflowable 页非 PDFPage，无原生 annotation）
+    val core = remember(doc) { (doc as? MuPdfDocument)?.core }
     val loader = remember(doc) { VerticalPageLoader(doc) }
     val latestCallback by rememberUpdatedState(onProgressChanged)
     // M12 沉浸模式：静止点按切换顶栏、滚动隐藏顶栏（LazyColumn 无内建手势，外层 pointerInput 可行）
@@ -152,18 +167,36 @@ internal fun MuPdfVerticalView(
                 .pointerInput(Unit) { detectTapGestures(onTap = { latestTapCallback() }) },
         ) {
             items(doc.pageCount) { page ->
-                VerticalPageItem(loader = loader, page = page, widthPx = widthPx)
+                VerticalPageItem(
+                    loader = loader,
+                    page = page,
+                    widthPx = widthPx,
+                    core = core,
+                    annotations = annotations,
+                    onTextSelected = onTextSelected,
+                )
             }
         }
     }
 }
 
-/** 单页项：占位（4:3 + 加载圈）→ 页尺寸定高 → 位图就绪替换；渲染失败显示错误文案（不放无限加载圈） */
+/** M12 高亮填充色（半透明黄，与 PDF 选区预览同色） */
+private val HIGHLIGHT_FILL = Color(0x66FFEB3B)
+
+/** 单页项：占位（4:3 + 加载圈）→ 页尺寸定高 → 位图就绪替换；渲染失败显示错误文案（不放无限加载圈）。
+ *
+ * M12 B-4（epub）：长按拖动选择文本 → 归一化 quad 上报落库；已存高亮与拖动预览以自绘 overlay 呈现
+ * （reflowable 页非 `PDFPage`，无原生 annotation）。
+ */
 @Composable
+@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
 private fun VerticalPageItem(
     loader: VerticalPageLoader,
     page: Int,
     widthPx: Int,
+    core: MuPDFCore?,
+    annotations: List<AnnotationDraft>,
+    onTextSelected: (AnnotationDraft) -> Unit,
 ) {
     // 页点尺寸：异步获取；成功结果由 loader 跨重组/跨宽度缓存（防滚动中高度抖动）
     var pageSize by remember(page) { mutableStateOf<Size?>(null) }
@@ -201,11 +234,100 @@ private fun VerticalPageItem(
     val density = LocalDensity.current
     val heightPx = widthPx * ratio
 
+    // 页面 pt 尺寸与 px/pt 换算比（选择坐标转换、高亮绘制共用）
+    val ptWidth = pageSize?.width ?: 0f
+    val ptHeight = pageSize?.height ?: 0f
+    val sx = if (ptWidth > 0f) widthPx / ptWidth else 0f
+    val sy = if (ptHeight > 0f) heightPx / ptHeight else 0f
+
+    // 当前页已存高亮（归一化 quad）
+    val savedQuads = remember(annotations, page) {
+        annotations.asSequence()
+            .filter { it.page == page }
+            .mapNotNull { AnnotationAnchorCodec.decode(it.anchor)?.quads }
+            .flatten()
+            .toList()
+    }
+
+    // 拖动选择状态：起止点（Box 坐标）+ 实时归一化 quads 预览
+    var selStart by remember(page) { mutableStateOf<Offset?>(null) }
+    var selEnd by remember(page) { mutableStateOf<Offset?>(null) }
+    var selQuads by remember(page) { mutableStateOf<List<FloatArray>>(emptyList()) }
+    val selectable = core != null && sx > 0f && sy > 0f
+    val scope = rememberCoroutineScope()
+
+    // 拖动中实时重算选区（松手由 onDragEnd 直接按起止点重算提交，不依赖异步 state）
+    LaunchedEffect(page, selStart, selEnd, sx, sy) {
+        val start = selStart
+        val end = selEnd
+        selQuads = if (start != null && end != null) {
+            selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight) ?: emptyList()
+        } else {
+            emptyList()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = PAGE_SPACING / 2)
-            .height(with(density) { heightPx.toDp() }),
+            .height(with(density) { heightPx.toDp() })
+            .then(
+                if (selectable) {
+                    Modifier.pointerInput(page, sx, sy) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = { offset ->
+                                selStart = offset
+                                selEnd = offset
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                selEnd = change.position
+                            },
+                            onDragEnd = {
+                                val start = selStart
+                                val end = selEnd
+                                selStart = null
+                                selEnd = null
+                                selQuads = emptyList()
+                                if (start != null && end != null) {
+                                    scope.launch {
+                                        val quads = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
+                                        if (!quads.isNullOrEmpty()) {
+                                            onTextSelected(
+                                                AnnotationDraft(
+                                                    page = page,
+                                                    anchor = AnnotationAnchorCodec.encodeNormalized(quads),
+                                                    text = "",
+                                                ),
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                selStart = null
+                                selEnd = null
+                                selQuads = emptyList()
+                            },
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            )
+            .drawWithContent {
+                drawContent()
+                (savedQuads + selQuads).forEach { n ->
+                    val path = Path()
+                    path.moveTo(n[0] * size.width, n[1] * size.height)
+                    path.lineTo(n[2] * size.width, n[3] * size.height)
+                    path.lineTo(n[6] * size.width, n[7] * size.height)
+                    path.lineTo(n[4] * size.width, n[5] * size.height)
+                    path.close()
+                    drawPath(path, HIGHLIGHT_FILL)
+                }
+            },
         contentAlignment = Alignment.Center,
     ) {
         val bm = bitmap
@@ -222,5 +344,31 @@ private fun VerticalPageItem(
             )
             else -> CircularProgressIndicator()
         }
+    }
+}
+
+/** 选择：View px 起止点 → 页面 pt → 归一化 quads（每项 8 个 0..1 值）；无文本/未就绪返回 null */
+@Suppress("LongParameterList", "ComplexCondition", "ReturnCount")
+private suspend fun selectQuads(
+    core: MuPDFCore?,
+    page: Int,
+    start: Offset,
+    end: Offset,
+    sx: Float,
+    sy: Float,
+    ptWidth: Float,
+    ptHeight: Float,
+): List<FloatArray>? {
+    if (core == null || sx <= 0f || sy <= 0f || ptWidth <= 0f || ptHeight <= 0f) return null
+    val sel = withContext(Dispatchers.Default) {
+        core.selectText(page, start.x / sx, start.y / sy, end.x / sx, end.y / sy)
+    } ?: return null
+    return sel.quads.map { q ->
+        floatArrayOf(
+            q.ul_x / ptWidth, q.ul_y / ptHeight,
+            q.ur_x / ptWidth, q.ur_y / ptHeight,
+            q.ll_x / ptWidth, q.ll_y / ptHeight,
+            q.lr_x / ptWidth, q.lr_y / ptHeight,
+        )
     }
 }

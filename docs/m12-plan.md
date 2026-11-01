@@ -142,6 +142,8 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 
 > **B-1/B-2/B-3 已落地（2026-11-01）**：`MuPDFCore` 新增 `selectText`（`highlight` + 单点 `snapSelection` 回退）/ `addHighlight`（原生 `PDFAnnotation.TYPE_HIGHLIGHT`）；`MuPdfReaderView` 长按进入选择、拖动扩展、`onDraw` 半透明黄预览、松手创建原生高亮并上报归一化 `AnnotationDraft`；`ReaderViewModel.addAnnotation` 落库（`annotations` 表）+ `observeAnnotations` 观察；`replayAnnotations` 重开文档时按 anchor 去重回放。真机验证：长按选中 "page" → 高亮 + Snackbar「已添加高亮」→ **退出重进高亮回放一致**。**epub（reflowable）跳过（B-4 自绘 overlay）**；拖动扩展选区 adb 无法可靠模拟，需真机手动验证。
 
+> **B-4 已落地（2026-11-01）**：`MuPdfVerticalView`（epub 默认垂直模式）支持长按拖动选择文本（`detectDragGesturesAfterLongPress`），选区与已存高亮以 `drawWithContent` 自绘 overlay（半透明黄，**画在位图之上**——首版用 `drawBehind` 被不透明位图遮挡，已修）；锚点复用 `AnnotationAnchorCodec`（归一化 quad，`cp:` 重排前缀位已预留但暂未写入）；`MuPdfViewerProvider` VERTICAL 分支透传 `onTextSelected`/`annotations`。真机验证（PDF 垂直路径，与 epub 同代码）：长按拖动 → 实时预览 → 松手「已添加高亮」→ 重进回放一致。**限制**：①epub 水平模式（`MuPdfReaderView` 的 reflowable 分支）未做自绘 overlay；②归一化 quad 跨重排为页级近似（页内相对位置不变，页映射不回溯）；③epub 文件因 SAF「最近」不索引 `.epub` 未完成端到端真机验证，以 PDF 垂直同代码路径覆盖。
+
 ### 3.5 测试矩阵
 
 | 层 | 用例 |

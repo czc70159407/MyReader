@@ -22,7 +22,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -158,8 +157,7 @@ fun ReaderScreen(
             var uiProgress by remember { mutableStateOf(s.initialProgress) }
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
-            var showBookmarks by remember { mutableStateOf(false) }
-            var showAnnotations by remember { mutableStateOf(false) }
+            var showAnnotationHub by remember { mutableStateOf(false) }
             // M12 沉浸模式：顶栏显隐（旋转保持）；触摸探索开启时禁用自动隐藏（reader.md §6.3）
             var topBarVisible by rememberSaveable { mutableStateOf(true) }
             val context = LocalContext.current
@@ -245,8 +243,7 @@ fun ReaderScreen(
                             ),
                             actions = ReaderTopBarActions(
                                 onBack = onBack,
-                                onBookmarks = { showBookmarks = true },
-                                onAnnotations = { showAnnotations = true },
+                                onAnnotations = { showAnnotationHub = true },
                                 onOutline = { showOutline = true },
                                 onGoTo = { showGoTo = true },
                                 onToggleMode = viewModel::toggleMode,
@@ -256,16 +253,17 @@ fun ReaderScreen(
                 }
             }
 
-            if (showBookmarks) {
+            if (showAnnotationHub) {
                 // 首次加载且无数据 → 加载态；已有数据时后台刷新不闪加载态；异常优先展示重试
                 val panelState: BookmarkPanelState = when {
                     bookmarksError -> BookmarkPanelState.Failed
                     bookmarksLoading && bookmarks.isEmpty() -> BookmarkPanelState.Loading
                     else -> BookmarkPanelState.Ready(bookmarks)
                 }
-                BookmarkSheet(
-                    state = panelState,
-                    actions = BookmarkSheetActions(
+                AnnotationHubSheet(
+                    bookmarkState = panelState,
+                    annotationState = AnnotationPanelState.Ready(annotations),
+                    bookmarkActions = BookmarkSheetActions(
                         onAdd = viewModel::addBookmarkAtCurrent,
                         onJump = { bookmark: Bookmark ->
                             val progress = if (bookmark.anchor != null) {
@@ -285,29 +283,24 @@ fun ReaderScreen(
                             // 当前会话新生成的 mark），该改动无净效果已回退；跨会话的旧 mark 在
                             // MuPDFCore.bookmarkToPage 中恒返回 -2，故流式恢复实际依赖 page 回落。
                             if (!s.reflowable) viewModel.onProgress(progress)
-                            showBookmarks = false
+                            showAnnotationHub = false
                         },
                         onDelete = viewModel::deleteBookmark,
                         onRetry = viewModel::retryBookmarks,
-                        onDismiss = { showBookmarks = false },
+                        onDismiss = { showAnnotationHub = false },
                     ),
-                )
-            }
-            if (showAnnotations) {
-                AnnotationSheet(
-                    state = AnnotationPanelState.Ready(annotations),
-                    actions = AnnotationSheetActions(
+                    annotationActions = AnnotationSheetActions(
                         onJump = { annotation: Annotation ->
                             val target = annotation.page.coerceIn(0, (pageCount - 1).coerceAtLeast(0))
                             val progress = ProgressPayload.Page(target, 0)
                             uiProgress = progress
                             // 与书签跳转同策略：页码式立即落库；流式由渲染端 reposition 后回发
                             if (!s.reflowable) viewModel.onProgress(progress)
-                            showAnnotations = false
+                            showAnnotationHub = false
                         },
                         onDelete = viewModel::deleteAnnotation,
-                        onDismiss = { showAnnotations = false },
                     ),
+                    onDismiss = { showAnnotationHub = false },
                 )
             }
             if (showOutline) {
@@ -352,7 +345,6 @@ private data class ReaderTopBarState(
 /** 顶栏动作回调（打包规避 detekt LongParameterList，与 BookmarkSheetActions 同法） */
 private data class ReaderTopBarActions(
     val onBack: () -> Unit,
-    val onBookmarks: () -> Unit,
     val onAnnotations: () -> Unit,
     val onOutline: () -> Unit,
     val onGoTo: () -> Unit,
@@ -392,20 +384,17 @@ private fun ReaderTopBar(
             }
         },
         actions = {
-            // M10-C：书签面板入口；图标实心/描边反映「当前页已收藏」
-            IconButton(onClick = actions.onBookmarks) {
+            // M12-C3：书签 + 高亮合并为「标注」面板（5 图标降 4，标题不再被挤压）；
+            // 图标实心/描边仍反映「当前页已收藏」
+            IconButton(onClick = actions.onAnnotations) {
                 Icon(
                     imageVector = if (state.currentBookmarked) {
                         Icons.Filled.Bookmark
                     } else {
                         Icons.Filled.BookmarkBorder
                     },
-                    contentDescription = "书签",
+                    contentDescription = "书签与高亮",
                 )
-            }
-            // M12-C2：高亮/笔记面板入口
-            IconButton(onClick = actions.onAnnotations) {
-                Icon(imageVector = Icons.Filled.Brush, contentDescription = "高亮与笔记")
             }
             IconButton(onClick = actions.onOutline) {
                 Icon(imageVector = Icons.AutoMirrored.Filled.List, contentDescription = "目录")

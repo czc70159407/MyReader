@@ -12,11 +12,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -41,60 +39,46 @@ internal sealed interface AnnotationPanelState {
 internal data class AnnotationSheetActions(
     val onJump: (Annotation) -> Unit,
     val onDelete: (Long) -> Unit,
-    val onDismiss: () -> Unit,
 )
 
 /**
- * 高亮/笔记面板（M12-C2）：复用 [BookmarkSheet] 的 ModalBottomSheet 模式，不新增页面路由。
+ * 高亮/笔记面板内容（M12-C3：从 ModalBottomSheet 外壳抽出，作为「标注」双 Tab 的一个 Section 复用）。
  * 列表点击跳转、尾部删除；空态给「长按拖动」引导。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun AnnotationSheet(
+internal fun AnnotationSection(
     state: AnnotationPanelState,
     actions: AnnotationSheetActions,
 ) {
-    ModalBottomSheet(onDismissRequest = actions.onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp),
+    Column(modifier = Modifier.fillMaxWidth()) {
+        when (state) {
+            AnnotationPanelState.Failed -> Text(
+                text = "高亮加载失败",
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                color = MaterialTheme.colorScheme.error,
+            )
+            AnnotationPanelState.Loading -> Row(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
             ) {
-                Text(
-                    text = "高亮与笔记",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
+                CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp), strokeWidth = 2.dp)
+                Text(text = "正在加载高亮…")
             }
-            when (state) {
-                AnnotationPanelState.Failed -> Text(
-                    text = "高亮加载失败",
+            is AnnotationPanelState.Ready -> if (state.items.isEmpty()) {
+                Text(
+                    text = "暂无高亮。长按正文拖动即可添加。",
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    color = MaterialTheme.colorScheme.error,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                AnnotationPanelState.Loading -> Row(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp), strokeWidth = 2.dp)
-                    Text(text = "正在加载高亮…")
-                }
-                is AnnotationPanelState.Ready -> if (state.items.isEmpty()) {
-                    Text(
-                        text = "暂无高亮。长按正文拖动即可添加。",
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                        items(items = state.items, key = { it.id }) { item ->
-                            AnnotationRow(
-                                item = item,
-                                onJump = { actions.onJump(item) },
-                                onDelete = { actions.onDelete(item.id) },
-                            )
-                        }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    items(items = state.items, key = { it.id }) { item ->
+                        AnnotationRow(
+                            item = item,
+                            onJump = { actions.onJump(item) },
+                            onDelete = { actions.onDelete(item.id) },
+                        )
                     }
                 }
             }

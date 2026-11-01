@@ -43,7 +43,7 @@ class BookmarkSheetTest {
         onRetry: () -> Unit = {},
     ) {
         composeRule.setContent {
-            BookmarkSheet(
+            BookmarkSection(
                 state = state,
                 actions = BookmarkSheetActions(
                     onAdd = onAdd,

@@ -15,11 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,67 +50,61 @@ internal data class BookmarkSheetActions(
 )
 
 /**
- * 书签面板（M10-C）：复用 [OutlineSheet] 的 ModalBottomSheet 模式，不新增页面路由。
+ * 书签面板内容（M12-C3：从 [ModalBottomSheet][androidx.compose.material3.ModalBottomSheet]
+ * 外壳抽出，作为「标注」双 Tab 的一个 Section 复用）。
  * 顶部「添加当前位置书签」+ 列表（点击跳转，尾部删除）。
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun BookmarkSheet(
+internal fun BookmarkSection(
     state: BookmarkPanelState,
     actions: BookmarkSheetActions,
 ) {
-    ModalBottomSheet(onDismissRequest = actions.onDismiss) {
-        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "书签",
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = actions.onAdd) {
+                Icon(
+                    imageVector = Icons.Filled.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
                 )
-                TextButton(onClick = actions.onAdd) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.size(4.dp))
-                    Text(text = "添加当前位置书签")
-                }
+                Spacer(modifier = Modifier.size(4.dp))
+                Text(text = "添加当前位置书签")
             }
-            when (state) {
-                BookmarkPanelState.Failed -> Column(
+        }
+        when (state) {
+            BookmarkPanelState.Failed -> Column(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(text = "书签加载失败", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = actions.onRetry) { Text(text = "重试") }
+            }
+            BookmarkPanelState.Loading -> Row(
+                modifier = Modifier.fillMaxWidth().padding(24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp), strokeWidth = 2.dp)
+                Text(text = "正在加载书签…")
+            }
+            is BookmarkPanelState.Ready -> if (state.items.isEmpty()) {
+                Text(
+                    text = "暂无书签",
                     modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text(text = "书签加载失败", color = MaterialTheme.colorScheme.error)
-                    TextButton(onClick = actions.onRetry) { Text(text = "重试") }
-                }
-                BookmarkPanelState.Loading -> Row(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.padding(end = 12.dp), strokeWidth = 2.dp)
-                    Text(text = "正在加载书签…")
-                }
-                is BookmarkPanelState.Ready -> if (state.items.isEmpty()) {
-                    Text(
-                        text = "暂无书签",
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
-                        items(items = state.items, key = { it.id }) { item ->
-                            BookmarkRow(
-                                item = item,
-                                onJump = { actions.onJump(item) },
-                                onDelete = { actions.onDelete(item.id) },
-                            )
-                        }
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    items(items = state.items, key = { it.id }) { item ->
+                        BookmarkRow(
+                            item = item,
+                            onJump = { actions.onJump(item) },
+                            onDelete = { actions.onDelete(item.id) },
+                        )
                     }
                 }
             }

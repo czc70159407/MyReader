@@ -165,6 +165,30 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 2. **颜色范围**：单色（黄色）起步，多色留待后续里程碑。
 3. **备份导出**：高亮/笔记随备份导出（`BackupCodec.SCHEMA_VERSION = 4`）。
 
+### 3.9 S0 预研结论（2026-11-01）
+
+**S0-1 fitz 1.28.2 API 边界**（解包 AAR 读 `classes.jar` 符号 + `javap`）：
+- PDF annotation：`PDFPage.createAnnotation(TYPE_HIGHLIGHT)` / `deleteAnnotation` / `getAnnotations`；`PDFAnnotation` 有 `setQuadPoints`/`setColor`/`setContents`/`update`/`getType`。
+- 文本选择：`Page.toStructuredText()` → `StructuredText.highlight(Point,Point)→Quad[]`、`copy(Point,Point)→String`、`search(String)→Quad[][]`、`asText()`。
+- **`search(String)` 真机 JNI 崩溃**（`jobject invalid local reference: 0x1`，SIGABRT）——不可用，但不影响（高亮/笔记用两点选择 `highlight`/`copy`）。
+
+**S0-2 真机探针（PKC110 / Android 16）**：
+
+| 能力 | PDF | EPUB |
+|---|---|---|
+| 文本获取（`toStructuredText`+`asText`） | ✅ "Section 1 Introduction" | ✅ "Chapter 1…" |
+| 文本选择（`highlight`→Quad[]） | ✅ 1 quad | ✅ 3 quads |
+| 选中文本（`copy`→String） | ✅ | ✅ |
+| 高亮创建（`createAnnotation`+`getAnnotations`） | ✅ type=8，读回 1 | 未测（同 API） |
+
+**结论**：PDF 高亮/笔记**完全可行**（原生 annotation + 两点选择）；EPUB reflowable 文本选择**可用**（fitz 支持，§3.8 决策 1 的「砍掉」前提不触发），但 quad 坐标跨重排漂移，锚点需按比例。
+
+**S0-3 决策（据 S0-1/2 拍板）**：
+- 锚点格式：PDF = 页码 + 归一化矩形（quad 各顶点 / 页面宽高，固定排版稳定）；epub = 比例锚点（quad / 页面宽高 + `cp:` 章节比例，跨重排按比例换算）。
+- 数据模型：`annotations` 单表（`type` 区分 HIGHLIGHT/NOTE），字段同 §3.4 A-1。
+- 渲染：PDF 高亮用原生 annotation（fitz 自动渲染）；epub 高亮自绘 overlay（reflowable 无 annotation）。
+- 交互：长按进入文本选择（区别于单击切换顶栏 / 水平边缘翻页 / 垂直滚动）。
+
 ---
 
 ## 4. 依赖与时间预估

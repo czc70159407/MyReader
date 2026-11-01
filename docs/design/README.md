@@ -11,6 +11,7 @@
 
 | 文件 | 内容 | 何时读 |
 |---|---|---|
+| [interaction.md](interaction.md) | 交互总纲（用户画像 / 组件交互状态 / 反馈分级 / 交付物与验收门禁 / 分册导航） | 设计任何交互前 |
 | [tokens.md](tokens.md) | 色板、字体映射、间距、圆角、触达、栅格 | 写任何 UI 前 |
 | [copy.md](copy.md) | 按钮 / 空态 / 错误 / 成功文案总表与标点规范 | 新增或修改任何用户可见文字 |
 | [accessibility.md](accessibility.md) | 响应式矩阵 + 无障碍逐项清单与验收脚本 | 设计与验收阶段 |
@@ -41,6 +42,8 @@
 | D6 | 组件库边界 | 维持「不设 `core:designsystem`」：仅 `MaterialTheme` + 模块内共享组件；抽模块需先改 `docs/architecture.md` 技术选型 | `tokens.md` |
 | D7 | 重名判定 | 保持**区分大小写**（与文件系统解耦），在文档中写明 | `copy.md`、`flows/move-and-delete.md` |
 | D8 | 空态/次要文本颜色 | `outline` → `onSurfaceVariant`（`outline` 与背景对比度不足 4.5:1） | `tokens.md`、`components/states.md` |
+| D9 | 组件交互状态六态模型 | 统一为 `默认/悬停/按下/禁用/加载/错误`；悬停不承载信息，仅指针设备增强 | `interaction.md` §2 |
+| D10 | 反馈四级载体 | `L1 就近内联 / L2 页面 / L3 Snackbar / 确认对话框`，与 `copy.md` 级别列同口径 | `interaction.md` §3 |
 
 ## 交付状态
 
@@ -73,7 +76,7 @@
 
 - 页面文件用路由名或模块名（`library` / `reader` / `settings` / `about`）。
 - 组件文件用 Compose 组件概念名（`top-bar` / `cards` / `dialogs`），不照抄类名（避免改名后文档失效）。
-- 状态名统一：`加载` / `空` / `错误` / `成功` / `禁用` / `进行中`。
+- 状态名统一：业务状态 `加载` / `空` / `错误` / `成功` / `禁用` / `进行中`；交互状态 `默认` / `悬停` / `按下` / `禁用` / `加载` / `错误`（见 `interaction.md` §2）。
 - 文案键名统一 `err_*` / `act_*` / `empty_*` / `ok_*`，与 `copy.md` 一一对应。
 
 ## 变更流程

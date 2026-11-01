@@ -137,6 +137,7 @@ APP 整体开源（MuPDF AGPL 要求）。
 | 执行 M9（多格式支持） | [docs/m9-plan.md](docs/m9-plan.md)（M9 执行计划与验收方案：缺口清单、技术决策、S0 预研门禁、阶段 A~G、夹具/测试矩阵、真机验收场景） |
 | 执行 M10（书签 + 首个 Room Migration） | [docs/m10-plan.md](docs/m10-plan.md)（M10 执行计划与验收方案：S0 锚点/表结构预研、阶段 A~D、MigrationTest 门禁、备份双版本兼容、真机验收场景） |
 | 执行 M11（epub 锚点稳健性 / 比例锚点） | [docs/m11-plan.md](docs/m11-plan.md)（M11 执行计划：S0-1 fitz API 边界结论、跨会话/跨排版探针、P/Q/R 决策树、`cp:ch:cp:ct` 锚点与备份 v3、验收场景） |
+| 执行 M12（沉浸模式 + 高亮/笔记） | [docs/m12-plan.md](docs/m12-plan.md)（M12 执行计划：A 沉浸模式实现分解（契约纠偏/接口/状态/验收）+ B 高亮/笔记 S0 立项、Room v3 + 备份 v4 草案） |
 | detekt 存量削减（与 M10 并行） | [docs/detekt-baseline-reduction.md](docs/detekt-baseline-reduction.md)（baseline 渐进清理任务说明：分层范围/削减循环/进度追踪/并行冲突防范） |
 | 真机验收产物落盘 / 查历史 dump 与截图 | [docs/acceptance-files.md](docs/acceptance-files.md)（设备侧唯一目录 `/sdcard/Download/MyReaderTest`：分类子目录、命名约定、2026-10-29 归位记录） |
 

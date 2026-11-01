@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,12 +39,13 @@ internal sealed interface AnnotationPanelState {
 /** 面板回调集合（与 [BookmarkSheetActions] 同型，规避 Compose 组件参数膨胀） */
 internal data class AnnotationSheetActions(
     val onJump: (Annotation) -> Unit,
+    val onEditNote: (Annotation) -> Unit,
     val onDelete: (Long) -> Unit,
 )
 
 /**
  * 高亮/笔记面板内容（M12-C3：从 ModalBottomSheet 外壳抽出，作为「标注」双 Tab 的一个 Section 复用）。
- * 列表点击跳转、尾部删除；空态给「长按拖动」引导。
+ * 列表点击跳转，尾部「编辑笔记」「删除」；空态给「长按拖动」引导。
  */
 @Composable
 internal fun AnnotationSection(
@@ -77,6 +79,7 @@ internal fun AnnotationSection(
                         AnnotationRow(
                             item = item,
                             onJump = { actions.onJump(item) },
+                            onEditNote = { actions.onEditNote(item) },
                             onDelete = { actions.onDelete(item.id) },
                         )
                     }
@@ -87,7 +90,12 @@ internal fun AnnotationSection(
 }
 
 @Composable
-private fun AnnotationRow(item: Annotation, onJump: () -> Unit, onDelete: () -> Unit) {
+private fun AnnotationRow(
+    item: Annotation,
+    onJump: () -> Unit,
+    onEditNote: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val formatter = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
     Row(
         modifier = Modifier
@@ -107,11 +115,22 @@ private fun AnnotationRow(item: Annotation, onJump: () -> Unit, onDelete: () -> 
                     maxLines = EXCERPT_MAX_LINES,
                 )
             }
+            item.note?.takeIf { it.isNotBlank() }?.let { note ->
+                Text(
+                    text = note.take(NOTE_EXCERPT_MAX_CHARS),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = NOTE_EXCERPT_MAX_LINES,
+                )
+            }
             Text(
                 text = formatter.format(Date(item.createdAt)),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        IconButton(onClick = onEditNote) {
+            Icon(imageVector = Icons.Outlined.EditNote, contentDescription = "编辑笔记")
         }
         IconButton(onClick = onDelete) {
             Icon(imageVector = Icons.Outlined.Delete, contentDescription = "删除高亮")
@@ -124,3 +143,9 @@ private const val EXCERPT_MAX_CHARS = 60
 
 /** 摘录最大行数 */
 private const val EXCERPT_MAX_LINES = 2
+
+/** 笔记摘录最大字符数 */
+private const val NOTE_EXCERPT_MAX_CHARS = 80
+
+/** 笔记摘录最大行数 */
+private const val NOTE_EXCERPT_MAX_LINES = 2

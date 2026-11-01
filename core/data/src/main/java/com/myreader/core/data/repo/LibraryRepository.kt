@@ -96,6 +96,9 @@ interface LibraryRepository {
 
     suspend fun deleteAnnotation(id: Long)
 
+    /** 更新高亮笔记正文（null/空串即清空） */
+    suspend fun updateAnnotationNote(id: Long, note: String?)
+
     // ---- 进度 ----
     suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int)   // progressType="page"
     suspend fun saveCfiProgress(id: Long, payload: String)                   // progressType="cfi"

@@ -291,6 +291,10 @@ class LibraryRepositoryImpl @Inject constructor(
         annotationDao.delete(id)
     }
 
+    override suspend fun updateAnnotationNote(id: Long, note: String?) = withContext(dispatchers.io) {
+        annotationDao.updateNote(id, note)
+    }
+
     // ---- 进度 ----
 
     override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) =

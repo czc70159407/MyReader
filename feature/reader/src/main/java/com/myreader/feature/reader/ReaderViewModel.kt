@@ -197,6 +197,22 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /** 保存高亮笔记（空串等价清空）：失败转 Snackbar，不抛异常 */
+    fun saveAnnotationNote(id: Long, note: String?) {
+        val normalized = note?.takeIf { it.isNotBlank() }
+        viewModelScope.launch {
+            val message = try {
+                repository.updateAnnotationNote(id, normalized)
+                if (normalized == null) "已清除笔记" else "已保存笔记"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                "保存笔记失败，请重试"
+            }
+            _messages.send(message)
+        }
+    }
+
     /** 删除高亮/笔记（面板入口）：失败转 Snackbar，不抛异常 */
     fun deleteAnnotation(id: Long) {
         viewModelScope.launch {

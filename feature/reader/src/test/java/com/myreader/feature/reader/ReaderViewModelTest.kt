@@ -800,6 +800,10 @@ class ReaderViewModelTest {
             note: String?,
         ): AnnotationAddResult = AnnotationAddResult.ADDED
         override suspend fun deleteAnnotation(id: Long) = Unit
+        val annotationNotes = mutableListOf<Pair<Long, String?>>()
+        override suspend fun updateAnnotationNote(id: Long, note: String?) {
+            annotationNotes += id to note
+        }
         override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) {
             savedProgress += Triple(id, page, scrollOffsetY)
         }

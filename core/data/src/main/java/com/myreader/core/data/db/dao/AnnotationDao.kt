@@ -39,6 +39,10 @@ interface AnnotationDao {
     @Upsert
     suspend fun upsertAll(annotations: List<AnnotationEntity>)
 
+    /** 更新笔记正文（M12-C1）：note 为 null/空串即清空 */
+    @Query("UPDATE annotations SET note = :note WHERE id = :id")
+    suspend fun updateNote(id: Long, note: String?)
+
     @Query("DELETE FROM annotations WHERE id = :id")
     suspend fun delete(id: Long)
 

@@ -158,6 +158,8 @@ fun ReaderScreen(
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
             var showAnnotationHub by remember { mutableStateOf(false) }
+            // M12-C1：正在编辑笔记的高亮（null 表示对话框关闭）
+            var noteTarget by remember { mutableStateOf<Annotation?>(null) }
             // M12 沉浸模式：顶栏显隐（旋转保持）；触摸探索开启时禁用自动隐藏（reader.md §6.3）
             var topBarVisible by rememberSaveable { mutableStateOf(true) }
             val context = LocalContext.current
@@ -298,9 +300,21 @@ fun ReaderScreen(
                             if (!s.reflowable) viewModel.onProgress(progress)
                             showAnnotationHub = false
                         },
+                        onEditNote = { noteTarget = it },
                         onDelete = viewModel::deleteAnnotation,
                     ),
                     onDismiss = { showAnnotationHub = false },
+                )
+            }
+            noteTarget?.let { target ->
+                AnnotationNoteDialog(
+                    annotationId = target.id,
+                    initialNote = target.note,
+                    onDismiss = { noteTarget = null },
+                    onSave = { id, note ->
+                        viewModel.saveAnnotationNote(id, note)
+                        noteTarget = null
+                    },
                 )
             }
             if (showOutline) {

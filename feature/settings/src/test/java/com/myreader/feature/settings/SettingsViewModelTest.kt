@@ -79,7 +79,9 @@ class SettingsViewModelTest {
             override val default: CoroutineDispatcher = UnconfinedTestDispatcher(dispatcher.scheduler)
             override val main: CoroutineDispatcher = UnconfinedTestDispatcher(dispatcher.scheduler)
         }
-        val backupManager = BackupManager(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
+        val backupManager = BackupManager(
+            db, db.folderDao(), db.documentDao(), db.bookmarkDao(), db.annotationDao(), storage, dispatchers,
+        )
         return Triple(SettingsViewModel(settings, library, backupManager), settings, library)
     }
 

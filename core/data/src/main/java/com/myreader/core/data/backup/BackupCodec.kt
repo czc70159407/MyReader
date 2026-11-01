@@ -1,10 +1,12 @@
 package com.myreader.core.data.backup
 
+import com.myreader.core.data.db.entity.AnnotationEntity
 import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.document.FileTypes
 import com.myreader.core.data.db.entity.FolderEntity
 import com.myreader.core.model.BookmarkAnchorCodec
+import com.myreader.core.model.MAX_ANNOTATIONS_PER_DOCUMENT
 import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -21,11 +23,20 @@ import kotlinx.serialization.decodeFromString
  */
 object BackupCodec {
 
-    /** 当前备份格式版本（M10 = 2 书签数组；M11 = 3 比例锚点；v1/v2 旧包仍可导入）。 */
-    const val SCHEMA_VERSION = 3
+    /** 当前备份格式版本（M10 = 2 书签；M11 = 3 比例锚点；M12 = 4 高亮/笔记；旧包仍可导入）。 */
+    const val SCHEMA_VERSION = 4
 
     /** 书签 label 上限（不可信输入防御：防超长文案撑爆面板） */
     private const val MAX_BOOKMARK_LABEL_LEN = 200
+
+    /** 高亮选中文本上限（不可信输入防御） */
+    private const val MAX_ANNOTATION_TEXT_LEN = 1000
+
+    /** 笔记正文上限 */
+    private const val MAX_ANNOTATION_NOTE_LEN = 5000
+
+    /** 高亮锚点串上限（归一化 quad JSON 或带 `cp:` 重排前缀） */
+    private const val MAX_ANNOTATION_ANCHOR_LEN = 4096
 
     /**
      * 流式书签锚点**格式**门禁（长度/字符集防御）：
@@ -83,6 +94,20 @@ object BackupCodec {
         val createdAt: Long,
     )
 
+    /** 高亮/笔记（M12）：anchor 为归一化 quad JSON（可带 `cp:` 重排前缀），type 为 HIGHLIGHT/NOTE */
+    @Serializable
+    data class AnnotationDto(
+        val id: Long,
+        val documentId: Long,
+        val type: String,
+        val page: Int,
+        val anchor: String,
+        val color: Int,
+        val text: String,
+        val note: String? = null,
+        val createdAt: Long,
+    )
+
     @Serializable
     data class BackupManifest(
         val schemaVersion: Int,
@@ -92,6 +117,8 @@ object BackupCodec {
         val documents: List<DocumentDto>,
         /** v1 旧包无此字段 → 默认空（向后兼容，不报错） */
         val bookmarks: List<BookmarkDto> = emptyList(),
+        /** M12（v4）：v1~v3 旧包无此字段 → 默认空 */
+        val annotations: List<AnnotationDto> = emptyList(),
     )
 
     /** 整段 relPath 白名单：纯数字 id + 字母数字扩展名（与 DocumentStorage.REL_PATH_PATTERN 同源但本类自包含） */
@@ -140,6 +167,18 @@ object BackupCodec {
         require(m.bookmarks.size <= m.documents.size * MAX_BOOKMARKS_PER_DOCUMENT) {
             "备份书签数量超出上限: ${m.bookmarks.size}"
         }
+        m.annotations.forEach { a ->
+            require(a.documentId in documentIds) { "高亮指向不存在的文档: ${a.documentId}" }
+            require(a.page >= 0) { "非法高亮页码: ${a.page}" }
+            require(a.type == "HIGHLIGHT" || a.type == "NOTE") { "非法高亮类型: ${a.type}" }
+            require(a.anchor.isNotBlank() && a.anchor.length <= MAX_ANNOTATION_ANCHOR_LEN) { "非法高亮锚点" }
+            require(a.anchor.startsWith("[") || a.anchor.startsWith("cp:")) { "非法高亮锚点" }
+            require(a.text.length <= MAX_ANNOTATION_TEXT_LEN) { "高亮文本过长" }
+            require((a.note?.length ?: 0) <= MAX_ANNOTATION_NOTE_LEN) { "高亮笔记过长" }
+        }
+        require(m.annotations.size <= m.documents.size * MAX_ANNOTATIONS_PER_DOCUMENT) {
+            "备份高亮数量超出上限: ${m.annotations.size}"
+        }
         return m
     }
 }
@@ -180,4 +219,14 @@ fun BookmarkEntity.toDto(): BackupCodec.BookmarkDto = BackupCodec.BookmarkDto(
 fun BackupCodec.BookmarkDto.toEntity(): BookmarkEntity = BookmarkEntity(
     id = id, documentId = documentId, page = page, scrollOffsetY = scrollOffsetY,
     anchor = anchor, label = label, createdAt = createdAt,
+)
+
+fun AnnotationEntity.toDto(): BackupCodec.AnnotationDto = BackupCodec.AnnotationDto(
+    id = id, documentId = documentId, type = type, page = page, anchor = anchor,
+    color = color, text = text, note = note, createdAt = createdAt,
+)
+
+fun BackupCodec.AnnotationDto.toEntity(): AnnotationEntity = AnnotationEntity(
+    id = id, documentId = documentId, type = type, page = page, anchor = anchor,
+    color = color, text = text, note = note, createdAt = createdAt,
 )

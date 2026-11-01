@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.entity.AnnotationEntity
 import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
@@ -52,7 +53,9 @@ class BackupManagerTest {
             MyReaderDatabase::class.java
         ).allowMainThreadQueries().build()
         storage = DocumentStorage(tmp.newFolder("library"))
-        manager = BackupManager(db, db.folderDao(), db.documentDao(), db.bookmarkDao(), storage, dispatchers)
+        manager = BackupManager(
+            db, db.folderDao(), db.documentDao(), db.bookmarkDao(), db.annotationDao(), storage, dispatchers,
+        )
     }
 
     @After
@@ -264,6 +267,51 @@ class BackupManagerTest {
         assertEquals(120, restored[0].scrollOffsetY)
         assertEquals("第 3 页", restored[0].label)
         assertEquals("-5476376651105784552", restored[1].anchor)
+    }
+
+    // ---- M12：高亮/笔记往返（schemaVersion 4）----
+
+    @Test
+    fun exportThenRestore_preservesAnnotations() = runTest {
+        val rel = writePdf(60)
+        db.documentDao().insert(
+            DocumentEntity(
+                id = 60, folderId = null, title = "hl.pdf", relPath = rel, fileType = "pdf",
+                mimeType = null, sourceUri = null, fileSize = 1, contentHash = null,
+                needsPassword = false, pageCount = 3, progressType = "page",
+                currentPage = 0, scrollOffsetY = 0, progressPayload = null,
+                thumbnailRelPath = null, lastReadAt = null, addedAt = 1,
+            ),
+        )
+        db.annotationDao().insert(
+            AnnotationEntity(
+                id = 81, documentId = 60, type = "HIGHLIGHT", page = 1,
+                anchor = "[[0.1000,0.2000,0.5000,0.2000,0.1000,0.3000,0.5000,0.3000]]",
+                color = -256, text = "选中文本", note = null, createdAt = 11,
+            ),
+        )
+        db.annotationDao().insert(
+            AnnotationEntity(
+                id = 82, documentId = 60, type = "NOTE", page = 2,
+                anchor = "[[0.2000,0.4000,0.6000,0.4000,0.2000,0.5000,0.6000,0.5000]]",
+                color = -256, text = "第二段", note = "我的笔记", createdAt = 22,
+            ),
+        )
+
+        val baos = ByteArrayOutputStream()
+        val exp = manager.export(baos, "test")
+        assertEquals(2, exp.annotations)
+
+        db.documentDao().delete(60)                  // 级联删高亮
+        assertEquals(0, db.annotationDao().all().size)
+
+        val res = manager.restore(ByteArrayInputStream(baos.toByteArray()))
+        assertEquals(2, res.annotations)
+
+        val restored = db.annotationDao().all().sortedBy { it.id }
+        assertEquals(listOf(81L, 82L), restored.map { it.id })
+        assertEquals("HIGHLIGHT", restored[0].type)
+        assertEquals("我的笔记", restored[1].note)
     }
 
     @Test

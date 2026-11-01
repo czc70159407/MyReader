@@ -146,6 +146,8 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 
 > **C 已落地（2026-11-01；C-1 降级）**：新增 `AnnotationSheet`（`ModalBottomSheet`，复用 `BookmarkSheet` 模式）+ 顶栏「高亮与笔记」入口（`Icons.Filled.Brush`）+ `ReaderViewModel.deleteAnnotation`；列表项显示页码 / 摘录（60 字截断）/ 时间，点击跳转、尾部删除。**联动修复**：水平模式原生 annotation 删除后残留 → `MuPDFCore.clearHighlights(page)` + `replayAnnotations` 改为「已绘制集合 vs 期望集合」比对，不一致即清空该页全量重放（幂等），新建高亮也统一走重放（`finishSelection` 不再本地绘制）；垂直模式（Compose 自绘）本就随 `annotations` 流自动刷新。真机验证：面板 2 条 → 跳转第 5 页 → 删除 → 列表与页面高亮同步消失。**C-1 降级**：选择工具栏（改色 / 加笔记 / 取消）未做，选择后直接创建黄色高亮 + Snackbar；改色与笔记 UI 顺延至笔记功能。
 
+> **D 已落地并真机验收（2026-11-01）**：`BackupCodec.SCHEMA_VERSION = **4**`，`BackupManifest` 增 `annotations`（`AnnotationDto`）；`decode` 校验外键 / 页码 / 类型（HIGHLIGHT|NOTE）/ 锚点前缀（`[` 或 `cp:`）与长度 / 文本与笔记长度 / 总数上限（文档数 × 200）；`BackupManager` 注入 `AnnotationDao`，导出与恢复均含高亮，`ExportResult`/`RestoreResult` 增 `annotations` 计数。JVM：`BackupCodecTest` 补 5 例（往返 / v3 兼容 / 外键 / 非法类型 / 非法锚点 / 总数上限）、`BackupManagerTest` 补 1 例（导出 → 级联删除 → 恢复）。**真机验收（PKC110）**：导出（`"schemaVersion": 4` + annotations 归一化 anchor）→ 卸载重装（数据清空）→ SAF 选包恢复（合并式确认）→ 打开文档跳第 3 页 → 高亮完整回放。升级安装由 A 阶段 `Migration2To3Test` 覆盖。
+
 ### 3.5 测试矩阵
 
 | 层 | 用例 |

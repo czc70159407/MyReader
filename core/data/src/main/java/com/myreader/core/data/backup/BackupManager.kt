@@ -4,6 +4,7 @@ import android.database.sqlite.SQLiteConstraintException
 import androidx.room.withTransaction
 import com.myreader.core.common.DispatcherProvider
 import com.myreader.core.data.db.MyReaderDatabase
+import com.myreader.core.data.db.dao.AnnotationDao
 import com.myreader.core.data.db.dao.BookmarkDao
 import com.myreader.core.data.db.dao.DocumentDao
 import com.myreader.core.data.db.dao.FolderDao
@@ -40,11 +41,13 @@ private const val RATIO_FLOOR_BYTES = 8L * 1024 * 1024
  *       → 空间预检 → 事务内按拓扑序 upsert 目录、再 upsert 文档 → 提交后把临时文件 move 进 library/thumb；
  *       失败（预检/解压/校验/事务异常）由调用方清理临时目录，DB 因事务原子性保持未变。
  */
+@Suppress("LongParameterList")
 class BackupManager @Inject constructor(
     private val db: MyReaderDatabase,
     private val folderDao: FolderDao,
     private val documentDao: DocumentDao,
     private val bookmarkDao: BookmarkDao,
+    private val annotationDao: AnnotationDao,
     private val storage: DocumentStorage,
     private val dispatchers: DispatcherProvider,
 ) {
@@ -60,6 +63,8 @@ class BackupManager @Inject constructor(
         val missingFiles: Int,
         /** M10：随包导出的书签数 */
         val bookmarks: Int,
+        /** M12：随包导出的高亮/笔记数 */
+        val annotations: Int,
     )
 
     data class RestoreResult(
@@ -71,6 +76,8 @@ class BackupManager @Inject constructor(
         val bytesWritten: Long,
         /** M10：随包恢复的书签数（v1 旧包为 0） */
         val bookmarks: Int,
+        /** M12：随包恢复的高亮/笔记数（v1~v3 旧包为 0） */
+        val annotations: Int,
     )
 
     /** 整段 relPath 白名单（与 BackupCodec / DocumentStorage 同源）。 */
@@ -84,6 +91,7 @@ class BackupManager @Inject constructor(
         val folders = folderDao.all()
         val documents = documentDao.all()
         val bookmarks = bookmarkDao.all()
+        val annotations = annotationDao.all()
         val manifest = BackupCodec.BackupManifest(
             schemaVersion = BackupCodec.SCHEMA_VERSION,
             exportedAt = System.currentTimeMillis(),
@@ -91,6 +99,7 @@ class BackupManager @Inject constructor(
             folders = folders.map { it.toDto() },
             documents = documents.map { it.toDto() },
             bookmarks = bookmarks.map { it.toDto() },
+            annotations = annotations.map { it.toDto() },
         )
 
         var filesWritten = 0
@@ -131,6 +140,7 @@ class BackupManager @Inject constructor(
             thumbnailsWritten = thumbnailsWritten,
             missingFiles = missingFiles,
             bookmarks = bookmarks.size,
+            annotations = annotations.size,
         )
     }
 
@@ -170,6 +180,7 @@ class BackupManager @Inject constructor(
                     (extracted.thumbs.size - moved.thumbs) + moved.orphans,
                 bytesWritten = moved.bytes,
                 bookmarks = manifest.bookmarks.size,
+                annotations = manifest.annotations.size,
             )
         } finally {
             tmp.deleteRecursively()
@@ -262,13 +273,14 @@ class BackupManager @Inject constructor(
         }
     }
 
-    /** 事务写 DB：目录拓扑序 → 文档 → 书签（满足 folderId / documentId 外键）。 */
+    /** 事务写 DB：目录拓扑序 → 文档 → 书签 → 高亮（满足 folderId / documentId 外键）。 */
     private suspend fun writeManifest(manifest: BackupCodec.BackupManifest) {
         val orderedFolders = topoSortFolders(manifest.folders)
         db.withTransaction {
             folderDao.upsertAll(orderedFolders.map { it.toEntity() })
             documentDao.upsertAll(manifest.documents.map { it.toEntity() })
             bookmarkDao.upsertAll(manifest.bookmarks.map { it.toEntity() })
+            annotationDao.upsertAll(manifest.annotations.map { it.toEntity() })
         }
     }
 

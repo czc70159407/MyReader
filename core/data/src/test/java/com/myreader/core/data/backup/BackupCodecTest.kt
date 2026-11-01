@@ -1,8 +1,10 @@
 package com.myreader.core.data.backup
 
+import com.myreader.core.data.db.entity.AnnotationEntity
 import com.myreader.core.data.db.entity.BookmarkEntity
 import com.myreader.core.data.db.entity.DocumentEntity
 import com.myreader.core.data.db.entity.FolderEntity
+import com.myreader.core.model.MAX_ANNOTATIONS_PER_DOCUMENT
 import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
 import kotlinx.serialization.SerializationException
 import org.junit.Assert.assertEquals
@@ -309,6 +311,113 @@ class BackupCodecTest {
             schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
             folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
             bookmarks = bookmarks,
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
+    }
+
+    // ---- M12：高亮/笔记（schemaVersion 4）----
+
+    private fun sampleAnnotation(
+        id: Long,
+        documentId: Long,
+        anchor: String = "[[0.1000,0.2000,0.5000,0.2000,0.1000,0.3000,0.5000,0.3000]]",
+    ) = AnnotationEntity(
+        id = id, documentId = documentId, type = "HIGHLIGHT", page = 0,
+        anchor = anchor, color = -256, text = "选中文本", note = null, createdAt = 1000L,
+    )
+
+    @Test
+    fun roundTrip_preservesAnnotations() {
+        val anns = listOf(
+            sampleAnnotation(21, documentId = 1),
+            sampleAnnotation(22, documentId = 1).copy(type = "NOTE", note = "我的笔记"),
+        )
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            annotations = anns.map { it.toDto() },
+        )
+
+        val back = BackupCodec.decode(BackupCodec.encode(manifest))
+
+        assertEquals(BackupCodec.SCHEMA_VERSION, back.schemaVersion)
+        assertEquals(anns.map { it.toDto() }, back.annotations)
+        assertEquals(anns, back.annotations.map { it.toEntity() })
+    }
+
+    @Test
+    fun decode_acceptsV3Backup_withoutAnnotationsField() {
+        // M12 向后兼容：v3 旧包无 annotations 字段 → 允许恢复，高亮为空
+        val v3Json = """
+        {
+          "schemaVersion": 3,
+          "exportedAt": 1,
+          "appVersion": "m11",
+          "folders": [],
+          "documents": [
+            {"id":1,"folderId":null,"title":"d","relPath":"1.pdf","fileType":"pdf","mimeType":null,
+             "sourceUri":null,"fileSize":1,"contentHash":null,"needsPassword":false,"pageCount":1,
+             "progressType":"page","currentPage":0,"scrollOffsetY":0,"progressPayload":null,
+             "thumbnailRelPath":null,"lastReadAt":null,"addedAt":1}
+          ],
+          "bookmarks": []
+        }
+        """.trimIndent()
+
+        val back = BackupCodec.decode(v3Json)
+
+        assertEquals(3, back.schemaVersion)
+        assertTrue(back.annotations.isEmpty())
+    }
+
+    @Test
+    fun decode_rejectsAnnotationPointingToMissingDocument() {
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            annotations = listOf(sampleAnnotation(21, documentId = 99).toDto()),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
+    }
+
+    @Test
+    fun decode_rejectsIllegalAnnotationType() {
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            annotations = listOf(sampleAnnotation(21, documentId = 1).toDto().copy(type = "DRAW")),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
+    }
+
+    @Test
+    fun decode_rejectsIllegalAnnotationAnchor() {
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            annotations = listOf(sampleAnnotation(21, documentId = 1, anchor = "not-a-quad").toDto()),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            BackupCodec.decode(BackupCodec.encode(manifest))
+        }
+    }
+
+    @Test
+    fun decode_rejectsAnnotationCountOverGlobalLimit() {
+        // 防御：高亮总数不得超过「文档数 × 每文档上限」，恶意备份不得灌爆恢复写入
+        val anns = (1..MAX_ANNOTATIONS_PER_DOCUMENT + 1).map { i ->
+            sampleAnnotation(i.toLong(), documentId = 1).toDto()
+        }
+        val manifest = BackupCodec.BackupManifest(
+            schemaVersion = BackupCodec.SCHEMA_VERSION, exportedAt = 1L, appVersion = "t",
+            folders = emptyList(), documents = listOf(sampleDoc(1).toDto()),
+            annotations = anns,
         )
         assertThrows(IllegalArgumentException::class.java) {
             BackupCodec.decode(BackupCodec.encode(manifest))

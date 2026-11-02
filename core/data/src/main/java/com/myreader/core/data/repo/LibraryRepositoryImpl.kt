@@ -295,6 +295,10 @@ class LibraryRepositoryImpl @Inject constructor(
         annotationDao.updateNote(id, note)
     }
 
+    override suspend fun updateAnnotationColor(id: Long, color: Int) = withContext(dispatchers.io) {
+        annotationDao.updateColor(id, color)
+    }
+
     // ---- 进度 ----
 
     override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) =

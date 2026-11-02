@@ -33,6 +33,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -183,6 +184,9 @@ internal fun MuPdfVerticalView(
 /** M12 高亮填充色（半透明黄，与 PDF 选区预览同色） */
 private val HIGHLIGHT_FILL = Color(0x66FFEB3B)
 
+/** M12 已存高亮半透明度（自绘 overlay，接近原生高亮效果） */
+private const val HIGHLIGHT_ALPHA = 0.35f
+
 /** 单页项：占位（4:3 + 加载圈）→ 页尺寸定高 → 位图就绪替换；渲染失败显示错误文案（不放无限加载圈）。
  *
  * M12 B-4（epub）：长按拖动选择文本 → 归一化 quad 上报落库；已存高亮与拖动预览以自绘 overlay 呈现
@@ -240,12 +244,18 @@ private fun VerticalPageItem(
     val sx = if (ptWidth > 0f) widthPx / ptWidth else 0f
     val sy = if (ptHeight > 0f) heightPx / ptHeight else 0f
 
-    // 当前页已存高亮（归一化 quad）
-    val savedQuads = remember(annotations, page) {
+    // 当前页已存高亮（归一化 quad + 颜色）
+    val savedQuads: List<Pair<FloatArray, Int>> = remember(annotations, page) {
         annotations.asSequence()
             .filter { it.page == page }
-            .mapNotNull { AnnotationAnchorCodec.decode(it.anchor)?.quads }
-            .flatten()
+            .flatMap { a: AnnotationDraft ->
+                val decoded = AnnotationAnchorCodec.decode(a.anchor)
+                if (decoded == null) {
+                    emptySequence()
+                } else {
+                    decoded.quads.asSequence().map { q -> q to a.color }
+                }
+            }
             .toList()
     }
 
@@ -318,15 +328,10 @@ private fun VerticalPageItem(
             )
             .drawWithContent {
                 drawContent()
-                (savedQuads + selQuads).forEach { n ->
-                    val path = Path()
-                    path.moveTo(n[0] * size.width, n[1] * size.height)
-                    path.lineTo(n[2] * size.width, n[3] * size.height)
-                    path.lineTo(n[6] * size.width, n[7] * size.height)
-                    path.lineTo(n[4] * size.width, n[5] * size.height)
-                    path.close()
-                    drawPath(path, HIGHLIGHT_FILL)
+                savedQuads.forEach { (n, color) ->
+                    drawQuadPath(n, Color(color).copy(alpha = HIGHLIGHT_ALPHA))
                 }
+                selQuads.forEach { n -> drawQuadPath(n, HIGHLIGHT_FILL) }
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -375,4 +380,16 @@ private suspend fun selectQuads(
         )
     }
     return SelectionResult(quads = quads, text = sel.text ?: "")
+}
+
+/** 归一化 quad（8 分量）→ 绘制路径并填充指定颜色 */
+@Suppress("MagicNumber")
+private fun DrawScope.drawQuadPath(n: FloatArray, color: Color) {
+    val path = Path()
+    path.moveTo(n[0] * size.width, n[1] * size.height)
+    path.lineTo(n[2] * size.width, n[3] * size.height)
+    path.lineTo(n[6] * size.width, n[7] * size.height)
+    path.lineTo(n[4] * size.width, n[5] * size.height)
+    path.close()
+    drawPath(path, color)
 }

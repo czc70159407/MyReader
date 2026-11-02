@@ -99,6 +99,9 @@ interface LibraryRepository {
     /** 更新高亮笔记正文（null/空串即清空） */
     suspend fun updateAnnotationNote(id: Long, note: String?)
 
+    /** 更新高亮颜色（M12 改色） */
+    suspend fun updateAnnotationColor(id: Long, color: Int)
+
     // ---- 进度 ----
     suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int)   // progressType="page"
     suspend fun saveCfiProgress(id: Long, payload: String)                   // progressType="cfi"

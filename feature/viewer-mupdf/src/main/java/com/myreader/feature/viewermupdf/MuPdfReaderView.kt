@@ -41,8 +41,13 @@ private const val MIN_LAYOUT_PT = 100
 /** M12 文本选择拖动预览色（半透明黄，ARGB 0xAARRGGBB） */
 private const val SELECTION_PREVIEW_COLOR: Int = 0x66FFEB3B
 
-/** M12 高亮 annotation 颜色（RGB 0..1，黄色；M12 单色起步） */
-private val HIGHLIGHT_RGB = floatArrayOf(1f, 0.92f, 0.23f)
+/** M12 改色：ARGB（Int）→ fitz RGB 0..1（原生高亮渲染用） */
+@Suppress("MagicNumber")
+internal fun argbToRgb(argb: Int): FloatArray = floatArrayOf(
+    ((argb shr 16) and 0xFF) / 255f,
+    ((argb shr 8) and 0xFF) / 255f,
+    (argb and 0xFF) / 255f,
+)
 
 /**
  * AndroidView 桥接 MuPDF [ReaderView]（瓦片渲染 + BitmapPool，预渲染窗口 ±1 页由其内部管理）。
@@ -207,7 +212,7 @@ internal fun MuPdfReaderView(
                         val quads = AnnotationAnchorCodec.decode(a.anchor)
                             ?.let { AnnotationAnchorCodec.toQuads(it, size.x, size.y) }
                         if (quads != null && quads.isNotEmpty()) {
-                            core.addHighlight(a.page, quads, HIGHLIGHT_RGB)
+                            core.addHighlight(a.page, quads, argbToRgb(a.color))
                             replayedAnchors.add("${a.page}|${a.anchor}")
                             dirty = true
                         }

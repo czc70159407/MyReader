@@ -804,6 +804,7 @@ class ReaderViewModelTest {
         override suspend fun updateAnnotationNote(id: Long, note: String?) {
             annotationNotes += id to note
         }
+        override suspend fun updateAnnotationColor(id: Long, color: Int) = Unit
         override suspend fun savePageProgress(id: Long, page: Int, scrollOffsetY: Int) {
             savedProgress += Triple(id, page, scrollOffsetY)
         }

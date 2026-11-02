@@ -3,18 +3,20 @@ package com.myreader.core.document
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
+import com.myreader.core.model.ANNOTATION_COLOR_YELLOW
 import com.myreader.core.model.ReaderMode
 
 /**
  * M12：高亮/笔记草稿（渲染端选中 → 状态侧落库；状态侧回放 → 渲染端绘制）。
  *
  * [anchor] 为归一化 quad JSON（`[[ulx,uly,urx,ury,llx,lly,lrx,lry], ...]`，相对页面宽高 0..1），
- * 跨会话/跨窗口尺寸稳定；[text] 为选中文本快照。
+ * 跨会话/跨窗口尺寸稳定；[text] 为选中文本快照；[color] 为高亮 ARGB 色值（新建默认黄色）。
  */
 data class AnnotationDraft(
     val page: Int,
     val anchor: String,
     val text: String,
+    val color: Int = ANNOTATION_COLOR_YELLOW,
 )
 
 /**

@@ -8,6 +8,7 @@ import com.myreader.core.data.db.entity.AnnotationEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+@Suppress("TooManyFunctions")
 interface AnnotationDao {
 
     /** 面板数据源：按页码升序，同页按创建时间升序 */
@@ -42,6 +43,10 @@ interface AnnotationDao {
     /** 更新笔记正文（M12-C1）：note 为 null/空串即清空 */
     @Query("UPDATE annotations SET note = :note WHERE id = :id")
     suspend fun updateNote(id: Long, note: String?)
+
+    /** 更新高亮颜色（M12 改色）：色板入口 */
+    @Query("UPDATE annotations SET color = :color WHERE id = :id")
+    suspend fun updateColor(id: Long, color: Int)
 
     @Query("DELETE FROM annotations WHERE id = :id")
     suspend fun delete(id: Long)

@@ -213,6 +213,21 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /** 更新高亮颜色（M12 改色）：失败转 Snackbar，不抛异常 */
+    fun saveAnnotationColor(id: Long, color: Int) {
+        viewModelScope.launch {
+            val message = try {
+                repository.updateAnnotationColor(id, color)
+                "已更新高亮颜色"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                "更新颜色失败，请重试"
+            }
+            _messages.send(message)
+        }
+    }
+
     /** 删除高亮/笔记（面板入口）：失败转 Snackbar，不抛异常 */
     fun deleteAnnotation(id: Long) {
         viewModelScope.launch {

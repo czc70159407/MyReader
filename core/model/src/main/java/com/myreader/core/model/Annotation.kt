@@ -3,8 +3,17 @@ package com.myreader.core.model
 /** 每文档高亮/笔记上限（M12 S0 拍板）：防单文档滥用拖慢面板；超限拒绝并提示，不静默丢弃 */
 const val MAX_ANNOTATIONS_PER_DOCUMENT = 200
 
-/** 高亮色值（ARGB）：M12 单色黄色起步（S0-3 决策），多色留待后续里程碑 */
+/** 高亮色值（ARGB）：M12 默认黄色（S0-3 决策） */
 const val ANNOTATION_COLOR_YELLOW: Int = 0xFFFFEB3B.toInt()
+
+/** 高亮可选色板（ARGB，M12 改色扩展）：黄 / 绿 / 蓝 / 粉 / 橙 */
+val ANNOTATION_COLORS: List<Int> = listOf(
+    ANNOTATION_COLOR_YELLOW,
+    0xFF66BB6A.toInt(),
+    0xFF42A5F5.toInt(),
+    0xFFEC407A.toInt(),
+    0xFFFFA726.toInt(),
+)
 
 /** 批注类型：高亮（选中文本着色）/ 笔记（高亮 + 备注正文） */
 enum class AnnotationType {

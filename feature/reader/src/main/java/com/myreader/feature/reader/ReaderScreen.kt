@@ -160,6 +160,8 @@ fun ReaderScreen(
             var showAnnotationHub by remember { mutableStateOf(false) }
             // M12-C1：正在编辑笔记的高亮（null 表示对话框关闭）
             var noteTarget by remember { mutableStateOf<Annotation?>(null) }
+            // M12 改色：正在改色的高亮（null 表示对话框关闭）
+            var colorTarget by remember { mutableStateOf<Annotation?>(null) }
             // M12 沉浸模式：顶栏显隐（旋转保持）；触摸探索开启时禁用自动隐藏（reader.md §6.3）
             var topBarVisible by rememberSaveable { mutableStateOf(true) }
             val context = LocalContext.current
@@ -225,7 +227,9 @@ fun ReaderScreen(
                         onUserScroll = { if (!touchExplorationEnabled) topBarVisible = false },
                         // M12 高亮/笔记：选中完成 → 落库；已存高亮 → 渲染端回放
                         onTextSelected = viewModel::addAnnotation,
-                        annotations = annotations.map { AnnotationDraft(it.page, it.anchor, it.text) },
+                        annotations = annotations.map {
+                            AnnotationDraft(page = it.page, anchor = it.anchor, text = it.text, color = it.color)
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                     // M12 沉浸模式：顶栏 overlay + 淡入淡出——内容区尺寸恒定（不 relayout 不闪）；
@@ -301,6 +305,7 @@ fun ReaderScreen(
                             showAnnotationHub = false
                         },
                         onEditNote = { noteTarget = it },
+                        onEditColor = { colorTarget = it },
                         onDelete = viewModel::deleteAnnotation,
                     ),
                     onDismiss = { showAnnotationHub = false },
@@ -314,6 +319,17 @@ fun ReaderScreen(
                     onSave = { id, note ->
                         viewModel.saveAnnotationNote(id, note)
                         noteTarget = null
+                    },
+                )
+            }
+            colorTarget?.let { target ->
+                AnnotationColorDialog(
+                    annotationId = target.id,
+                    currentColor = target.color,
+                    onDismiss = { colorTarget = null },
+                    onSelect = { id, color ->
+                        viewModel.saveAnnotationColor(id, color)
+                        colorTarget = null
                     },
                 )
             }

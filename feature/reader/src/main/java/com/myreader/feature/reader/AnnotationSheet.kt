@@ -27,6 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.myreader.core.model.Annotation
 import java.text.SimpleDateFormat
@@ -138,13 +140,14 @@ private fun AnnotationRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // 改色入口：当前颜色圆点
+        // 改色入口：当前颜色圆点（读屏描述）
         IconButton(onClick = onEditColor) {
             Box(
                 modifier = Modifier
                     .size(16.dp)
                     .clip(CircleShape)
-                    .background(Color(item.color)),
+                    .background(Color(item.color))
+                    .semantics { contentDescription = "改色" },
             )
         }
         IconButton(onClick = onEditNote) {

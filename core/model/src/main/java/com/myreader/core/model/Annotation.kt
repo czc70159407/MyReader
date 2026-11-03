@@ -6,13 +6,13 @@ const val MAX_ANNOTATIONS_PER_DOCUMENT = 200
 /** 高亮色值（ARGB）：M12 默认黄色（S0-3 决策） */
 const val ANNOTATION_COLOR_YELLOW: Int = 0xFFFFEB3B.toInt()
 
-/** 高亮可选色板（ARGB，M12 改色扩展）：黄 / 绿 / 蓝 / 粉 / 橙 */
-val ANNOTATION_COLORS: List<Int> = listOf(
-    ANNOTATION_COLOR_YELLOW,
-    0xFF66BB6A.toInt(),
-    0xFF42A5F5.toInt(),
-    0xFFEC407A.toInt(),
-    0xFFFFA726.toInt(),
+/** 高亮可选色板（色值 ARGB + 读屏名，M12 改色扩展）：黄 / 绿 / 蓝 / 粉 / 橙 */
+val ANNOTATION_COLORS: List<Pair<Int, String>> = listOf(
+    ANNOTATION_COLOR_YELLOW to "黄色",
+    0xFF66BB6A.toInt() to "绿色",
+    0xFF42A5F5.toInt() to "蓝色",
+    0xFFEC407A.toInt() to "粉色",
+    0xFFFFA726.toInt() to "橙色",
 )
 
 /** 批注类型：高亮（选中文本着色）/ 笔记（高亮 + 备注正文） */

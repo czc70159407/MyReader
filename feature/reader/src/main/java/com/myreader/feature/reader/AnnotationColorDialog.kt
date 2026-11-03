@@ -18,6 +18,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.myreader.core.model.ANNOTATION_COLORS
 
@@ -46,7 +48,7 @@ fun AnnotationColorDialog(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
-                ANNOTATION_COLORS.forEach { color ->
+                ANNOTATION_COLORS.forEach { (color, name) ->
                     val selected = color == currentColor
                     Box(
                         modifier = Modifier
@@ -64,6 +66,7 @@ fun AnnotationColorDialog(
                                     Modifier
                                 },
                             )
+                            .semantics { contentDescription = name }
                             .clickable { onSelect(annotationId, color) },
                     )
                 }

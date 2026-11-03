@@ -148,6 +148,8 @@ M10/M11 的书签解决的是「**位置**记忆」，高亮/笔记解决的是�
 
 > **改色已落地（2026-11-03）**：`ANNOTATION_COLORS`（黄/绿/蓝/粉/橙）+ `AnnotationDao.updateColor` + 面板色点入口 → `AnnotationColorDialog`（单选描边，点击即保存）→ 渲染端：水平 `argbToRgb`（原生高亮按色重放，经 clearHighlights + 对齐重放），垂直 `drawQuadPath` 自绘按色（alpha 0.35）；`AnnotationDraft` 增 `color`（默认黄，新建不改选择流程）。真机验证：色板选蓝 → 列表色点与第 3 页原生高亮**同步变蓝**。备份 v4 的 `AnnotationDto.color` 自动随包。
 
+> **两项低价值项拍板不做（2026-11-03）**：①epub 水平模式自绘 overlay（`MuPdfReaderView` reflowable 分支）——epub 强制垂直、水平极少用，价值/成本不匹配；②归一化 quad 跨重排页级近似提升——页内相对位置稳定、S0 已论证精度可接受。M12 高亮/笔记功能至此**完整收官**。
+
 > **D 已落地并真机验收（2026-11-01）**：`BackupCodec.SCHEMA_VERSION = **4**`，`BackupManifest` 增 `annotations`（`AnnotationDto`）；`decode` 校验外键 / 页码 / 类型（HIGHLIGHT|NOTE）/ 锚点前缀（`[` 或 `cp:`）与长度 / 文本与笔记长度 / 总数上限（文档数 × 200）；`BackupManager` 注入 `AnnotationDao`，导出与恢复均含高亮，`ExportResult`/`RestoreResult` 增 `annotations` 计数。JVM：`BackupCodecTest` 补 5 例（往返 / v3 兼容 / 外键 / 非法类型 / 非法锚点 / 总数上限）、`BackupManagerTest` 补 1 例（导出 → 级联删除 → 恢复）。**真机验收（PKC110）**：导出（`"schemaVersion": 4` + annotations 归一化 anchor）→ 卸载重装（数据清空）→ SAF 选包恢复（合并式确认）→ 打开文档跳第 3 页 → 高亮完整回放。升级安装由 A 阶段 `Migration2To3Test` 覆盖。
 
 ### 3.5 测试矩阵

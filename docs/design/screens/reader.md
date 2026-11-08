@@ -181,7 +181,15 @@ onUserScroll: () -> Unit,
 - 空态：`empty_bookmarks`（暂无书签）+ 顶部添加入口；加载失败给「重试」；
 - 交互细则与实现差异见 `flows/bookmark-m10.md`（§8）；持久化与迁移以 `docs/m10-plan.md` 为准。
 
-## 8. 无障碍
+## 8. 高亮与笔记（`[已实现 M12-B]`）
+
+- 入口：顶栏「标注」双 Tab 面板（`AnnotationHubSheet`，书签 + 高亮合并，见 §7）；高亮创建入口为**长按选中文本**（区别于单击切换顶栏 / 水平边缘翻页 / 垂直滚动）。
+- 选择与高亮：水平 `MuPdfReaderView` 长按进入选择、拖动扩展，松手创建原生 `PDFAnnotation.TYPE_HIGHLIGHT` 并上报归一化 `AnnotationDraft`；垂直 `MuPdfVerticalView` 用 `detectDragGesturesAfterLongPress` 选择，`drawWithContent` 自绘半透明黄 overlay（画在位图之上）。
+- 面板：`AnnotationSection` 列表展示页码 / 摘录（60 字截断）/ 时间 / 色点，点击跳转、尾部删除；点击已有高亮经 `AnnotationNoteDialog` 加/改笔记（空串即清空）；`AnnotationColorDialog` 5 色（`ANNOTATION_COLORS`，默认黄），水平按 `argbToRgb` 原生重放、垂直 `drawQuadPath` 自绘按色（alpha 0.35）。
+- 持久化：`annotations` 表（Room v3）+ 归一化 quad 锚点（`AnnotationAnchorCodec`），跨会话回放；随备份 v4 导出/恢复。见 `docs/data-layer.md`「标注存储」、`docs/m12-plan.md`。
+- 已知限制（已拍板不做）：epub 水平模式自绘 overlay、归一化 quad 跨重排页级近似提升。
+
+## 9. 无障碍
 
 | 项 | 要求 | 现状 |
 |---|---|---|
@@ -192,7 +200,7 @@ onUserScroll: () -> Unit,
 | 密码框 | 错误提示被朗读 | `[建议]` `liveRegion` |
 | 触达 | 顶栏动作 48dp | `[已实现]` |
 
-## 9. 响应式
+## 10. 响应式
 
 | 场景 | 变化 |
 |---|---|
@@ -202,7 +210,7 @@ onUserScroll: () -> Unit,
 | 字体 200% | 顶栏双行标题不裁切（1 行省略） |
 | 深色 | 渲染内容不反色，仅 UI 主题变化 |
 
-## 10. 验收场景
+## 11. 验收场景
 
 1. 打开 12 页 PDF：顶栏 `1 / 12`；滑到第 5 页 → 返回 → 重进为 `5 / 12`；
 2. 跳页输入 `0`/`99`/字母：过滤与禁用符合规则；输入 `8` 跳到第 8 页；

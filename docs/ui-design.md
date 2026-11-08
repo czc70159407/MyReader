@@ -100,6 +100,13 @@ fun MuPdfReaderView(
 - **epub 模式**：会话初值强制 `VERTICAL`（顶栏仍可临时切 `HORIZONTAL`），见 `ReaderViewModel.openDocument`
 - **书架卡片**：`DocumentCard`/`RecentCard` 按 `fileType` 分支——非 PDF 在缩略图左上角加格式角标（EPUB/CBZ/XPS），无缩略图占位图标按格式取（Book/Image/Description）；`pageCount>0` 显示「N 页」，流式/未知页数显示格式标签；最近阅读 `progressType=="cfi"` 显示「继续阅读」而非「第 N 页」
 
+### 沉浸模式与高亮/笔记 UI（M12）
+
+- **沉浸模式（M12 Part A）**：`ReaderScreen` 持 `topBarVisible`（`rememberSaveable`，旋转保持）；顶栏以 **overlay 浮层 + `fadeIn`/`fadeOut`** 呈现（内容区尺寸恒定不 relayout、显隐不闪），`TopAppBar` 半透明（`surface` 92% alpha）+ `windowInsets(0)` 减轻遮挡；点内容区切换显隐、滚动/翻页隐藏、大纲/跳页操作后显示；触摸探索开启时禁用自动隐藏，隐藏态暴露 `semantics { onClick(label="显示工具栏") }`（读屏可恢复）。
+- **顶栏收纳（M12 收尾）**：书签 + 高亮合并「标注」双 Tab 面板（`AnnotationHubSheet`，内嵌 `BookmarkSection`/`AnnotationSection`），顶栏动作 5 → 4（导入/搜索/标注/设置）。
+- **高亮交互**：长按进入文本选择（区别于单击切换顶栏 / 水平边缘翻页 / 垂直滚动）；水平 `MuPdfReaderView` 覆写选择手势（原生 `PDFAnnotation.TYPE_HIGHLIGHT`），垂直 `MuPdfVerticalView` 用 `detectDragGesturesAfterLongPress` + `drawWithContent` 自绘 overlay（画在位图之上，alpha 0.35）。
+- **高亮面板**：`AnnotationSection` 列表展示页码/摘录（60 字截断）/时间/色点，点击跳转、尾部删除；点击已有高亮经 `AnnotationNoteDialog` 加/改笔记（空串清空）；`AnnotationColorDialog` 5 色（`ANNOTATION_COLORS`，默认黄），水平按 `argbToRgb` 原生重放、垂直 `drawQuadPath` 自绘按色。
+
 ## UI 层架构
 
 ### 路由

@@ -72,7 +72,16 @@
    - 任务：`:feature:viewer-mupdf` 内为 epub/cbz/xps 注册 `@FileTypeKey`（同一 MuPDF 引擎多格式复用，fitz 原生解析这三类；格式契约集中 `core:document` 的 `FileTypes`：扩展名/mime/magic 归一 + 导入 mime 白名单 + 未知格式导入期拒收）；epub 进度以 fitz bookmark 串为锚（`EpubProgressCodec` 序列化至 `progressPayload`，`progressType="cfi"`，跨重排稳定），cbz/xps 沿用页码式；epub 重排 relayout + `Document.reflowable` 分支；书架卡片按 `fileType` 区分图标/格式角标/页数文案
    - 验收：三种格式均可导入（缩略图正常）→ 打开 → 退出重进进度恢复；加第四种自研格式（TXT）已由 `feature:viewer-txt` 落地验证扩展点（M9-F 已做）：仅新增该模块 + 两个 `@FileTypeKey("txt")` 绑定 + `FileTypes` 登记 `txt`/`text/plain`，reader/library/schema 零改动即跑通导入/阅读/页码进度
    - **执行计划与验收方案（缺口清单 / 技术决策 / S0 预研门禁 / 阶段 A~G / 夹具与测试矩阵 / 真机场景）：[docs/m9-plan.md](m9-plan.md)**
-11. **真机回归**（M4 起每个里程碑后执行）：大 PDF（>200 页）不 OOM；横竖屏切换进度保持
+11. **M10 书签 + 首个 Room Migration**（v1.3）
+   - 任务：书签仓储（双轨去重 + 上限 100）+ Room schema v2 + 手写 `MIGRATION_1_2` + 备份 v2（v1 兼容）+ 阅读器书签入口/面板/跳转
+   - 验收：`Migration1To2Test` 真机 2/2 + 备份往返 + 升级安装数据保留；详见 [docs/m10-plan.md](m10-plan.md)
+12. **M11 epub 锚点稳健性 / 比例锚点**（v1.4）
+   - 任务：`cp:<chapter>:<章内页>:<章页数>` 比例锚点 + `EpubProgressCodec` v2 + 备份 v3 + `MuPDFCore` Location API
+   - 验收：六项真机验收（跨会话/跨排版锚点精确还原 + v3 备份往返 + v2 旧包 + R8 冒烟）；详见 [docs/m11-plan.md](m11-plan.md)
+13. **M12 沉浸模式 + 高亮/笔记**（v1.5）
+   - 任务：A 沉浸模式（顶栏 overlay + fade）；B 高亮/笔记（schema v3 + `MIGRATION_2_3` + 备份 v4 + 原生/自绘渲染 + 面板/改色/笔记 + 顶栏收纳）
+   - 验收：A 七条真机 + B 备份往返/升级安装/R8；详见 [docs/m12-plan.md](m12-plan.md)
+14. **真机回归**（M4 起每个里程碑后执行）：大 PDF（>200 页）不 OOM；横竖屏切换进度保持
 
 ## 关键文件清单（落地优先级）
 

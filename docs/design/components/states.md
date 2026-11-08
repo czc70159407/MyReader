@@ -28,8 +28,8 @@
 | 大纲 | 空 | 次要文本 | `empty_outline` | — | `[已实现]` |
 | 大纲 | 失败 | error 文本 + 重试 | `err_outline_load` / `act_retry` | 重试 | `[已实现 T6]` |
 | 设置备份 | 进行中 | 环 + 状态文案 + 线性进度 | `loading_backup` | 入口隐藏 | `[已实现]` |
-| 设置恢复 | 确认中 | 确认对话框 | `dlg_restore_confirm_*` | 继续恢复 / 取消 | `[建议 T1]` |
-| 书签（M10） | 空 | 次要文本 | `empty_bookmarks` | 新建书签 | 待实现 |
+| 设置恢复 | 确认中 | 确认对话框 | `dlg_restore_confirm_*` | 继续恢复 / 取消 | `[已实现 T1]` |
+| 书签（M10） | 空 | 次要文本 | `empty_bookmarks` | 新建书签 | `[已实现 M10-C]` |
 
 ## 2. 统一原则
 

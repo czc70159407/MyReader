@@ -51,6 +51,11 @@
 | `act_retry` | 重试 | 大纲失败（`[已实现 T6]`）；阅读器失败页 `[建议]` |
 | `act_cancel_import` | 取消（读屏 CD「取消导入」） | 导入胶囊（T3 已实现） |
 | `act_restore_confirm` | 继续恢复 | 恢复二次确认框（T1 已实现） |
+| `act_annotation_hub` | 书签与高亮 | 阅读器顶栏「标注」入口（M12-C3，书签+高亮合并，5 图标降 4） |
+| `act_annotation_note` | 编辑笔记 | 高亮行尾部（M12） |
+| `act_annotation_color` | 改色 | 高亮行色点（M12 改色） |
+| `act_annotation_delete` | 删除高亮 | 高亮行尾部（M12） |
+| `act_save` | 保存 | 高亮笔记框（M12） |
 
 ## 3. 空态文案（empty_*）
 
@@ -61,6 +66,7 @@
 | `empty_search` | 未找到匹配文档 | 搜索无结果 |
 | `empty_outline` | 本文档没有目录 | 大纲为空 |
 | `empty_bookmarks` | 暂无书签 | 书签面板为空（M10-C 已实现） |
+| `empty_annotations` | 暂无高亮。长按正文拖动即可添加。 | 高亮面板为空（M12） |
 
 规则：空态必须配「下一步」，根空态已含入口指引；其余空态由顶栏动作提供出口（评审时确认可发现性）。
 
@@ -75,6 +81,7 @@
 | `loading_bookmarks` | 正在加载书签… | 书签面板首帧（M10-C） |
 | `loading_backup` | 处理中…（无阶段文案时） |
 | `loading_generic` | 正在加载 | 无可见文案的加载环（书架首帧 / 阅读器打开）读屏说明 |
+| `loading_annotations` | 正在加载高亮… | 高亮面板首帧（M12） |
 
 规则：加载文案只在**可预期等待 > 1s** 的场景出现；进度可量化时必须给 `x/y`。
 
@@ -97,6 +104,12 @@
 | `ok_restore_done` | 已恢复 {documents} 个文档 / {folders} 个目录 | Snackbar |
 | `ok_import_summary_title` | 目录导入完成 | 对话框标题 |
 | `ok_import_summary_title_multi` | 导入完成（T4 已实现：单文件多选复用） | 对话框标题 |
+| `ok_annotation_added` | 已添加高亮 | Snackbar（M12） |
+| `ok_annotation_exists` | 该位置已有高亮 | Snackbar（M12，重复添加不新增） |
+| `ok_annotation_deleted` | 已删除高亮 | Snackbar（M12） |
+| `ok_annotation_color` | 已更新高亮颜色 | Snackbar（M12 改色） |
+| `ok_note_saved` | 已保存笔记 | Snackbar（M12） |
+| `ok_note_cleared` | 已清除笔记 | Snackbar（M12，保存空串即清空） |
 
 ## 6. 错误文案（err_*）
 
@@ -134,6 +147,11 @@
 | `err_viewer_empty` | 无可显示的页面 | L2 视图内 | `[已实现]`（MuPDF 视图无页可绘兜底） |
 | `err_txt_view` | 无法显示此文档 | L2 视图内 | `[已实现]`（TXT 视图兜底） |
 | `err_page_render` | 第 {N} 页渲染失败 | L1 页内 | `[已实现]`（垂直模式单页失败占位，不整篇失败） |
+| `err_annotation_load` | 高亮加载失败 | L1 面板内 | `[已实现 M12]`（含「重试」出口） |
+| `err_annotation_limit` | 高亮已达上限（200 个） | L3 | `[已实现 M12]`（每文档上限，常量 `MAX_ANNOTATIONS_PER_DOCUMENT`） |
+| `err_annotation_add` | 添加高亮失败，请重试 | L3 | `[已实现 M12]`（写库异常兜底） |
+| `err_annotation_delete` | 删除高亮失败，请重试 | L3 | `[已实现 M12]` |
+| `err_note_save` | 保存笔记失败，请重试 | L3 | `[已实现 M12]` |
 
 ## 7. 表单校验文案（inline_*）
 
@@ -166,6 +184,8 @@
 | `dlg_move_failed_title` | 无法移动 |
 | `dlg_restore_confirm_title` | 从备份恢复（`[已实现 T1]`） |
 | `dlg_restore_confirm_body` | 将合并备份中的目录与文档记录：同名记录以备份为准，备份之外的数据不受影响。是否继续？（不预测数量——为避免显示数字而先解析整包） |
+| `dlg_annotation_note_title` | 高亮笔记 | 笔记编辑框标题（M12，label「笔记」、placeholder「写下你的想法…」） |
+| `dlg_annotation_color_title` | 高亮颜色 | 改色框标题（M12） |
 
 ## 9. 导入汇总字段（summary_*）
 

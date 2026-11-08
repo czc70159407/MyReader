@@ -16,9 +16,9 @@ android {
         applicationId = "com.myreader"
         minSdk = 26
         targetSdk = 35
-        // 版本与功能里程碑对齐（v1.4 = M11 epub 锚点稳健性 / 比例锚点）；versionCode 随内部分发递增
-        versionCode = 3
-        versionName = "1.4.0"
+        // 版本与功能里程碑对齐（v1.5 = M12 沉浸模式 + 高亮/笔记）；versionCode 随内部分发递增
+        versionCode = 4
+        versionName = "1.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

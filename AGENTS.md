@@ -111,6 +111,7 @@
 9. **提交门禁**：所有代码 commit / push 前必须交由用户决策——用户可选择「先 review」或「直接提交推送」；未经用户明确同意，不得执行任何 commit 或 push
 10. **真机验收文件落盘（红线）**：真机验收产生的所有测试文件（截图 / `uiautomator` dump / 日志 / 拉取产物）在设备上一律写入 `/sdcard/Download/MyReaderTest/`（与测试夹具同目录），**禁止散落到 `/sdcard` 根目录或任何其它目录**；收尾只清理本轮临时文件，留档产物按分类子目录保留。本地留档放 `tools/acceptance/verify/`（已被 `.gitignore` 排除），仓库不提交验收截图。内部结构、命名与归位记录见 [docs/acceptance-files.md](docs/acceptance-files.md)；两者冲突时以本条为准
 11. **子模块提交门禁**：改 `third-party/mupdf-android-viewer` 后，子模块新 commit **必须** `git -C third-party/mupdf-android-viewer push fork myreader-patches`（推自己的 fork `czc70159407/mupdf-android-viewer` 的 `myreader-patches` 分支，**不是** `origin` 上游 ArtifexSoftware），并确认主仓 gitlink（`git ls-tree HEAD third-party/mupdf-android-viewer`）与 fork 分支顶端一致——否则 CI 的 `git submodule update --init` 拉不到 gitlink 指向的 commit，编译失败（M12 B/C 阶段曾踩坑：本地 commit 后未 push fork，主仓 gitlink `6785e32` 超前 fork 顶端 `9df85e4`，CI 红，修复即 push fork）
+12. **分支主干与版本 tag**：主干固定为 `main`（仓库默认分支），日常开发切 `dev` 或按里程碑开 `feature/xxx`，完成后合并回 `main`；版本发布须打附注 tag——每次 `versionName`/`versionCode` 升级执行 `git tag -a vX.Y.Z <sha> -m "..."` 并 `git push origin --tags`（tag 名与 `app/build.gradle.kts` 的 `versionName` 一致，如 `v1.5.0`）
 
 ## 常用命令（PowerShell）
 

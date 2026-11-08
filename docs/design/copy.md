@@ -152,6 +152,7 @@
 | `err_annotation_add` | 添加高亮失败，请重试 | L3 | `[已实现 M12]`（写库异常兜底） |
 | `err_annotation_delete` | 删除高亮失败，请重试 | L3 | `[已实现 M12]` |
 | `err_note_save` | 保存笔记失败，请重试 | L3 | `[已实现 M12]` |
+| `err_annotation_color` | 更新颜色失败，请重试 | L3 | `[已实现 M12]` |
 
 ## 7. 表单校验文案（inline_*）
 

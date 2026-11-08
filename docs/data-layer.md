@@ -68,6 +68,29 @@ data class BookmarkEntity(
     val label: String,           // 列表展示快照（「第 N 页」/「第 N 屏」，重排不回溯改写）
     val createdAt: Long,
 )
+
+// core/data/.../db/entity/AnnotationEntity.kt（M12 / schema v3 新增表）
+@Entity(
+    tableName = "annotations",
+    foreignKeys = [ForeignKey(
+        entity = DocumentEntity::class,
+        parentColumns = ["id"],
+        childColumns = ["documentId"],
+        onDelete = ForeignKey.CASCADE,    // 删文档即删高亮/笔记（目录删除只把文档移回根，批注保留）
+    )],
+    indices = [Index("documentId")],
+)
+data class AnnotationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val documentId: Long,
+    val type: String,      // HIGHLIGHT / NOTE（存枚举名，不依赖枚举序数）
+    val page: Int,         // 页码（PDF 固定排版；epub 为创建时解析页码，仅排序与锚点失效回落）
+    val anchor: String,    // 归一化 quad JSON，相对页面宽高 0..1
+    val color: Int,        // ARGB 颜色
+    val text: String,      // 选中文本快照（列表展示/检索）
+    val note: String? = null, // 笔记正文（type=NOTE 非空）
+    val createdAt: Long,
+)
 ```
 
 ### DAO 关键查询
@@ -142,8 +165,9 @@ interface DocumentDao {
 }
 ```
 
-- `@Database(..., version = 2, exportSchema = true)`（M10 起；v1 为 M2~M9 基线），schema JSON 提交进仓库 `core/data/schemas/`（`1.json` / `2.json`）
+- `@Database(..., version = 3, exportSchema = true)`（M12 起；v2 为 M10 书签、v1 为 M2~M9 基线），schema JSON 提交进仓库 `core/data/schemas/`（`1.json` / `2.json` / `3.json`）
 - **迁移纪律（M10 首个 Migration）**：v1→v2 手写 `MyReaderDatabase.MIGRATION_1_2`（仅 `CREATE TABLE bookmarks` + `CREATE INDEX`），app 层 `Room.databaseBuilder(...).addMigrations(...)` 注册，**禁 `fallbackToDestructiveMigration`**；`Migration1To2Test`（`core:data` androidTest，`MigrationTestHelper` 以 `1.json` 建库→种子→`runMigrationsAndValidate(2)`）作为门禁。手写 SQL **必须逐字取自 `2.json` 的 `createSql`**——Kotlin 字段默认值不会生成 SQL `DEFAULT`，自行添加会导致 schema 校验失败
+- **v2→v3（M12 第二个 Migration）**：手写 `MyReaderDatabase.MIGRATION_2_3`（仅 `CREATE TABLE annotations` + `CREATE INDEX index_annotations_documentId`，SQL 逐字取自 `3.json`），`Migration2To3Test`（`core:data` androidTest，真机已过 2/2）作门禁——v2 种子数据零丢失、annotations 表可写、FK CASCADE 级联删批注。
 - 进度表不独立：单文档单进度、无历史回溯需求，单独表只带来 JOIN 与冗余更新
 
 ## 删除目录策略（级联）
@@ -180,11 +204,12 @@ interface DocumentDao {
 
 - **DAO 新增（无 schema 变更，故无 Migration，遵守工作规则 3）**：`FolderDao`/`DocumentDao` 各增 `@Query("SELECT * FROM ...") all()`（一次性全量快照，供导出）与 `@Upsert upsert(...)` / `upsertAll(...)`（按原 ID 合并写回，冲突以备份为准 → 幂等，重复恢复不产生重复记录）。
 - **`DocumentStorage` 备份方法**：`openRead(relPath)` / `openThumbnailRead(...)` 流式读取（导出用，不存在或 `thumbnailRelPath` 非 `thumb/<id>.png` 白名单返回 null 计入缺失）；`deleteThumbnail` 同样先白名单后 canonical（安全审计 L3）；`totalBytesOf(relPaths)` 恢复前空间预检；`restoreFile` / `restoreThumbnail`（保留原 `relPath` 的流式写回，先白名单后 canonical 双重防穿越）；`newBackupTempDir()` 在 `filesDir` 下创建与 `library/` 同分区临时目录；`moveIntoLibrary` / `moveIntoThumb`（同分区 `renameTo` 瞬时，跨设备回退复制）。
-- **`BackupCodec`（纯逻辑，JVM 可测，`core:data` 内）**：`library.json` 快照编解码（`BackupManifest { schemaVersion, exportedAt, appVersion, folders[], documents[] }`）；不可信边界处对 `relPath` / `thumbnailRelPath` 做白名单校验、对 `schemaVersion` 做版本门禁（当前 `=1`）。
+- **`BackupCodec`（纯逻辑，JVM 可测，`core:data` 内）**：`library.json` 快照编解码（`BackupManifest { schemaVersion, exportedAt, appVersion, folders[], documents[], bookmarks[], annotations[] }`）；不可信边界处对 `relPath` / `thumbnailRelPath` 做白名单校验、对 `schemaVersion` 做版本门禁（当前 `=4`，接受 `1..4`，超版本拒绝）。
 - **`BackupManager`**：导出 = 读全量 → 流式写 zip（`files/` 物理文档 + `thumbs/` 缩略图 + `library.json`）；恢复 = 整体解压到临时目录（`entry.name` 严格白名单，拒绝 `../` 与未知条目，防 zip slip；资源上限 `RestoreLimits`——条目数 ≤512 / 单条目解压 ≤512MB / 累计解压 ≤1GB / `library.json` ≤4M 字符 / 单条目压缩比 ≤100x（小包按 8MB 下限豁免），超限即中止，防 zip bomb 与磁盘耗尽，安全审计 M2）→ 校验清单 → 空间预检 → 事务内目录按拓扑序 upsert 再文档 upsert（满足 `folderId` 外键）→ 提交后把临时文件 move 进 `library/`/`thumb/`；失败临时目录由调用方 `deleteRecursively`，DB 因事务原子性保持未变。
 - **序列化选型**：`kotlinx-serialization-json` 1.7.3（M8 唯一偏离选型的依赖，见 architecture.md「技术选型」+「依赖项清单」），类型安全、跨 schema 版本可演进；零运行时闭源风险、AGPL 兼容。
 - **M10 双版本备份（schemaVersion 1→2）**：`BackupCodec.SCHEMA_VERSION = 2`，`BackupManifest.bookmarks: List<BookmarkDto> = emptyList()`（v1 旧包缺该字段 → 直接解码为空，**无需独立迁移逻辑**）；版本门禁改为 `in 1..SCHEMA_VERSION`（拒绝超版本）。`BackupManager.export` 写全书签并计入 `ExportResult.bookmarks`；`restore` 在既有事务内、文档 upsert **之后** 执行 `bookmarkDao.upsertAll`（满足 `documentId` 外键），`RestoreResult.bookmarks` 回报数量。不可信书签字段边界校验：`documentId` 必须在本包文档集合内、`page ≥ 0`、`label` 非空且 ≤200 字符、`anchor` 仅十进制串（≤20 位，**必须允许负号**——`makeBookmark` 返回 long，epub 实测常为负值；M10-D 真机抓出：无符号校验会让含 epub 书签的备份整体恢复失败）。
 - **M11 三版本备份（schemaVersion 2→3）**：`BackupCodec.SCHEMA_VERSION = 3`，门禁 `in 1..3`。`anchor` 正则放宽为「十进制串 **或** `cp:<chapter>:<pageInChapter>:<chapterPages>`」，语义自洽性（章页数为正、章内页不越界）复用 `BookmarkAnchorCodec.parse`，避免两处维护。v1/v2 旧包导入路径不变；升版本而非只放宽正则，是为了让旧版 App 读新包时明确报「版本不支持」，而不是以「非法书签锚点」整体拒收。
+- **M12 四版本备份（schemaVersion 3→4）**：`BackupCodec.SCHEMA_VERSION = 4`，`BackupManifest.annotations: List<AnnotationDto> = emptyList()`（v1~v3 旧包缺该字段 → 解码为空，向后兼容，无需独立迁移逻辑）。`BackupManager` 注入 `AnnotationDao`，导出写全量高亮并计入 `ExportResult.annotations`，恢复在既有事务内、文档 upsert **之后** 执行 `annotationDao.upsertAll`（满足 `documentId` 外键）并计入 `RestoreResult.annotations`。不可信高亮字段边界校验：`documentId` 在本包文档集合内、`page ≥ 0`、`type ∈ {HIGHLIGHT, NOTE}`、`anchor` 前缀 `[`（归一化 quad）或 `cp:`、`text`/`note` 长度受限、总数 ≤ 文档数 × 200（`MAX_ANNOTATIONS_PER_DOCUMENT`，防恶意备份灌爆恢复写入）。
 
 ## 书签存储（M10，schema v2）
 
@@ -196,7 +221,16 @@ interface DocumentDao {
 - 仓储接口（`LibraryRepository`，M10-B/M11）：`observeBookmarks(documentId)` / `bookmarksOf(documentId)` / `deleteBookmark(id)`，以及 `addBookmark(...): BookmarkAddResult`——**业务分支不抛异常**：重复位置 → `DUPLICATE`，超上限 → `LIMIT_REACHED`（上限常量 `MAX_BOOKMARKS_PER_DOCUMENT = 100` 在 `core:model`）。
 - 上限：每文档 ≤100（`BookmarkDao.countByDocument` 预检，超限拒绝并提示），防单文档滥用拖慢面板。
 - 去重：页码式仅比 `page`（且 `anchor IS NULL`）；流式旧串精确比 `anchor`；**M11 比例锚点按「同 chapter 且比例差 ≤1%」在内存比对**（DAO 只有 SQL 精确相等，做不到容差；`bookmarksOf` 取列表，上限 100 成本可忽略）。
-- 备份：`BackupCodec.schemaVersion = 3` 含 `bookmarks` 数组；恢复接受 v1（书签为空）与 v2（十进制锚点），详见「备份与恢复存储」节。
+- 备份：`BackupCodec.schemaVersion = 3` 含 `bookmarks` 数组；恢复接受 v1（书签为空）/ v2（十进制锚点）/ v3（`cp:` 比例锚点），详见「备份与恢复存储」节。
+
+## 标注存储（M12，schema v3）
+
+- 表结构：`annotations(id, documentId, type, page, anchor, color, text, note, createdAt)`，**仅新增表、既有表零变更**（v2→v3）；`documentId` 外键 `ON DELETE CASCADE`（删文档即删高亮/笔记；目录删除只把文档移回根，批注保留）。
+- **锚点双轨对比**：书签是「页级」（`page` / 比例锚点），高亮是「文本级矩形」——`anchor` 存归一化 quad JSON（`[[ulx,uly,urx,ury,llx,lly,lrx,lry], ...]`，各顶点相对页面宽高 0..1），由 `core:model` 的 `AnnotationAnchorCodec` 编解码；PDF 固定排版页内稳定，epub 重排按页内比例近似（页映射不回溯，M12 已论证精度可接受）。
+- `type` 存枚举名（`HIGHLIGHT` / `NOTE`，不依赖枚举序数）；`color` 存 ARGB（`ANNOTATION_COLORS` 5 色，默认黄）；`text` 为选中文本快照（列表摘录展示）；`note` 为笔记正文（`type=NOTE` 非空，空串即清空）。
+- 仓储接口（`LibraryRepository`，M12）：`observeAnnotations(documentId)` / `annotationsOf(documentId)` / `addAnnotation(...): AnnotationAddResult`（同页同 quad 去重，重复 → `DUPLICATE`）/ `deleteAnnotation(id)` / `updateNote(id, note)` / `updateColor(id, color)`——**业务分支不抛异常**，超上限 → `LIMIT_REACHED`（`MAX_ANNOTATIONS_PER_DOCUMENT = 200` 在 `core:model`）。
+- 渲染：PDF 水平用原生 `PDFAnnotation.TYPE_HIGHLIGHT` 重放（`MuPDFCore.addHighlight` / `clearHighlights`，按「已绘制 vs 期望」集合比对幂等重放，改色经 `argbToRgb` 换算）；epub 垂直用 `drawQuadPath` 自绘 overlay（alpha 0.35，画在位图之上）。删除后原生高亮残留由 clearHighlights + 对齐重放清除。
+- 备份：`BackupCodec.schemaVersion = 4` 含 `annotations` 数组，随包导出/恢复，详见「备份与恢复存储」节。
 
 ## 进度记忆实现时机（防频繁写库）
 

@@ -44,6 +44,7 @@
 | D8 | 空态/次要文本颜色 | `outline` → `onSurfaceVariant`（`outline` 与背景对比度不足 4.5:1） | `tokens.md`、`components/states.md` |
 | D9 | 组件交互状态六态模型 | 统一为 `默认/悬停/按下/禁用/加载/错误`；悬停不承载信息，仅指针设备增强 | `interaction.md` §2 |
 | D10 | 反馈四级载体 | `L1 就近内联 / L2 页面 / L3 Snackbar / 确认对话框`，与 `copy.md` 级别列同口径 | `interaction.md` §3 |
+| D11 | 图标 / 启动画面是否引入品牌色 | **路线 C：图标资源色独立于 UI 主题**。launcher / splash 用深绿 `#1B5E20` + `#FFFFFF` 前景，仅存于 `res` 资源层；UI 主题仍为 Material3 默认色板、不进 `colorScheme`、不随深浅色切换 | `tokens.md` §1.1 |
 
 ## 交付状态
 

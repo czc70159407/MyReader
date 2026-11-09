@@ -20,9 +20,26 @@
 规则：
 
 1. **不使用 dynamicColor**（与「跟随系统 / 浅色 / 深色」三选一语义冲突），见 `MainActivity.kt`。
-2. **不引入品牌色**：主题仅 `lightColorScheme()` / `darkColorScheme()` 默认色板。
+2. **UI 主题不引入品牌色**：`MainActivity` 仍用 `lightColorScheme()` / `darkColorScheme()` 默认色板，Composable 内颜色一律取自 `MaterialTheme.colorScheme`。图标与启动画面的**资源层**色值见 §1.1，不进入 `colorScheme`、不作为 UI 语义色。
 3. 状态不得只靠颜色表达：加密/损坏必须同时有图标 + `contentDescription`。
 4. 对比度：正文 ≥ 4.5:1，次要文本 ≥ 3:1；`outline` 仅用于纯装饰。
+
+### 1.1 品牌资产色（仅 launcher / splash 资源，D11）
+
+> **作用域**：仅用于 `res/mipmap-*/ic_launcher*`、Adaptive Icon XML、`res/values/colors.xml` 具名资源与 SplashScreen 主题属性。**不进入 `MaterialTheme.colorScheme`**，Composable 内禁止引用（见 §8 禁止清单 1）。决策依据见 `README.md` D11。
+
+| 用途 | 色值 | 说明 |
+|---|---|---|
+| 图标背景 / SplashScreen 底色 | `#1B5E20`（Material Green 900，深绿） | 深浅模式共用；配白色前景对比度 ≥ 4.5:1 |
+| 前景图形 | `#FFFFFF` | 文档 / 书页线性符号，无渐变、无阴影 |
+| `<monochrome>` 单色层 | 同前景轮廓（白色描边） | Android 13+ 主题化图标由系统按壁纸染色，不自带色值 |
+
+规则：
+
+1. **不随主题切换**：launcher 会缓存图标，「跟随系统 / 浅色 / 深色」三选一不改变图标；不提供 `values-night` 变体。
+2. **与语义色隔离**：高亮绿 `#66BB6A`（`core:model` 的 `ANNOTATION_COLORS`）是阅读器内文本标注语义色，与本资源色明度差大且上下文不同，不得互相复用或替换。
+3. **SplashScreen 背景复用同一色值**，避免冷启动画面与图标跳色。
+4. 图标资源一律引用 `res/values/colors.xml` 的具名资源，不内联色值；色值变更需同步更新本表与 `README.md` D11。
 
 ## 2. 字体（Material3 默认 typography）
 
@@ -100,7 +117,7 @@
 
 ## 8. 禁止清单
 
-1. 硬编码色值（如 `Color(0xFF...)`），除缩略图角标半透明黑/白。
+1. 硬编码色值（如 `Color(0xFF...)`），除缩略图角标半透明黑/白；品牌资产色仅允许在 §1.1 定义的资源层具名声明，Composable 内禁止引用。
 2. 新增第三方 UI 库或图标库（需先改 `docs/architecture.md` 技术选型）。
 3. 新建 `core:designsystem` 模块（D6）。
 4. 使用 `outline` 承载需要阅读的文本（D8）。

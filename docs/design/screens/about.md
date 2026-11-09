@@ -1,6 +1,6 @@
 # 页面 · 关于（AGPL 合规）
 
-- 状态：**已实现（2026-11-09，编译级验收通过；真机验收待做）**
+- 状态：**已实现并真机验收通过（2026-11-09，PKC110 / Android 17 / API 37，设备近期 OTA，历史验收记录为 Android 16；无浏览器兜底 1 项 N/A，见 §9）**
 - 优先级：P1（链接可点击）
 - 路由：`about`
 - 代码落点：`feature/settings/AboutScreen.kt`
@@ -124,3 +124,6 @@
 8. **链接与声明语义一致**：五个链接地址与 `README.md`「许可证与开源声明」章节相同；正文措辞允许不同（README 用 markdown 链接、应用内用「标签：URL」纯文本），但开源主体、许可证、MuPDF 来源与集成方式的语义必须一致（评审时对照）。
 
 > 版本号 `versionName` 随发版变化，验收时以 `app/build.gradle.kts` 当前值比对。
+>
+> **真机结论（2026-11-09，PKC110 / Android 17 / API 37，设备近期 OTA，历史验收记录为 Android 16）**：场景 1~3、5~6 真机通过；场景 7 配色随主题变化已验证、对比度未量化测量（部分覆盖）；场景 8 为文档评审项，链接地址已在代码常量 / 链接表 / `README.md` 三处静态核对一致。版本号实测 `1.5.0`；五链接节点均为 `android.widget.Button` + `focusable/clickable/long-clickable`，CD 朗读标签而非裸 URL；长按出 Snackbar「链接已复制」；点击打开系统浏览器且 URL 正确；字体 200% 下 URL 换行、可滚至末条；深浅主题配色随 `colorScheme` 变化、目视清晰（**未做量化对比度测量**）；TalkBack 开启后节点语义不变。
+> **场景 4（无浏览器兜底）N/A**：系统浏览器 `pm disable-user` 返回 enabled、`pm hide` 需 `MANAGE_USERS`（shell 无权限）、suspend 后 intent 仍可解析，无法构造无浏览器设备。代码层已用反编译 `ui-android:1.7.4` 实证修复（不用 `LocalUriHandler`，自行 `startActivity` 精确捕获 `ActivityNotFoundException`）+ `.\gradlew.bat build` 门禁覆盖；logcat 无 FATAL / ANR。证据：`/sdcard/Download/MyReaderTest/m13/{png,xml}/`，本地副本 `tools/acceptance/verify/m13/`。

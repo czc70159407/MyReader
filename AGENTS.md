@@ -6,8 +6,8 @@
 
 ### 最近状态
 
-- **应用图标与启动画面（D11，2026-11-09）**：资源已落地、`.\gradlew.bat build` 全绿、aapt 验证 APK 各密度均指向 adaptive icon，**真机观感待验收**。路线 C——图标资源色独立于 UI 主题，色值见 `docs/design/tokens.md` §1.1，实现落点见 `docs/ui-design.md`「应用图标与启动画面」。
-- **关于页（2026-11-09）**：应用标识 + 运行读取 `versionName` + 五个链接可点击/长按复制/无浏览器兜底/链接语义已落地，`.\gradlew.bat build` 全绿，**真机验收待做**。`[建议 P2]` 已闭环——修正与上游口径不符的 GitLab 链接，分列本项目主仓 / MuPDF 上游 / 实际集成的 viewer fork（直达 `myreader-patches` 分支），口径同步 README 合规章节与 `.gitmodules`。规格 `docs/design/screens/about.md` §5，文案 `docs/design/copy.md` §10。
+- **应用图标与启动画面（D11，2026-11-09）**：资源已落地、`.\gradlew.bat build` 全绿、aapt 验证 APK 各密度均指向 adaptive icon。**真机验收通过（PKC110 / Android 17 / API 37，2026-11-09；设备近期 OTA，历史验收记录为 Android 16）**：桌面图标深绿圆角底 + 白色折角文档，48dp 下描边清晰；冷启动 SplashScreen 深绿底 + 同款图标，过渡至书架无闪白。路线 C——图标资源色独立于 UI 主题，色值见 `docs/design/tokens.md` §1.1，实现落点见 `docs/ui-design.md`「应用图标与启动画面」。证据：`/sdcard/Download/MyReaderTest/m13/png/{launcher_icon,boot_2,boot_3}.png`，本地副本 `tools/acceptance/verify/m13/`。
+- **关于页（2026-11-09）**：应用标识 + 运行读取 `versionName` + 五个链接可点击/长按复制/链接语义已落地，`.\gradlew.bat build` 全绿。**真机验收通过（PKC110 / Android 17 / API 37，2026-11-09；设备近期 OTA，历史验收记录为 Android 16）**：版本号显示 `1.5.0`；五链接 UI dump 均为 `Button` + `focusable/clickable/long-clickable`，CD 为「标签，链接。双击打开，长按复制」；长按出 Snackbar「链接已复制」；点击打开系统浏览器且 URL 正确；字体 200% 下 URL 换行无裁切、可滚至末条；深浅主题配色随 `colorScheme` 变化。`[建议 P2]` 已闭环——修正与上游口径不符的 GitLab 链接，分列本项目主仓 / MuPDF 上游 / 实际集成的 viewer fork（直达 `myreader-patches` 分支）。**N/A 一项**：无浏览器兜底无法真机构造（系统浏览器 `pm disable-user` 返回 enabled、`pm hide` 需 `MANAGE_USERS`、suspend 后 intent 仍可解析），代码层已有反编译 `ui-android:1.7.4` 实证 + build 门禁覆盖。证据：`/sdcard/Download/MyReaderTest/m13/{png,xml}/`（21 项），本地副本 `tools/acceptance/verify/m13/`。规格 `docs/design/screens/about.md`，文案 `docs/design/copy.md` §10。
 
 - **M12（v1.5）已完成并真机验收通过（2026-11-01~03）**：沉浸模式（顶栏 overlay + fade 显隐，7 条真机通过）+ 高亮/笔记（Room schema **v3** + `MIGRATION_2_3`、备份 **v4**，含 5 色板 / 笔记编辑 / 顶栏收纳「标注」双 Tab）。**已知限制（已拍板不做）**：①epub 水平模式自绘 overlay；②归一化 quad 跨重排页级近似提升；③epub 未端到端真机验证（SAF「最近」不索引 `.epub`，以 PDF 垂直同代码路径覆盖）。详见 [docs/m12-plan.md](docs/m12-plan.md)。
 

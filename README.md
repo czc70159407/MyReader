@@ -122,9 +122,10 @@ NOTICE                  # 第三方组件与许可来源
 
 - 本项目**整体以 [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) 开源**（含网络传播条款的义务），仓库根目录附全文：[LICENSE](LICENSE)
 - 第三方组件与许可来源：[NOTICE](NOTICE)
-- PDF 渲染引擎为 Artifex Software 的 **MuPDF**，以 git submodule 形式集成自其[官方仓库](https://github.com/ArtifexSoftware/mupdf-android-viewer)，同样遵循 AGPL-3.0
+- PDF 渲染引擎为 Artifex Software 的 **MuPDF**，同样遵循 AGPL-3.0。上游为 [ArtifexSoftware/mupdf-android-viewer](https://github.com/ArtifexSoftware/mupdf-android-viewer)；本项目以 git submodule 集成其[自有分支](https://github.com/czc70159407/mupdf-android-viewer/tree/myreader-patches)（`myreader-patches`，含 epub 锚点与 layout 保护的补丁）
 - AGPL-3.0 全文：<https://www.gnu.org/licenses/agpl-3.0.html>
-- 应用内 About 页（设置页入口）同步展示以上声明
+- 本项目源码：<https://github.com/czc70159407/MyReader>（AGPL-3.0 网络传播条款所需）；MuPDF 主页：<https://mupdf.com>
+- 应用内 About 页（设置页入口）同步展示以上声明，链接与本节一致（`docs/design/screens/about.md` §5 为链接事实源）
 
 ## 路线图
 

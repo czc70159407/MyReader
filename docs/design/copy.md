@@ -56,6 +56,8 @@
 | `act_annotation_color` | 改色 | 高亮行色点（M12 改色） |
 | `act_annotation_delete` | 删除高亮 | 高亮行尾部（M12） |
 | `act_save` | 保存 | 高亮笔记框（M12） |
+| `act_open_link` | 打开链接 | 关于页链接 TalkBack 自定义动作 `onClick` label |
+| `act_copy_link` | 复制链接 | 关于页链接 TalkBack 自定义动作 `onLongClick` label |
 
 ## 3. 空态文案（empty_*）
 
@@ -110,6 +112,7 @@
 | `ok_annotation_color` | 已更新高亮颜色 | Snackbar（M12 改色） |
 | `ok_note_saved` | 已保存笔记 | Snackbar（M12） |
 | `ok_note_cleared` | 已清除笔记 | Snackbar（M12，保存空串即清空） |
+| `ok_link_copied` | 链接已复制 | Snackbar（关于页长按链接） |
 
 ## 6. 错误文案（err_*）
 
@@ -153,6 +156,7 @@
 | `err_annotation_delete` | 删除高亮失败，请重试 | L3 | `[已实现 M12]` |
 | `err_note_save` | 保存笔记失败，请重试 | L3 | `[已实现 M12]` |
 | `err_annotation_color` | 更新颜色失败，请重试 | L3 | `[已实现 M12]` |
+| `err_link_no_browser` | 未找到可打开链接的应用，请长按复制链接 | L3 | `[已实现]`（关于页自行 `startActivity` 并捕获 `ActivityNotFoundException`；不用 `LocalUriHandler`——Compose 1.7.4 会包装成 `IllegalArgumentException` 重抛；异常消息不进文案） |
 
 ## 7. 表单校验文案（inline_*）
 
@@ -219,6 +223,7 @@
 | `a11y_folder_card` | {name}，文件夹 | 文件夹卡 |
 | `a11y_recent_card` | {title}，{第 N 页 / 继续阅读 / 未读}，{需要密码} | 最近阅读卡 |
 | `a11y_unread` | 未读 | 最近卡 progressType 未知时的进度位 |
+| `a11y_link` | {label}，链接。双击打开，长按复制 | 关于页 URL 行（手写 `Role.Button` + `onClick` / `onLongClick` 语义）；朗读标签而非裸 URL |
 
 规则：模板只描述用户可感知信息，不得含 uri、内部 relPath、异常类名；状态词与角标优先级保持一致（加密优先）。
 
@@ -246,7 +251,13 @@
 | `settings_about_entry` | 开源许可与第三方声明 |
 | `about_title` | 关于 |
 | `about_app_desc` | 安卓本地文档阅读器 |
+| `about_version` | 版本 {version} |
+| `about_link_agpl` | AGPL-3.0 全文：{url} |
+| `about_link_project` | 本项目源码：{url} |
+| `about_link_mupdf_home` | MuPDF 主页：{url} |
+| `about_link_mupdf_upstream` | MuPDF 上游：{url} |
+| `about_link_viewer_fork` | viewer 分支：{url} |
 | `about_license_section` | 开源许可 |
 | `about_license_body` | 本项目整体以 AGPL-3.0 开源（含服务端条款的网络传播义务）。 |
 | `about_mupdf_section` | PDF 渲染引擎 |
-| `about_mupdf_body` | PDF 渲染引擎为 Artifex Software 的 MuPDF，同样遵循 AGPL-3.0，以 git submodule 形式集成自其官方仓库。 |
+| `about_mupdf_body` | PDF 渲染引擎为 Artifex Software 的 MuPDF，同样遵循 AGPL-3.0，以 git submodule 形式集成自其官方仓库的自有分支。 |

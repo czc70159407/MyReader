@@ -84,14 +84,11 @@ APP 整体开源（MuPDF AGPL 要求）。
 | 改模块结构 / 依赖版本 / MuPDF 集成 / 偏离选型 | [docs/architecture.md](docs/architecture.md)（技术选型、项目结构、模块依赖、MuPDF 集成方式、依赖项清单） |
 | 改 Room schema / DAO / Repository / 存储策略 / 进度写库 | [docs/data-layer.md](docs/data-layer.md)（Room Schema、DAO、删除目录策略、存储策略、进度记忆） |
 | 改阅读器渲染 / 路由 / 目录树 / 导入流程 / 错误边界 | [docs/ui-design.md](docs/ui-design.md)（Compose 集成、渲染与内存策略、UI 架构、导入流程、错误处理） |
-| 改 UI 交互 / 文案 / 视觉基线 / 无障碍 / 新建或评审设计条目 | [docs/design/README.md](docs/design/README.md)（设计意图事实源：索引与决策日志 D1~D8、tokens、copy、screens、flows、accessibility） |
+| 改 UI 交互 / 文案 / 视觉基线 / 无障碍 / 新建或评审设计条目 | [docs/design/README.md](docs/design/README.md)（设计意图事实源：索引与决策日志、tokens、copy、screens、flows、accessibility） |
 | 推进里程碑 / 写测试 / 排风险 / 查文件位置 | [docs/process.md](docs/process.md)（里程碑分解、测试策略、风险对策、关键文件清单） |
-| 执行 M9（多格式支持） | [docs/m9-plan.md](docs/m9-plan.md)（M9 执行计划与验收方案：缺口清单、技术决策、S0 预研门禁、阶段 A~G、夹具/测试矩阵、真机验收场景） |
-| 执行 M10（书签 + 首个 Room Migration） | [docs/m10-plan.md](docs/m10-plan.md)（M10 执行计划与验收方案：S0 锚点/表结构预研、阶段 A~D、MigrationTest 门禁、备份双版本兼容、真机验收场景） |
-| 执行 M11（epub 锚点稳健性 / 比例锚点） | [docs/m11-plan.md](docs/m11-plan.md)（M11 执行计划：S0-1 fitz API 边界结论、跨会话/跨排版探针、P/Q/R 决策树、`cp:ch:cp:ct` 锚点与备份 v3、验收场景） |
-| 执行 M12（沉浸模式 + 高亮/笔记） | [docs/m12-plan.md](docs/m12-plan.md)（M12 执行计划：A 沉浸模式实现分解（契约纠偏/接口/状态/验收）+ B 高亮/笔记 S0 立项、Room v3 + 备份 v4 草案） |
-| detekt 存量削减（与 M10 并行） | [docs/detekt-baseline-reduction.md](docs/detekt-baseline-reduction.md)（baseline 渐进清理任务说明：分层范围/削减循环/进度追踪/并行冲突防范） |
+| 执行 / 追溯里程碑计划 | 对应 `docs/mXX-plan.md`（按里程碑号，含执行计划、S0 预研、验收方案）；现有里程碑清单与状态以上方「里程碑状态表」为准 |
+| detekt 存量削减（已完成） | [docs/detekt-baseline-reduction.md](docs/detekt-baseline-reduction.md)（P0 已 100% 完成 173→0；削减方法学供 baseline 复发时参考） |
 | 真机验收产物落盘 / 查历史 dump 与截图 | [docs/acceptance-files.md](docs/acceptance-files.md)（设备侧唯一目录 `/sdcard/Download/MyReaderTest`：分类子目录、命名约定、2026-10-29 归位记录） |
-| 追溯历史会话日志 / 踩坑 / 决策 | [docs/history.md](docs/history.md)（M0~M12 逐会话验收证据与决策归档，历史快照只增不改） |
+| 追溯历史会话日志 / 踩坑 / 决策 | [docs/history.md](docs/history.md)（M0~M12 逐会话验收证据与决策归档，历史快照只增不改；**设计决策以 `mXX-plan.md` 为准**） |
 
 > **分册纪律**：每份分册单一职责，同一内容禁止两处维护；状态与验收证据只进本文件，设计规范只进分册。

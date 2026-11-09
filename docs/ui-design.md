@@ -135,6 +135,16 @@ routes:
 - 首帧双保险：`values/themes.xml` parent 用 `android:Theme.Material.NoActionBar`（DayNight，窗口背景随系统深色），防 XML 窗口层闪白
 - 系统深色快捷开关（uiMode 变更，configChanges 未含）触发 Activity 重建：VM 存活 + rememberSaveable + `LaunchedEffect(s)` 回填链路与 M4 横竖屏同型（回归验收场景）
 
+### 应用图标与启动画面（D11）
+
+- **色值决策**见 `docs/design/tokens.md` §1.1「品牌资产色」：图标资源色独立于 UI 主题，`MainActivity` 仍用 Material3 默认色板，Composable 不引用品牌色
+- `res/values/colors.xml`：具名色 `ic_launcher_background`（深绿 `#1B5E20`）/ `ic_launcher_foreground`（白）；资源文件不内联色值
+- `res/drawable/ic_launcher_foreground.xml`：折角文档 + 文字线的白色描边矢量，108×108dp 画布、图形收在中心可见圆内；同一 drawable 复用为 `<monochrome>` 层
+- `res/mipmap-anydpi-v26/ic_launcher.xml` 与 `ic_launcher_round.xml`：Adaptive Icon 基础两层（background / foreground）；`res/mipmap-anydpi-v33/` 同名两份追加 `<monochrome>` 层（API 33+ 主题化图标，按资源限定符隔离，低版本不解析未知标签，复用同一前景矢量）；`minSdk=26` 全覆盖，**不提供 PNG 兜底**
+- `AndroidManifest.xml` 的 `<application>` 挂 `android:icon` / `android:roundIcon`
+- `res/values-v31/themes.xml`：Android 12+ 系统 SplashScreen 只覆盖 `windowSplashScreenBackground`（复用同一深绿），splash 图标由系统默认取 launcher icon，**不引入 `androidx.core:core-splashscreen` 依赖**；API 26~30 仍走 `values/themes.xml`，M7 防首帧闪白逻辑不变
+- 图标不随三选一主题切换（launcher 缓存），不提供 `values-night` 变体
+
 ### 目录树展示（关键）
 
 **采用展平为带缩进列表**（不递归嵌套 Composable）：

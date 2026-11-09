@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+ 系统 SplashScreen：背景复用图标品牌资产色（D11 §1.1 规则 3），
+         避免冷启动画面与图标跳色；splash 图标由系统默认取 launcher icon，不另建动画资产。
+         parent 与 values/themes.xml 保持一致（API 26~30 仍走原主题，DayNight 防首帧闪白逻辑不变）。 -->
+    <style name="Theme.MyReader" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowSplashScreenBackground">@color/ic_launcher_background</item>
+    </style>
+</resources>

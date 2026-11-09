@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive Icon 前景：折角文档 + 文字线（白色描边，无渐变/无阴影）。
+     画布 108x108dp，图形收在中心可见圆（半径 36dp）内，兼容圆形/圆角方形掩码。
+     同一 drawable 复用为 <monochrome> 层：白色描边即 alpha=1，Android 13+ 由系统按壁纸染色。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M38,30 L64,30 L74,40 L74,78 L38,78 Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@color/ic_launcher_foreground"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <path
+        android:pathData="M64,30 L64,40 L74,40"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@color/ic_launcher_foreground"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+
+    <path
+        android:pathData="M46,50 L66,50 M46,59 L66,59 M46,68 L58,68"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="@color/ic_launcher_foreground"
+        android:strokeWidth="3.5"
+        android:strokeLineCap="round" />
+</vector>

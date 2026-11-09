@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 品牌资产色（D11 / docs/design/tokens.md §1.1）：仅用于 launcher 图标与 SplashScreen，
-         不进入 MaterialTheme.colorScheme，Composable 内禁止引用。 -->
-    <color name="ic_launcher_background">#FF1B5E20</color>
-    <color name="ic_launcher_foreground">#FFFFFFFF</color>
+         不进入 MaterialTheme.colorScheme，Composable 内禁止引用。
+         2026-11-10 观感升级：深绿 #1B5E20 → 深墨绿 #103D2C，白 → 奶油白 #F5F1E4。 -->
+    <color name="ic_launcher_background">#FF103D2C</color>
+    <color name="ic_launcher_foreground">#FFF5F1E4</color>
 </resources>

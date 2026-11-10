@@ -38,7 +38,7 @@ class SelectionTest {
     @Test
     fun batchDeleteConfirmMessage_composesBothConsequences() {
         assertEquals(
-            "将删除 2 个文档，物理文件一并删除。将删除 1 个文件夹，其中的文档将移至根目录。是否继续？",
+            "将删除 2 个文档，物理文件一并删除。将删除 1 个文件夹，其中的文档将一并删除。是否继续？",
             batchDeleteConfirmMessage(Selection(folderIds = setOf(1L), documentIds = setOf(2L, 3L))),
         )
         assertEquals(

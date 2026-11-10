@@ -183,7 +183,7 @@ fun FolderTreeList(
 - **搜索（M6）**：顶栏搜索图标展开为输入框（navigationIcon 变「退出搜索」、trailing 清空键）→ `DocumentDao.search(q)`（`title LIKE`，**全库匹配不限当前文件夹**，结果固定按标题排序）；输入经 **300ms 防抖**实时出结果。内容切换**仅以 `searchResults != null` 为准**：`null` = 非搜索态（关键词为空/防抖未到，维持浏览内容），空列表 = 无命中（显示「未找到匹配文档」），两者语义严格区分。搜索态隐藏文件夹区块与最近阅读条；`BackHandler(enabled = searchActive)` 使系统返回先收起搜索而不 pop 导航栈；结果复用 `DocumentCard`（含长按菜单），点击直达阅读器
 - **排序（M6）**：顶栏三点溢出菜单（`SortMenu`），`DocSort`（`TITLE`/`LAST_READ`/`ADDED`/`SIZE`）四项中文标签（标题/最近阅读/添加时间/大小）+ 当前项 trailing Check；选中 `setSort` 写 DataStore（`LibraryPrefs`，持久化设计见数据分册）即时生效并重启保持；`documents = prefs.docSort.flatMapLatest { docsIn(folderId, it) }`。搜索结果固定按标题排序，故搜索态不展示排序菜单
 - **最近阅读条（M6）**：根书架网格首部全宽 `item(span = maxLineSpan)` 横向 `LazyRow`（`RecentSection`），卡片 100dp 宽 = 缩略图（含加密锁角标）+ 标题 + 「第 N 页」（仅 `progressType=="page"` 显示）；数据源 `recent(20)` 按 `lastReadAt DESC`；仅根目录显示、无阅读记录隐藏、搜索态不渲染；点击复用 `onDocumentClick` 直达阅读器（key 前缀 `r_` 与网格 `f_`/`d_` 无冲突）。**首项变化时横向滚动复位到最新项**：阅读返回后重排会在保留的横向偏移下原地换卡，视觉上像卡片跳变（M6 用户反馈），复位后跳变变为「展示刚读文档」的有意行为
-- **文档长按菜单**：重命名（`DocumentDao.rename`，仅改 `title` 不动 `relPath`/物理文件）/ 移动（`FolderPickerDialog`）/ 删除——与目录树操作对称。落点（M5）：文件夹与文档卡片 `combinedClickable` 长按弹出各自 `DropdownMenu`（文件夹：重命名/删除/移动/新建子目录；文档：重命名/移动/删除），删除走 `DeleteConfirmDialog`（目录文案含「文档将移至根目录」，文档文案含「物理文件一并删除」）
+- **文档长按菜单**：重命名（`DocumentDao.rename`，仅改 `title` 不动 `relPath`/物理文件）/ 移动（`FolderPickerDialog`）/ 删除——与目录树操作对称。落点（M5）：文件夹与文档卡片 `combinedClickable` 长按弹出各自 `DropdownMenu`（文件夹：重命名/删除/移动/新建子目录；文档：重命名/移动/删除），删除走 `DeleteConfirmDialog`（目录文案含「文档将一并删除」，文档文案含「物理文件一并删除」）
 
 ### 批量操作（M13，多选）
 

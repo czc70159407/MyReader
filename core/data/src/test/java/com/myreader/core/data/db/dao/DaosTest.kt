@@ -246,20 +246,6 @@ class DocumentDaoTest {
     }
 
     @Test
-    fun moveDocsInFoldersToRoot_sendsDocsToRoot() = runTest {
-        val folderDao = db.folderDao()
-        folderDao.insert(FolderEntity(id = 5, parentId = null, name = "f5", createdAt = 1, updatedAt = 1))
-        folderDao.insert(FolderEntity(id = 6, parentId = null, name = "f6", createdAt = 1, updatedAt = 1))
-        dao.insert(doc(1, "a", folderId = 5))
-        dao.insert(doc(2, "b", folderId = 6))
-        dao.insert(doc(3, "c", folderId = null))
-
-        dao.moveDocsInFoldersToRoot(listOf(5L, 6L))
-        assertNull(dao.findById(1)!!.folderId)
-        assertNull(dao.findById(2)!!.folderId)
-    }
-
-    @Test
     fun rename_delete_setPageCount() = runTest {
         dao.insert(doc(1, "old"))
         dao.rename(1, "new")

@@ -47,7 +47,7 @@ internal fun batchDeleteConfirmMessage(selection: Selection): String = buildStri
         append("将删除 ${selection.documentIds.size} 个文档，物理文件一并删除。")
     }
     if (selection.folderIds.isNotEmpty()) {
-        append("将删除 ${selection.folderIds.size} 个文件夹，其中的文档将移至根目录。")
+        append("将删除 ${selection.folderIds.size} 个文件夹，其中的文档将一并删除。")
     }
     append("是否继续？")
 }

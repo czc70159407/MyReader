@@ -99,7 +99,7 @@
 | `ok_folder_created` | 已创建文件夹「{name}」 | Snackbar |
 | `ok_folder_renamed` | 已重命名文件夹 | Snackbar |
 | `ok_folder_moved` | 已移动文件夹 | Snackbar |
-| `ok_folder_deleted` | 已删除文件夹（其中文档已移至根目录） | Snackbar |
+| `ok_folder_deleted` | 已删除文件夹（其中文档一并删除） | Snackbar |
 | `ok_doc_renamed` | 已重命名文档 | Snackbar |
 | `ok_doc_moved` | 已移动文档 | Snackbar |
 | `ok_doc_deleted` | 已删除文档 | Snackbar |
@@ -185,7 +185,7 @@
 
 | 键 | 文案 |
 |---|---|
-| `dlg_delete_folder` | 将删除文件夹「{name}」及其所有子目录，其中的文档将移至根目录。是否继续？ |
+| `dlg_delete_folder` | 将删除文件夹「{name}」及其所有子目录，其中的文档将一并删除。是否继续？ |
 | `dlg_delete_doc` | 将删除《{title}》，物理文件一并删除。是否继续？ |
 | `dlg_duplicate_import` | 已存在《{existingTitle}》，是否仍导入同一文件？ |
 | `dlg_password_title` | 文档已加密 |
@@ -203,7 +203,7 @@
 | `dlg_annotation_color_title` | 高亮颜色 | 改色框标题（M12） |
 | `dlg_batch_delete_title` | 批量删除 | 批量删除确认框标题（M13） |
 | `dlg_batch_delete_doc` | 将删除 {n} 个文档，物理文件一并删除。 | 批量删除正文（M13） |
-| `dlg_batch_delete_folder` | 将删除 {m} 个文件夹，其中的文档将移至根目录。 | 批量删除正文（M13） |
+| `dlg_batch_delete_folder` | 将删除 {m} 个文件夹，其中的文档将一并删除。 | 批量删除正文（M13） |
 
 ## 9. 导入汇总字段（summary_*）
 

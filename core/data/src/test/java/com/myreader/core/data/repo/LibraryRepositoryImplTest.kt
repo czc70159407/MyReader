@@ -71,8 +71,8 @@ class LibraryRepositoryImplTest {
         )
 
     @Test
-    fun deleteFolder_cascadesDocsToRoot_childrenBeforeParents() = runTest {
-        // 结构：root(1) / a(2) / b(3)，文档在 a 与 b
+    fun deleteFolder_deletesFolderTreeAndDocs() = runTest {
+        // 结构：root / a / b，文档在 a 与 b
         val f1 = repo.createFolder(null, "root")
         val f2 = repo.createFolder(f1, "a")
         val f3 = repo.createFolder(f2, "b")
@@ -81,15 +81,42 @@ class LibraryRepositoryImplTest {
 
         repo.deleteFolder(f1)
 
-        // 三个目录全部删除，两个文档回根
+        // 三个目录全部删除，后代文档一并删除（不再回根）
         assertTrue(repo.subtree(f1).isEmpty())
         repo.docsIn(null, DocSort.TITLE).test {
-            val rootDocs = awaitItem()
-            assertEquals(setOf("in-a", "in-b"), rootDocs.map { it.title }.toSet())
-            assertNull(rootDocs.first { it.title == "in-a" }.folderId)
-            assertNull(rootDocs.first { it.title == "in-b" }.folderId)
+            assertTrue(awaitItem().isEmpty())
             cancelAndIgnoreRemainingEvents()
         }
+    }
+
+    @Test
+    fun deleteFolder_deletesDescendantPhysicalFiles() = runTest {
+        // 真实物理文件（copyIn 生成，验证后置物理删除）
+        val rel1 = storage.copyIn(ByteArrayInputStream("data1".toByteArray()), docId = 301, ext = "pdf").relPath
+        val rel2 = storage.copyIn(ByteArrayInputStream("data2".toByteArray()), docId = 302, ext = "pdf").relPath
+        val f1 = repo.createFolder(null, "root")
+        val f2 = repo.createFolder(f1, "sub")
+        repo.addDocument(
+            folderId = f1, title = "in-root", relPath = rel1,
+            fileType = "pdf", mimeType = null, sourceUri = null,
+            fileSize = 1, contentHash = null, pageCount = 1,
+        )
+        repo.addDocument(
+            folderId = f2, title = "in-sub", relPath = rel2,
+            fileType = "pdf", mimeType = null, sourceUri = null,
+            fileSize = 1, contentHash = null, pageCount = 1,
+        )
+
+        repo.deleteFolder(f1)
+
+        // 目录全删，后代文档记录 + 物理文件均删
+        assertTrue(repo.subtree(f1).isEmpty())
+        repo.docsIn(null, DocSort.TITLE).test {
+            assertTrue(awaitItem().isEmpty())
+            cancelAndIgnoreRemainingEvents()
+        }
+        assertFalse(storage.documentExists(rel1))
+        assertFalse(storage.documentExists(rel2))
     }
 
     @Test

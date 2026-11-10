@@ -176,12 +176,12 @@ interface DocumentDao {
 
 1. 删文件夹 `F` 时，先 `FolderDao.subtree(F.id)` 取 `F` 及全部后代目录
 2. 一个 DB 事务内：
-   - 将「`F` 及所有后代目录下」的文档 `folderId` 批量置 `null`（文档回根级，**保留文档**；物理 PDF 因扁平存储无需移动）
+   - 将「`F` 及所有后代目录下」的文档记录一并删除（`deleteMany`，级联删书签/批注）
    - 按「子目录优先、父目录后删」顺序删除后代目录及 `F` 本身记录（避免 `parentId` 悬空成孤儿）
-3. 事务提交成功即完成（无物理文件操作）；`sourceUri` 仅备查不依赖
+3. 事务提交成功后删除物理文件 + 缩略图（后置，失败留孤儿）；`sourceUri` 仅备查不依赖
 4. 移动文件夹同理：校验循环后只改 `parentId`，不动物理文件
 
-> **与 `DocumentEntity` 外键 `onDelete = SET_NULL` 的关系**：该 FK 仅作兜底安全网（万一业务层漏处理直接删 folder，DB 自动把直接子文档 `folderId` 置 null，不致崩溃）。正常路径走业务层显式批量置 null，便于在单事务内统一编排「后代文档回根 + 子目录先于父删」，不依赖 FK 副作用的隐式顺序。`folders.parentId` 无自引用 FK，故子目录删除顺序必须业务层保证（子优先于父），否则 `parentId` 悬空成孤儿。
+> **与 `DocumentEntity` 外键 `onDelete = SET_NULL` 的关系**：该 FK 仅作兜底安全网（万一业务层漏处理直接删 folder，DB 自动把直接子文档 `folderId` 置 null，不致崩溃）。正常路径走业务层显式批量删文档记录，便于在单事务内统一编排「后代文档删除 + 子目录先于父删」，不依赖 FK 副作用的隐式顺序。`folders.parentId` 无自引用 FK，故子目录删除顺序必须业务层保证（子优先于父），否则 `parentId` 悬空成孤儿。
 
 ## 批量操作（M13）
 

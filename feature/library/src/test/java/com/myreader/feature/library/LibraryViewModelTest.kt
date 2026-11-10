@@ -547,7 +547,7 @@ class LibraryViewModelTest {
     }
 
     @Test
-    fun deleteFolder_cascadesDocsToRoot_andNotifies() = runTest(mainDispatcherRule.testScheduler) {
+    fun deleteFolder_deletesDocs_andNotifies() = runTest(mainDispatcherRule.testScheduler) {
         val fid = repository.createFolder(null, "f")
         viewModel.onUrisPicked(listOf(registerPdf("x.pdf")))
         viewModel.confirmImportPick(fid)   // 文档导入到 f
@@ -558,13 +558,11 @@ class LibraryViewModelTest {
         idle()
 
         viewModel.messages.test {
-            assertEquals("已删除文件夹（其中文档已移至根目录）", awaitItem())
+            assertEquals("已删除文件夹（其中文档一并删除）", awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
         db.documentDao().docsInByTitle(null).test {
-            val docs = awaitItem()
-            assertEquals(1, docs.size)
-            assertNull(docs.first().folderId)   // 文档回根
+            assertTrue(awaitItem().isEmpty())   // 目录中文档一并删除
             cancelAndIgnoreRemainingEvents()
         }
     }

@@ -144,7 +144,7 @@ class LibraryRepositoryBatchTest {
     }
 
     @Test
-    fun deleteItems_deletesFolders_movesDocsToRoot_childrenBeforeParents() = runTest {
+    fun deleteItems_deletesFoldersAndDescendantDocs() = runTest {
         val f1 = repo.createFolder(null, "a")
         val f2 = repo.createFolder(f1, "b")
         val f3 = repo.createFolder(f2, "c")
@@ -154,11 +154,9 @@ class LibraryRepositoryBatchTest {
         val r = repo.deleteItems(folderIds = listOf(f1), documentIds = emptyList())
 
         assertEquals(1, r.deletedFolders)
+        assertEquals(2, r.deletedDocuments)   // 后代文档一并删除
         assertTrue(repo.subtree(f1).isEmpty())
-        // 后代文档回根且保留
-        val root = repo.docsIn(null, DocSort.TITLE).first()
-        assertEquals(setOf("in-b", "in-c"), root.map { it.title }.toSet())
-        root.forEach { assertNull(it.folderId) }
+        assertTrue(repo.docsIn(null, DocSort.TITLE).first().isEmpty())
     }
 
     @Test
@@ -171,10 +169,8 @@ class LibraryRepositoryBatchTest {
         val r = repo.deleteItems(folderIds = listOf(f1), documentIds = listOf(dOut))
 
         assertEquals(1, r.deletedFolders)
-        assertEquals(1, r.deletedDocuments)
-        // 文件夹内文档回根、不删
-        assertEquals(listOf("inner"), repo.docsIn(null, DocSort.TITLE).first().map { it.title })
-        // 外部文档记录 + 物理文件均删
+        assertEquals(2, r.deletedDocuments)   // inner（文件夹内）+ outer（直接选中）一并删除
+        assertTrue(repo.docsIn(null, DocSort.TITLE).first().isEmpty())
         assertNull(db.documentDao().findById(dOut))
         assertFalse(storage.documentExists(rel))
     }

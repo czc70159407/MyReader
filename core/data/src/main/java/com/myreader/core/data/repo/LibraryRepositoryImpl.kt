@@ -105,10 +105,13 @@ class LibraryRepositoryImpl @Inject constructor(
         }
         visit(id)
 
+        // 后代文档（含所有子目录）一并删除：先事务删记录，提交成功后再删物理文件
+        val docs = if (ids.isEmpty()) emptyList() else documentDao.findByFolderIds(ids)
         db.withTransaction {
-            documentDao.moveDocsInFoldersToRoot(ids)   // 后代文档回根（物理文件扁平存储，无需移动）
+            if (docs.isNotEmpty()) documentDao.deleteMany(docs.map { it.id })
             deleteOrder.forEach { folderDao.delete(it) }
         }
+        deletePhysicalFiles(docs)   // 物理文件后置删，失败留孤儿（不阻断）
         Unit
     }
 
@@ -194,8 +197,7 @@ class LibraryRepositoryImpl @Inject constructor(
         db.withTransaction {
             documentDao.delete(id)
         }
-        storage.deleteDocument(entity.relPath)
-        storage.deleteThumbnail(entity.thumbnailRelPath)
+        deletePhysicalFiles(listOf(entity))   // 物理文件后置删，失败留孤儿（不阻断）
         Unit
     }
 
@@ -233,7 +235,7 @@ class LibraryRepositoryImpl @Inject constructor(
         folderIds: List<Long>,
         documentIds: List<Long>,
     ): BatchDeleteResult = withContext(dispatchers.io) {
-        // 文件夹：取选中根各自子树并集（防御性去重），后序删除，后代文档回根
+        // 文件夹：取选中根各自子树并集（防御性去重），后序删除
         val subtreeEntities = mutableMapOf<Long, FolderEntity>()
         folderIds.distinct().forEach { id ->
             folderDao.subtree(id).forEach { subtreeEntities[it.id] = it }
@@ -248,15 +250,26 @@ class LibraryRepositoryImpl @Inject constructor(
         }
         folderIds.distinct().forEach { visit(it) }
 
-        val docs = if (documentIds.isEmpty()) emptyList() else documentDao.findByIds(documentIds.distinct())
+        // 直接选中文档 + 选中文件夹子树内的后代文档（去重），一并删除
+        val directDocs = if (documentIds.isEmpty()) emptyList() else documentDao.findByIds(documentIds.distinct())
+        val folderDocs = if (subtreeEntities.isEmpty()) emptyList()
+            else documentDao.findByFolderIds(subtreeEntities.keys.toList())
+        val allDocs = (directDocs + folderDocs).distinctBy { it.id }
+
         db.withTransaction {
-            if (subtreeEntities.isNotEmpty()) {
-                documentDao.moveDocsInFoldersToRoot(subtreeEntities.keys.toList())
-                deleteOrder.forEach { folderDao.delete(it) }
-            }
-            if (docs.isNotEmpty()) documentDao.deleteMany(docs.map { it.id })
+            if (allDocs.isNotEmpty()) documentDao.deleteMany(allDocs.map { it.id })
+            deleteOrder.forEach { folderDao.delete(it) }
         }
         // 物理文件后置删除（提交成功后）；逐项容错，失败计孤儿
+        val orphan = deletePhysicalFiles(allDocs)
+        BatchDeleteResult(folderIds.distinct().size, allDocs.size, orphan)
+    }
+
+    /**
+     * 删除文档物理文件 + 缩略图（逐项容错，失败计孤儿；文件不存在视为成功，幂等）。
+     * 与 DB 记录删除解耦：记录已删于事务内，此处失败仅留孤儿，不阻断调用方。
+     */
+    private fun deletePhysicalFiles(docs: List<DocumentEntity>): Int {
         var orphan = 0
         docs.forEach {
             try {
@@ -266,7 +279,7 @@ class LibraryRepositoryImpl @Inject constructor(
                 orphan++
             }
         }
-        BatchDeleteResult(folderIds.distinct().size, docs.size, orphan)
+        return orphan
     }
 
     // ---- 书签（M10）----

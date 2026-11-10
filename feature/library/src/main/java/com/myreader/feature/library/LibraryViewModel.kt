@@ -230,7 +230,7 @@ class LibraryViewModel @Inject constructor(
 
     fun deleteFolder(id: Long) = launchOp {
         repository.deleteFolder(id)
-        "已删除文件夹（其中文档已移至根目录）"
+        "已删除文件夹（其中文档一并删除）"
     }
 
     fun moveFolder(id: Long, newParentId: Long?) = launchOp {

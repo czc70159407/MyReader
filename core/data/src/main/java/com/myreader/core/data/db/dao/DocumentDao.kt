@@ -70,14 +70,14 @@ interface DocumentDao {
     @Query("UPDATE documents SET folderId = :newFolderId WHERE id = :id")
     suspend fun move(id: Long, newFolderId: Long?)
 
-    @Query("UPDATE documents SET folderId = NULL WHERE folderId IN (:folderIds)")
-    suspend fun moveDocsInFoldersToRoot(folderIds: List<Long>)   // 删目录编排：后代文档回根
-
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun delete(id: Long)
 
     @Query("SELECT * FROM documents WHERE id IN (:ids)")
     suspend fun findByIds(ids: List<Long>): List<DocumentEntity>   // 批量：调用方保证非空
+
+    @Query("SELECT * FROM documents WHERE folderId IN (:folderIds)")
+    suspend fun findByFolderIds(folderIds: List<Long>): List<DocumentEntity>   // 删目录：后代文档（调用方保证非空）
 
     @Query("UPDATE documents SET folderId = :newFolderId WHERE id IN (:ids)")
     suspend fun moveMany(ids: List<Long>, newFolderId: Long?)       // 批量：调用方保证非空

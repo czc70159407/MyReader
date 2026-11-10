@@ -539,7 +539,7 @@ fun LibraryScreen(
     deleteFolderTarget?.let { folder ->
         DeleteConfirmDialog(
             title = "删除文件夹",
-            message = "将删除文件夹「${folder.name}」及其所有子目录，其中的文档将移至根目录。是否继续？",
+            message = "将删除文件夹「${folder.name}」及其所有子目录，其中的文档将一并删除。是否继续？",
             onConfirm = {
                 viewModel.deleteFolder(folder.id)
                 deleteFolderTarget = null

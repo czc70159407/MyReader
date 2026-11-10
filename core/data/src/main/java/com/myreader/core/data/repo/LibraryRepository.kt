@@ -28,7 +28,7 @@ interface LibraryRepository {
     suspend fun createFolder(parentId: Long?, name: String): Long
     suspend fun renameFolder(id: Long, name: String)
     suspend fun moveFolder(id: Long, newParentId: Long?)   // 校验新父目录不在当前子树内（防循环）
-    suspend fun deleteFolder(id: Long)                     // 级联：后代文档回根 + 子目录先于父删
+    suspend fun deleteFolder(id: Long)                     // 级联：后代文档一并删除 + 子目录先于父删
 
     // ---- 文档 ----
     fun docsIn(parentId: Long?, sort: DocSort): Flow<List<LibraryItem>>
@@ -63,7 +63,7 @@ interface LibraryRepository {
     /** 批量移动：文件夹 + 文档统一移动到同一目标；已在目标项计 skipped。防环/目标不存在抛 IllegalArgumentException。 */
     suspend fun moveItems(folderIds: List<Long>, documentIds: List<Long>, targetId: Long?): BatchMoveResult
 
-    /** 批量删除：文件夹（后代文档回根、子先父删）与文档（物理删除）混合；记录删于单事务。 */
+    /** 批量删除：文件夹（后代文档一并删除、子先父删）与文档（物理删除）混合；记录删于单事务。 */
     suspend fun deleteItems(folderIds: List<Long>, documentIds: List<Long>): BatchDeleteResult
 
     // ---- 书签（M10）----

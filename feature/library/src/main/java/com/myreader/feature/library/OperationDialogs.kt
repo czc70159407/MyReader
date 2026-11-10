@@ -102,7 +102,7 @@ fun RenameDialog(
 
 /**
  * 删除确认弹窗（文件夹/文档共用）：[message] 携带后果文案
- * （目录：「其中文档将移至根目录」；文档：「物理文件一并删除」）。
+ * （目录：「其中文档将一并删除」；文档：「物理文件一并删除」）。
  */
 @Composable
 fun DeleteConfirmDialog(

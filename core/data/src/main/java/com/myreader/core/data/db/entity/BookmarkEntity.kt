@@ -13,7 +13,7 @@ import androidx.room.PrimaryKey
  * - 流式（epub）：`anchor` 存 bookmark 十进制串（跨重排稳定），`page` 存创建时解析页码，
  *   仅用于列表排序与锚点失效时回落。
  *
- * `documentId` 外键 CASCADE：删文档即删书签（目录删除只把文档移回根，书签保留）。
+ * `documentId` 外键 CASCADE：删文档即删书签（目录删除一并删文档，书签随之级联删）。
  */
 @Entity(
     tableName = "bookmarks",

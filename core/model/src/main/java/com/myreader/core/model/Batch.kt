@@ -13,9 +13,8 @@ data class BatchMoveResult(
 )
 
 /**
- * 批量删除结果：deleted* 为已删记录数；orphanFiles 为物理文件删除失败残留数
- * （记录已删、文件遗留，属已知限制，UI 提示重试）。文件夹删除时其后代文档回根（不删），
- * 不计入 deletedDocuments。
+ * 批量删除结果：deleted* 为已删记录数（deletedDocuments 含选中文件夹内的后代文档）；
+ * orphanFiles 为物理文件删除失败残留数（记录已删、文件遗留，属已知限制，UI 提示重试）。
  */
 data class BatchDeleteResult(
     val deletedFolders: Int,

@@ -11,7 +11,7 @@ import androidx.room.PrimaryKey
  * `anchor` 存归一化 quad JSON（`[[ulx,uly,urx,ury,llx,lly,lrx,lry], ...]`，相对页面宽高 0..1），
  * 与 Bookmark 的页码/锚点双轨并列：书签是「页级」，高亮是「文本级矩形」。
  *
- * `documentId` 外键 CASCADE：删文档即删高亮/笔记（目录删除只把文档移回根，批注保留）。
+ * `documentId` 外键 CASCADE：删文档即删高亮/笔记（目录删除一并删文档，批注随之级联删）。
  */
 @Entity(
     tableName = "annotations",

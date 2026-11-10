@@ -58,6 +58,11 @@
 | `act_save` | 保存 | 高亮笔记框（M12） |
 | `act_open_link` | 打开链接 | 关于页链接 TalkBack 自定义动作 `onClick` label |
 | `act_copy_link` | 复制链接 | 关于页链接 TalkBack 自定义动作 `onLongClick` label |
+| `act_select` | 多选 | 卡片菜单 / ⋮ 菜单（M13） |
+| `act_select_all` | 全选 | 多选顶栏（M13） |
+| `act_unselect_all` | 取消全选 | 多选顶栏（M13） |
+| `act_exit_selection` | 退出多选 | 多选顶栏返回（M13） |
+| `selected_count` | 已选 {n} 项 | 多选顶栏标题（M13） |
 
 ## 3. 空态文案（empty_*）
 
@@ -113,6 +118,10 @@
 | `ok_note_saved` | 已保存笔记 | Snackbar（M12） |
 | `ok_note_cleared` | 已清除笔记 | Snackbar（M12，保存空串即清空） |
 | `ok_link_copied` | 链接已复制 | Snackbar（关于页长按链接） |
+| `ok_batch_moved` | 已移动 {documents} 个文档、{folders} 个文件夹 | Snackbar（M13） |
+| `ok_batch_deleted` | 已删除 {documents} 个文档、{folders} 个文件夹 | Snackbar（M13） |
+| `ok_batch_skipped` | （{n} 个已在目标目录） | Snackbar（M13，拼接） |
+| `ok_batch_deleted_orphan` | {n} 个文件删除失败，请重试 | Snackbar（M13，拼接） |
 
 ## 6. 错误文案（err_*）
 
@@ -157,6 +166,7 @@
 | `err_note_save` | 保存笔记失败，请重试 | L3 | `[已实现 M12]` |
 | `err_annotation_color` | 更新颜色失败，请重试 | L3 | `[已实现 M12]` |
 | `err_link_no_browser` | 未找到可打开链接的应用，请长按复制链接 | L3 | `[已实现]`（关于页自行 `startActivity` 并捕获 `ActivityNotFoundException`；不用 `LocalUriHandler`——Compose 1.7.4 会包装成 `IllegalArgumentException` 重抛；异常消息不进文案） |
+| `err_batch_limit` | 一次最多选择 {n} 项 | L3 | `[已实现 M13]`（`MAX_BATCH_SELECTION = 500`） |
 
 ## 7. 表单校验文案（inline_*）
 
@@ -191,6 +201,9 @@
 | `dlg_restore_confirm_body` | 将合并备份中的目录与文档记录：同名记录以备份为准，备份之外的数据不受影响。是否继续？（不预测数量——为避免显示数字而先解析整包） |
 | `dlg_annotation_note_title` | 高亮笔记 | 笔记编辑框标题（M12，label「笔记」、placeholder「写下你的想法…」） |
 | `dlg_annotation_color_title` | 高亮颜色 | 改色框标题（M12） |
+| `dlg_batch_delete_title` | 批量删除 | 批量删除确认框标题（M13） |
+| `dlg_batch_delete_doc` | 将删除 {n} 个文档，物理文件一并删除。 | 批量删除正文（M13） |
+| `dlg_batch_delete_folder` | 将删除 {m} 个文件夹，其中的文档将移至根目录。 | 批量删除正文（M13） |
 
 ## 9. 导入汇总字段（summary_*）
 

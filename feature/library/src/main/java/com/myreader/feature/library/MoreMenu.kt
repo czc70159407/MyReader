@@ -25,10 +25,12 @@ import com.myreader.core.model.DocSort
  * internal：供 Compose UI 测试直接渲染（无 Room/VM 依赖）。
  */
 @Composable
+@Suppress("LongParameterList")
 internal fun MoreMenu(
     importing: Boolean,
     onNewFolder: () -> Unit,
     onImportDir: () -> Unit,
+    onSelectMode: () -> Unit,
     current: DocSort,
     onSelect: (DocSort) -> Unit,
 ) {
@@ -39,6 +41,14 @@ internal fun MoreMenu(
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             // 动作段：低频目录管理入口（D2 收纳）；导入中「导入目录」置灰，「新建文件夹」不受影响
+            DropdownMenuItem(
+                text = { Text(text = "多选") },
+                enabled = !importing,
+                onClick = {
+                    expanded = false
+                    onSelectMode()
+                },
+            )
             DropdownMenuItem(
                 text = { Text(text = "新建文件夹") },
                 enabled = true,

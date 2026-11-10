@@ -6,6 +6,7 @@
 
 ### 最近状态
 
+- **M13 批量操作（2026-11-10）**：书架「多选 → 批量移动 / 批量删除」。入口：浏览态长按卡片菜单「多选」（预选该卡）/ ⋮ 菜单「多选」（搜索态不提供）；多选顶栏（✕ /「已选 {n} 项」/ 全选 / 移动 / 删除）+ 卡片选择态（`Role.Checkbox` + `contentDescription` + 勾选覆盖层）；批量移动复用 `FolderPickerDialog`（防环 = 选中文件夹子树并集，红字 + 确定禁用）；批量删除混合后果文案 + 单事务删记录 + 物理文件后置删。核心：`core:model/Batch.kt`（`BatchMoveResult`/`BatchDeleteResult`/`MAX_BATCH_SELECTION=500`）+ `LibraryRepository.moveItems/deleteItems` + DAO 批量查询（**无 schema 变更**）。`.\gradlew.bat build` 全绿；`LibraryRepositoryBatchTest`（8 例）+ `SelectionTest`（5 例）+ `LibraryComponentsTest` 多选态 a11y 断言全绿。**真机验收通过（PKC110 / Android 17 / API 37，2026-11-10）**：长按菜单 + ⋮ 菜单两入口进多选；顶栏「已选 n 项」+ 全选/移动/删除；卡片 dump 为 `CheckBox` + `content-desc`（文件名/文件夹名）+ `checked` 状态；多选态隐藏最近阅读条；全选 2 项 + 取消全选；批量移动（选文件夹自身红字「不能移动到自身或其子目录」+ 确定禁用；移文档到文件夹 Snackbar「已移动 1 个文档」）；批量删除（文件夹确认框「将删除 1 个文件夹，其中的文档将移至根目录」→ 删除后内部文档回根 + Snackbar「已删除 1 个文件夹」；文档确认框「物理文件一并删除」→ Snackbar「已删除 1 个文档」）；操作后自动退出多选。证据：`/sdcard/Download/MyReaderTest/{xml,png}/m13_*`（16 项），本地副本 `tools/acceptance/verify/m13_*`。
 - **应用图标与启动画面（D11，2026-11-10 观感升级）**：图标由「描边折角文档 + 深绿 `#1B5E20`」改为**实心「打开的书」+ 深墨绿 `#103D2C` / 奶油白 `#F5F1E4`**（原 4dp 描边在 48dp 下过细、且与系统文件图标语汇雷同）；SplashScreen 背景同步换色。`.\gradlew.bat build` 全绿、aapt 验证 APK 各密度均指向 adaptive icon。**真机验收通过（PKC110 / Android 17 / API 37；设备近期 OTA，历史验收记录为 Android 16）**：桌面图标实心书清晰、48dp 辨识度好；冷启动 SplashScreen 中心色实测 `#103D2C`。注：ColorOS launcher 覆盖安装后缓存旧图标，需 `am force-stop com.android.launcher` 才刷新。路线 C 不变（图标资源色独立于 UI 主题），色值见 `docs/design/tokens.md` §1.1，实现落点见 `docs/ui-design.md`「应用图标与启动画面」。证据：`/sdcard/Download/MyReaderTest/m13/png/{launcher_final2,boot_v2_1,boot_v2_2}.png`，本地副本 `tools/acceptance/verify/m13/`。
 - **关于页（2026-11-09）**：应用标识 + 运行读取 `versionName` + 五个链接可点击/长按复制/链接语义已落地，`.\gradlew.bat build` 全绿。**真机验收通过（PKC110 / Android 17 / API 37，2026-11-09；设备近期 OTA，历史验收记录为 Android 16）**：版本号显示 `1.5.0`；五链接 UI dump 均为 `Button` + `focusable/clickable/long-clickable`，CD 为「标签，链接。双击打开，长按复制」；长按出 Snackbar「链接已复制」；点击打开系统浏览器且 URL 正确；字体 200% 下 URL 换行无裁切、可滚至末条；深浅主题配色随 `colorScheme` 变化。`[建议 P2]` 已闭环——修正与上游口径不符的 GitLab 链接，分列本项目主仓 / MuPDF 上游 / 实际集成的 viewer fork（直达 `myreader-patches` 分支）。**N/A 一项**：无浏览器兜底无法真机构造（系统浏览器 `pm disable-user` 返回 enabled、`pm hide` 需 `MANAGE_USERS`、suspend 后 intent 仍可解析），代码层已有反编译 `ui-android:1.7.4` 实证 + build 门禁覆盖。证据：`/sdcard/Download/MyReaderTest/m13/{png,xml}/`（21 项），本地副本 `tools/acceptance/verify/m13/`。规格 `docs/design/screens/about.md`，文案 `docs/design/copy.md` §10。
 
@@ -33,6 +34,7 @@
 | M10 | 书签（章节级）+ 首个 Room Migration（v1.3） | 已完成（schema v2 + `MIGRATION_1_2`；D 真机五项通过并修 2 缺陷） |
 | M11 | epub 锚点稳健性 / 比例锚点（v1.4） | 已完成（`cp:` 比例锚点 + 备份 v3；六项真机验收通过并修 2 缺陷） |
 | M12 | 沉浸模式 + 高亮/笔记（v1.5） | 已完成（A 沉浸模式 7 条真机通过；B 高亮/笔记 Room v3 + 备份 v4，两项低价值项拍板不做） |
+| M13 | 批量操作（多选/批量移动/批量删除） | 已完成（真机验收通过 + `build` 全绿 + 单测/a11y 全绿） |
 
 > 状态取值：未开始 / 进行中 / 已完成。标记「已完成」必须附验收证据（命令输出摘要），并同步更新「下一步」。里程碑任务与验收标准详见 docs/process.md。
 

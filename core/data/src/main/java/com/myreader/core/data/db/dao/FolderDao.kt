@@ -49,4 +49,10 @@ interface FolderDao {
 
     @Query("SELECT EXISTS(SELECT 1 FROM folders WHERE id = :id)")
     suspend fun exists(id: Long): Boolean   // ID 碰撞预检（retryOnIdCollision）
+
+    @Query("SELECT * FROM folders WHERE id IN (:ids)")
+    suspend fun findByIds(ids: List<Long>): List<FolderEntity>   // 批量：调用方保证非空
+
+    @Query("UPDATE folders SET parentId = :newParentId, updatedAt = :ts WHERE id IN (:ids)")
+    suspend fun moveMany(ids: List<Long>, newParentId: Long?, ts: Long)   // 批量：调用方保证非空
 }

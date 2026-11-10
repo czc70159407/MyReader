@@ -1,10 +1,13 @@
 package com.myreader.feature.library
 
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -40,7 +43,14 @@ class LibraryComponentsTest {
     @Test
     fun moreMenu_showsActionSection_andFourSortOptions_withSingleCheckOnCurrent() {
         composeRule.setContent {
-            MoreMenu(importing = false, onNewFolder = {}, onImportDir = {}, current = DocSort.SIZE, onSelect = {})
+            MoreMenu(
+                importing = false,
+                onNewFolder = {},
+                onImportDir = {},
+                onSelectMode = {},
+                current = DocSort.SIZE,
+                onSelect = {},
+            )
         }
         composeRule.onNodeWithContentDescription("更多").performClick()
         composeRule.waitForIdle()
@@ -64,6 +74,7 @@ class LibraryComponentsTest {
                 importing = true,
                 onNewFolder = {},
                 onImportDir = {},
+                onSelectMode = {},
                 current = DocSort.TITLE,
                 onSelect = {},
             )
@@ -86,6 +97,7 @@ class LibraryComponentsTest {
                 importing = false,
                 onNewFolder = { folders.add(1) },
                 onImportDir = { dirs.add(1) },
+                onSelectMode = {},
                 current = DocSort.TITLE,
                 onSelect = { sorts.add(it) },
             )
@@ -127,6 +139,11 @@ class LibraryComponentsTest {
                 onRename = onRename,
                 onMove = {},
                 onDelete = {},
+                onSelectMode = {},
+                selectionMode = false,
+                selected = false,
+                onToggleSelection = {},
+                showSelectMode = true,
             )
         }
     }
@@ -149,7 +166,7 @@ class LibraryComponentsTest {
         documentCard(item(1, "a.pdf", 0), onRename = { renamed.add(true) })
         val actions = composeRule.onNodeWithContentDescription("a.pdf，3 页")
             .fetchSemanticsNode().config[SemanticsActions.CustomActions]
-        assertEquals(3, actions.size)
+        assertEquals(4, actions.size)
         actions.first { it.label == "重命名" }.action()
         assertEquals(listOf(true), renamed)
     }
@@ -207,11 +224,15 @@ class LibraryComponentsTest {
                 onMove = {},
                 onDelete = {},
                 onNewSubFolder = { newSubFolder++ },
+                onSelectMode = {},
+                selectionMode = false,
+                selected = false,
+                onToggleSelection = {},
             )
         }
         val actions = composeRule.onNodeWithContentDescription("Docs，文件夹")
             .fetchSemanticsNode().config[SemanticsActions.CustomActions]
-        assertEquals(listOf("重命名", "移动", "删除", "新建子目录"), actions.map { it.label })
+        assertEquals(listOf("多选", "重命名", "移动", "删除", "新建子目录"), actions.map { it.label })
         actions.first { it.label == "新建子目录" }.action()
         assertEquals(1, newSubFolder)
     }
@@ -228,6 +249,11 @@ class LibraryComponentsTest {
                 onRename = {},
                 onMove = {},
                 onDelete = {},
+                onSelectMode = {},
+                selectionMode = false,
+                selected = false,
+                onToggleSelection = {},
+                showSelectMode = true,
             )
         }
         // T5 review L15：损坏文档不追加格式词，避免「x.pdf，PDF，已损坏」
@@ -286,5 +312,59 @@ class LibraryComponentsTest {
 
         composeRule.onNodeWithText("名称最多 $MAX_NAME_LEN 个字符").assertIsDisplayed()
         composeRule.onNodeWithText("确定").assertIsNotEnabled()
+    }
+
+    // ---- M13：多选态卡片语义（contentDescription + Checkbox + selected）----
+
+    @Test
+    fun documentCard_selectionMode_exposesTitleAndCheckbox() {
+        composeRule.setContent {
+            DocumentCard(
+                item = item(1, "a.pdf", 0),
+                onClick = {},
+                onLongClick = {},
+                menuExpanded = false,
+                onDismissMenu = {},
+                onRename = {},
+                onMove = {},
+                onDelete = {},
+                onSelectMode = {},
+                selectionMode = true,
+                selected = false,
+                onToggleSelection = {},
+                showSelectMode = true,
+            )
+        }
+        composeRule.onNodeWithContentDescription("a.pdf").assertIsNotSelected()
+        assertEquals(
+            Role.Checkbox,
+            composeRule.onNodeWithContentDescription("a.pdf").fetchSemanticsNode().config[SemanticsProperties.Role],
+        )
+    }
+
+    @Test
+    fun folderCard_selectionMode_exposesNameAndCheckbox() {
+        composeRule.setContent {
+            FolderCard(
+                folder = Folder(id = 3, parentId = null, name = "Docs", sortOrder = 0, createdAt = 1, updatedAt = 1),
+                onClick = {},
+                onLongClick = {},
+                menuExpanded = false,
+                onDismissMenu = {},
+                onRename = {},
+                onMove = {},
+                onDelete = {},
+                onNewSubFolder = {},
+                onSelectMode = {},
+                selectionMode = true,
+                selected = true,
+                onToggleSelection = {},
+            )
+        }
+        composeRule.onNodeWithContentDescription("Docs").assertIsSelected()
+        assertEquals(
+            Role.Checkbox,
+            composeRule.onNodeWithContentDescription("Docs").fetchSemanticsNode().config[SemanticsProperties.Role],
+        )
     }
 }

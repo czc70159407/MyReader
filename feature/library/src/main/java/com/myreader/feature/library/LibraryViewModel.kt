@@ -10,6 +10,7 @@ import com.myreader.core.data.repo.LibraryRepository
 import com.myreader.core.model.DocSort
 import com.myreader.core.model.Folder
 import com.myreader.core.model.LibraryItem
+import com.myreader.core.model.MAX_BATCH_SELECTION
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -155,6 +156,10 @@ class LibraryViewModel @Inject constructor(
     /** 移动文件夹前置校验用：该目录自身 + 全部后代 id（这些目标禁选，防循环） */
     suspend fun subtreeIds(id: Long): Set<Long> = repository.subtree(id).map { it.id }.toSet()
 
+    /** 批量移动前置：选中文件夹子树并集（picker 禁选集，防环 UI 前置）。 */
+    suspend fun subtreeIds(ids: List<Long>): Set<Long> =
+        ids.flatMap { repository.subtree(it) }.map { it.id }.toSet()
+
     // ---- 目录 / 文档管理操作 ----
 
     /** T7：新建文件夹的同步重名预检（弹窗行内提示数据源 = 全量目录快照；业务层仍有兜底） */
@@ -255,6 +260,87 @@ class LibraryViewModel @Inject constructor(
     fun deleteDocument(id: Long) = launchOp {
         repository.deleteDocument(id)
         "已删除文档"
+    }
+
+    // ---- 批量操作（M13）----
+
+    private val _selectionMode = MutableStateFlow(false)
+    val selectionMode: StateFlow<Boolean> = _selectionMode
+
+    private val _selection = MutableStateFlow(Selection())
+    val selection: StateFlow<Selection> = _selection
+
+    private val _batchBusy = MutableStateFlow(false)
+    val batchBusy: StateFlow<Boolean> = _batchBusy
+
+    /** 进入多选（仅浏览态入口调用；防御性退出搜索，二者互斥） */
+    fun enterSelection() {
+        exitSearch()
+        _selectionMode.value = true
+    }
+
+    fun exitSelection() {
+        _selectionMode.value = false
+        _selection.value = Selection()
+    }
+
+    fun toggleFolder(id: Long) {
+        _selection.value = _selection.value.let { it.copy(folderIds = it.folderIds.toggle(id)) }
+    }
+
+    fun toggleDocument(id: Long) {
+        _selection.value = _selection.value.let { it.copy(documentIds = it.documentIds.toggle(id)) }
+    }
+
+    /** 全选当前目录（文件夹 + 文档），上限 MAX_BATCH_SELECTION，超限截断并提示。 */
+    fun selectAll() {
+        val docIds = documents.value.map { it.id }
+        val folderIds = folders.value.map { it.id }
+        val total = docIds.size + folderIds.size
+        val cappedDocs = docIds.take(MAX_BATCH_SELECTION)
+        val cappedFolders = folderIds.take((MAX_BATCH_SELECTION - cappedDocs.size).coerceAtLeast(0))
+        _selection.value = Selection(cappedFolders.toSet(), cappedDocs.toSet())
+        if (total > MAX_BATCH_SELECTION) {
+            _messages.trySend("一次最多选择 $MAX_BATCH_SELECTION 项")
+        }
+    }
+
+    fun clearSelection() {
+        _selection.value = Selection()
+    }
+
+    fun batchMove(targetId: Long?) = launchBatchOp {
+        val sel = _selection.value
+        batchMoveMessage(repository.moveItems(sel.folderIds.toList(), sel.documentIds.toList(), targetId))
+    }
+
+    fun batchDelete() = launchBatchOp {
+        val sel = _selection.value
+        batchDeleteMessage(repository.deleteItems(sel.folderIds.toList(), sel.documentIds.toList()))
+    }
+
+    /** 批量编排：成功即退出多选并清空选择；业务校验失败保留多选（用户可改选择/改目标）。 */
+    @Suppress("TooGenericExceptionCaught")
+    private fun launchBatchOp(block: suspend () -> String) {
+        if (_batchBusy.value) return
+        viewModelScope.launch {
+            _batchBusy.value = true
+            try {
+                val message = block()
+                _selectionMode.value = false
+                _selection.value = Selection()
+                if (message.isNotEmpty()) _messages.send(message)
+            } catch (e: IllegalArgumentException) {
+                _messages.send(e.message ?: "操作失败，请重试")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (BuildConfig.DEBUG) android.util.Log.e(TAG, "batchOp 失败", e)
+                _messages.send("操作失败，请重试")
+            } finally {
+                _batchBusy.value = false
+            }
+        }
     }
 
     /** 统一操作编排：成功发消息，业务校验失败（IllegalArgumentException 带中文 message）走 snackbar，不吞取消 */

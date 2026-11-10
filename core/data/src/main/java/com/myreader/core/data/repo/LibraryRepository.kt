@@ -3,6 +3,8 @@ package com.myreader.core.data.repo
 import com.myreader.core.model.Annotation
 import com.myreader.core.model.AnnotationAddResult
 import com.myreader.core.model.AnnotationType
+import com.myreader.core.model.BatchDeleteResult
+import com.myreader.core.model.BatchMoveResult
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.DocSort
@@ -55,6 +57,14 @@ interface LibraryRepository {
     suspend fun renameDocument(id: Long, title: String)     // 仅改展示名
     suspend fun moveDocument(id: Long, newFolderId: Long?)
     suspend fun deleteDocument(id: Long)                    // 先事务删记录，提交成功后再删物理文件
+
+    // ---- 批量操作（M13）----
+
+    /** 批量移动：文件夹 + 文档统一移动到同一目标；已在目标项计 skipped。防环/目标不存在抛 IllegalArgumentException。 */
+    suspend fun moveItems(folderIds: List<Long>, documentIds: List<Long>, targetId: Long?): BatchMoveResult
+
+    /** 批量删除：文件夹（后代文档回根、子先父删）与文档（物理删除）混合；记录删于单事务。 */
+    suspend fun deleteItems(folderIds: List<Long>, documentIds: List<Long>): BatchDeleteResult
 
     // ---- 书签（M10）----
     fun observeBookmarks(documentId: Long): Flow<List<Bookmark>>

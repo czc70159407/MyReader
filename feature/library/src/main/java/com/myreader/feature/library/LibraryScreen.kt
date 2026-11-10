@@ -23,8 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -109,6 +111,9 @@ fun LibraryScreen(
     val importProgress by viewModel.importProgress.collectAsStateWithLifecycle()
     val pendingDirectoryUri by viewModel.pendingDirectoryUri.collectAsStateWithLifecycle()
     val importSummary by viewModel.importSummary.collectAsStateWithLifecycle()
+    val selectionMode by viewModel.selectionMode.collectAsStateWithLifecycle()
+    val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val batchBusy by viewModel.batchBusy.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     // T5 review L19：搜索态自动聚焦搜索框（等一帧避开布局期焦点请求）
@@ -122,6 +127,7 @@ fun LibraryScreen(
 
     // 系统返回手势：搜索态先收起搜索，不 pop 导航栈（searchActive 来自 VM，跨导航一致）
     BackHandler(enabled = searchActive) { viewModel.exitSearch() }
+    BackHandler(enabled = selectionMode) { viewModel.exitSelection() }
 
     // 长按菜单展开目标（卡片内 DropdownMenu 以 menuX?.id == item.id 判断展开）
     var menuFolder by remember { mutableStateOf<Folder?>(null) }
@@ -136,6 +142,8 @@ fun LibraryScreen(
     var moveDocTarget by remember { mutableStateOf<LibraryItem?>(null) }
     var moveFolderTarget by remember { mutableStateOf<Folder?>(null) }  // 移动文件夹（先取 subtree 排除集）
     var newSubFolderParent by remember { mutableStateOf<Folder?>(null) }  // 长按菜单「新建子目录」目标
+    var batchMovePending by remember { mutableStateOf(false) }          // 点「移动」后待取 excluded
+    var batchDeletePending by remember { mutableStateOf(false) }        // 点「删除」后确认
 
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments(),
@@ -166,7 +174,9 @@ fun LibraryScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    if (searchActive) {
+                    if (selectionMode) {
+                        Text(text = "已选 ${selection.total} 项", style = MaterialTheme.typography.titleLarge)
+                    } else if (searchActive) {
                         // 搜索态：标题槽换输入框（实时搜索，结果由 300ms 防抖驱动）
                         TextField(
                             value = searchQuery,
@@ -227,6 +237,10 @@ fun LibraryScreen(
                 },
                 navigationIcon = {
                     when {
+                        selectionMode ->
+                            IconButton(onClick = viewModel::exitSelection) {
+                                Icon(imageVector = Icons.Filled.Close, contentDescription = "退出多选")
+                            }
                         searchActive ->
                             IconButton(onClick = viewModel::exitSearch) {
                                 Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "退出搜索")
@@ -238,26 +252,51 @@ fun LibraryScreen(
                     }
                 },
                 actions = {
-                    if (!searchActive) {
-                        // T2/D2 窄屏收纳：顶栏固定 4 动作位，「新建文件夹」「导入目录」与排序收进更多菜单
-                        IconButton(
-                            onClick = { importLauncher.launch(FileTypes.mimeFilters()) },
-                            enabled = !importing,
-                        ) {
-                            Icon(imageVector = Icons.Filled.Add, contentDescription = "导入文档")
+                    when {
+                        selectionMode -> {
+                            val allSelected = selection.total > 0 &&
+                                selection.total == folders.size + documents.size
+                            TextButton(
+                                onClick = { if (allSelected) viewModel.clearSelection() else viewModel.selectAll() },
+                            ) { Text(text = if (allSelected) "取消全选" else "全选") }
+                            IconButton(
+                                onClick = { batchMovePending = true },
+                                enabled = selection.total > 0 && !batchBusy,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                                    contentDescription = "移动",
+                                )
+                            }
+                            IconButton(
+                                onClick = { batchDeletePending = true },
+                                enabled = selection.total > 0 && !batchBusy,
+                            ) {
+                                Icon(imageVector = Icons.Filled.Delete, contentDescription = "删除")
+                            }
                         }
-                        IconButton(onClick = viewModel::openSearch) {
-                            Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
-                        }
-                        MoreMenu(
-                            importing = importing,
-                            onNewFolder = { showNewFolderInCurrent = true },
-                            onImportDir = { dirLauncher.launch(null) },
-                            current = currentSort,
-                            onSelect = viewModel::setSort,
-                        )
-                        IconButton(onClick = onOpenSettings) {
-                            Icon(imageVector = Icons.Filled.Settings, contentDescription = "设置")
+                        !searchActive -> {
+                            // T2/D2 窄屏收纳：顶栏固定 4 动作位，「新建文件夹」「导入目录」与排序收进更多菜单
+                            IconButton(
+                                onClick = { importLauncher.launch(FileTypes.mimeFilters()) },
+                                enabled = !importing,
+                            ) {
+                                Icon(imageVector = Icons.Filled.Add, contentDescription = "导入文档")
+                            }
+                            IconButton(onClick = viewModel::openSearch) {
+                                Icon(imageVector = Icons.Filled.Search, contentDescription = "搜索")
+                            }
+                            MoreMenu(
+                                importing = importing,
+                                onNewFolder = { showNewFolderInCurrent = true },
+                                onImportDir = { dirLauncher.launch(null) },
+                                onSelectMode = viewModel::enterSelection,
+                                current = currentSort,
+                                onSelect = viewModel::setSort,
+                            )
+                            IconButton(onClick = onOpenSettings) {
+                                Icon(imageVector = Icons.Filled.Settings, contentDescription = "设置")
+                            }
                         }
                     }
                 },
@@ -318,6 +357,11 @@ fun LibraryScreen(
                                     onRename = { renameDocTarget = item },
                                     onMove = { moveDocTarget = item },
                                     onDelete = { deleteDocTarget = item },
+                                    onSelectMode = {},
+                                    selectionMode = false,
+                                    selected = false,
+                                    onToggleSelection = {},
+                                    showSelectMode = false,
                                 )
                             }
                         }
@@ -352,7 +396,7 @@ fun LibraryScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     // M6 最近阅读条：仅根目录 + 有阅读记录时显示（搜索态走上方独立分支）
-                    if (viewModel.isRoot && recent.isNotEmpty()) {
+                    if (!selectionMode && viewModel.isRoot && recent.isNotEmpty()) {
                         item(key = "recent_header", span = { GridItemSpan(maxLineSpan) }) {
                             RecentSection(recent = recent, onDocumentClick = onDocumentClick)
                         }
@@ -368,6 +412,10 @@ fun LibraryScreen(
                             onMove = { moveFolderTarget = folder },
                             onDelete = { deleteFolderTarget = folder },
                             onNewSubFolder = { newSubFolderParent = folder },
+                            onSelectMode = { viewModel.enterSelection(); viewModel.toggleFolder(folder.id) },
+                            selectionMode = selectionMode,
+                            selected = folder.id in selection.folderIds,
+                            onToggleSelection = { viewModel.toggleFolder(folder.id) },
                         )
                     }
                     items(documents, key = { "d_${it.id}" }) { item ->
@@ -380,6 +428,11 @@ fun LibraryScreen(
                             onRename = { renameDocTarget = item },
                             onMove = { moveDocTarget = item },
                             onDelete = { deleteDocTarget = item },
+                            onSelectMode = { viewModel.enterSelection(); viewModel.toggleDocument(item.id) },
+                            selectionMode = selectionMode,
+                            selected = item.id in selection.documentIds,
+                            onToggleSelection = { viewModel.toggleDocument(item.id) },
+                            showSelectMode = true,
                         )
                     }
                 }
@@ -612,6 +665,61 @@ fun LibraryScreen(
                 ),
             )
         }
+    }
+
+    // 批量移动：先取选中文件夹子树并集作禁选集（同单条 moveFolder 防环），确认时执行
+    if (batchMovePending) {
+        var excluded by remember(batchMovePending) { mutableStateOf<Set<Long>?>(null) }
+        var subtreeLoadFailed by remember(batchMovePending) { mutableStateOf(false) }
+        LaunchedEffect(batchMovePending) {
+            excluded = try {
+                viewModel.subtreeIds(selection.folderIds.toList())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                subtreeLoadFailed = true
+                null
+            }
+        }
+        if (subtreeLoadFailed) {
+            AlertDialog(
+                onDismissRequest = { batchMovePending = false },
+                title = { Text(text = "无法移动") },
+                text = { Text(text = "读取目录结构失败，请重试") },
+                confirmButton = {
+                    TextButton(onClick = { batchMovePending = false }) { Text(text = "知道了") }
+                },
+            )
+        }
+        excluded?.let { excludedIds ->
+            FolderPickerDialog(
+                state = viewModel.folderTree,
+                onConfirm = { target ->
+                    viewModel.batchMove(target)
+                    batchMovePending = false
+                },
+                onDismiss = { batchMovePending = false },
+                onCreateSubFolder = viewModel::createFolderAndSelect,
+                options = FolderPickerOptions(
+                    initialSelectedId = viewModel.currentFolderId,
+                    excludedIds = excludedIds,
+                    isNameTaken = viewModel::isSiblingFolderNameTaken,
+                ),
+            )
+        }
+    }
+
+    // 批量删除确认（复用 DeleteConfirmDialog，混合文案组装）
+    if (batchDeletePending) {
+        DeleteConfirmDialog(
+            title = "批量删除",
+            message = batchDeleteConfirmMessage(selection),
+            onConfirm = {
+                viewModel.batchDelete()
+                batchDeletePending = false
+            },
+            onDismiss = { batchDeletePending = false },
+        )
     }
 
     // 重复导入确认（逐个确认：导入循环挂起等待决策）

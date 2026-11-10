@@ -1,5 +1,8 @@
+@file:Suppress("TooManyFunctions")
+
 package com.myreader.feature.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Warning
@@ -30,6 +34,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
@@ -39,6 +44,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -118,12 +124,12 @@ private fun documentCardDescription(item: LibraryItem): String = buildString {
 }
 
 /** T5：读屏 customActions 构造（TalkBack 长按替代路径） */
-private fun cardActions(vararg pairs: Pair<String, () -> Unit>) =
+private fun cardActions(pairs: List<Pair<String, () -> Unit>>) =
     pairs.map { (label, action) -> CustomAccessibilityAction(label) { action(); true } }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "LongMethod")
 internal fun FolderCard(
     folder: Folder,
     onClick: () -> Unit,
@@ -134,6 +140,10 @@ internal fun FolderCard(
     onMove: () -> Unit,
     onDelete: () -> Unit,
     onNewSubFolder: () -> Unit,
+    onSelectMode: () -> Unit,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
 ) {
     Box {
         // T5：整卡语义由「点击容器」单节点承担（同 DocumentCard），customActions 为长按替代路径，
@@ -141,18 +151,36 @@ internal fun FolderCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .then(
+                    if (selectionMode) {
+                        Modifier.clickable(onClick = onToggleSelection)
+                    } else {
+                        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                    },
+                )
                 .clearAndSetSemantics {
-                    contentDescription = "${folder.name}，文件夹"
-                    role = Role.Button
-                    onClick(label = "打开") { onClick(); true }
-                    onLongClick(label = "更多操作") { onLongClick(); true }
-                    customActions = cardActions(
-                        "重命名" to { onDismissMenu(); onRename() },
-                        "移动" to { onDismissMenu(); onMove() },
-                        "删除" to { onDismissMenu(); onDelete() },
-                        "新建子目录" to { onDismissMenu(); onNewSubFolder() },
-                    )
+                    if (selectionMode) {
+                        contentDescription = folder.name
+                        role = Role.Checkbox
+                        this.selected = selected
+                        onClick(label = if (selected) "取消选中" else "选中") {
+                            onToggleSelection(); true
+                        }
+                    } else {
+                        contentDescription = "${folder.name}，文件夹"
+                        role = Role.Button
+                        onClick(label = "打开") { onClick(); true }
+                        onLongClick(label = "更多操作") { onLongClick(); true }
+                        customActions = cardActions(
+                            listOf(
+                                "多选" to { onDismissMenu(); onSelectMode() },
+                                "重命名" to { onDismissMenu(); onRename() },
+                                "移动" to { onDismissMenu(); onMove() },
+                                "删除" to { onDismissMenu(); onDelete() },
+                                "新建子目录" to { onDismissMenu(); onNewSubFolder() },
+                            ),
+                        )
+                    }
                 },
         ) {
             Card(
@@ -179,14 +207,18 @@ internal fun FolderCard(
                 )
             }
         }
-        FolderMenu(
-            expanded = menuExpanded,
-            onDismiss = onDismissMenu,
-            onRename = onRename,
-            onMove = onMove,
-            onDelete = onDelete,
-            onNewSubFolder = onNewSubFolder,
-        )
+        if (selected) SelectionOverlay(modifier = Modifier.matchParentSize())
+        if (!selectionMode) {
+            FolderMenu(
+                expanded = menuExpanded,
+                onDismiss = onDismissMenu,
+                onSelectMode = onSelectMode,
+                onRename = onRename,
+                onMove = onMove,
+                onDelete = onDelete,
+                onNewSubFolder = onNewSubFolder,
+            )
+        }
     }
 }
 
@@ -195,12 +227,14 @@ internal fun FolderCard(
 internal fun FolderMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
+    onSelectMode: () -> Unit,
     onRename: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
     onNewSubFolder: () -> Unit,
 ) {
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        DropdownMenuItem(text = { Text(text = "多选") }, onClick = { onDismiss(); onSelectMode() })
         DropdownMenuItem(text = { Text(text = "重命名") }, onClick = { onDismiss(); onRename() })
         DropdownMenuItem(text = { Text(text = "移动") }, onClick = { onDismiss(); onMove() })
         DropdownMenuItem(text = { Text(text = "删除") }, onClick = { onDismiss(); onDelete() })
@@ -210,7 +244,7 @@ internal fun FolderMenu(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "LongMethod")
 internal fun DocumentCard(
     item: LibraryItem,
     onClick: () -> Unit,
@@ -220,6 +254,11 @@ internal fun DocumentCard(
     onRename: () -> Unit,
     onMove: () -> Unit,
     onDelete: () -> Unit,
+    onSelectMode: () -> Unit,
+    selectionMode: Boolean,
+    selected: Boolean,
+    onToggleSelection: () -> Unit,
+    showSelectMode: Boolean,
 ) {
     Box {
         // T5：整卡语义由「点击容器」单节点承担——clickable 与合并语义挂在同一个 LayoutNode，
@@ -227,17 +266,33 @@ internal fun DocumentCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .then(
+                    if (selectionMode) {
+                        Modifier.clickable(onClick = onToggleSelection)
+                    } else {
+                        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                    },
+                )
                 .clearAndSetSemantics {
-                    contentDescription = documentCardDescription(item)
-                    role = Role.Button
-                    onClick(label = "打开") { onClick(); true }
-                    onLongClick(label = "更多操作") { onLongClick(); true }
-                    customActions = cardActions(
-                        "重命名" to { onDismissMenu(); onRename() },
-                        "移动" to { onDismissMenu(); onMove() },
-                        "删除" to { onDismissMenu(); onDelete() },
-                    )
+                    if (selectionMode) {
+                        contentDescription = item.title
+                        role = Role.Checkbox
+                        this.selected = selected
+                        onClick(label = if (selected) "取消选中" else "选中") {
+                            onToggleSelection(); true
+                        }
+                    } else {
+                        val actions = mutableListOf<Pair<String, () -> Unit>>()
+                        if (showSelectMode) actions += "多选" to { onDismissMenu(); onSelectMode() }
+                        actions += "重命名" to { onDismissMenu(); onRename() }
+                        actions += "移动" to { onDismissMenu(); onMove() }
+                        actions += "删除" to { onDismissMenu(); onDelete() }
+                        contentDescription = documentCardDescription(item)
+                        role = Role.Button
+                        onClick(label = "打开") { onClick(); true }
+                        onLongClick(label = "更多操作") { onLongClick(); true }
+                        customActions = cardActions(actions)
+                    }
                 },
         ) {
             Card(
@@ -274,10 +329,41 @@ internal fun DocumentCard(
                 }
             }
         }
-        DropdownMenu(expanded = menuExpanded, onDismissRequest = onDismissMenu) {
-            DropdownMenuItem(text = { Text(text = "重命名") }, onClick = { onDismissMenu(); onRename() })
-            DropdownMenuItem(text = { Text(text = "移动") }, onClick = { onDismissMenu(); onMove() })
-            DropdownMenuItem(text = { Text(text = "删除") }, onClick = { onDismissMenu(); onDelete() })
+        if (selected) SelectionOverlay(modifier = Modifier.matchParentSize())
+        if (!selectionMode) {
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = onDismissMenu) {
+                if (showSelectMode) {
+                    DropdownMenuItem(text = { Text(text = "多选") }, onClick = { onDismissMenu(); onSelectMode() })
+                }
+                DropdownMenuItem(text = { Text(text = "重命名") }, onClick = { onDismissMenu(); onRename() })
+                DropdownMenuItem(text = { Text(text = "移动") }, onClick = { onDismissMenu(); onMove() })
+                DropdownMenuItem(text = { Text(text = "删除") }, onClick = { onDismissMenu(); onDelete() })
+            }
+        }
+    }
+}
+
+/** 选中覆盖层：半透明 secondaryContainer + 左上角圆形勾选角标（多选态）。 */
+@Composable
+internal fun SelectionOverlay(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(6.dp)
+                .size(20.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimary,
+                modifier = Modifier.size(14.dp),
+            )
         }
     }
 }

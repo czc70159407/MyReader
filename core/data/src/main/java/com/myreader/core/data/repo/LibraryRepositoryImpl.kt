@@ -15,6 +15,8 @@ import com.myreader.core.data.db.entity.FolderEntity
 import com.myreader.core.model.Annotation
 import com.myreader.core.model.AnnotationAddResult
 import com.myreader.core.model.AnnotationType
+import com.myreader.core.model.BatchDeleteResult
+import com.myreader.core.model.BatchMoveResult
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.BookmarkAnchorCodec
@@ -195,6 +197,76 @@ class LibraryRepositoryImpl @Inject constructor(
         storage.deleteDocument(entity.relPath)
         storage.deleteThumbnail(entity.thumbnailRelPath)
         Unit
+    }
+
+    // ---- 批量操作（M13）----
+
+    override suspend fun moveItems(
+        folderIds: List<Long>,
+        documentIds: List<Long>,
+        targetId: Long?,
+    ): BatchMoveResult = withContext(dispatchers.io) {
+        if (targetId != null) {
+            // folders.parentId 无自引用 FK，目标存在性必须业务层校验（与 moveFolder 一致）
+            require(folderDao.findById(targetId) != null) { "目标目录不存在: $targetId" }
+            // 防环：目标不得落在任一选中文件夹子树内（与 moveFolder 的 subtree 校验一致）
+            val subtreeUnion = folderIds.flatMap { folderDao.subtree(it).map { f -> f.id } }.toSet()
+            require(targetId !in subtreeUnion) { "不能把目录移动到自身或其子目录内" }
+        }
+        val docs = if (documentIds.isEmpty()) emptyList() else documentDao.findByIds(documentIds.distinct())
+        val folders = if (folderIds.isEmpty()) emptyList() else folderDao.findByIds(folderIds.distinct())
+        val movedDocs = docs.filter { it.folderId != targetId }.map { it.id }
+        val movedFolders = folders.filter { it.parentId != targetId }.map { it.id }
+        val skipped = (documentIds.size - movedDocs.size) + (folderIds.size - movedFolders.size)
+
+        db.withTransaction {
+            if (movedDocs.isNotEmpty()) documentDao.moveMany(movedDocs, targetId)
+            if (movedFolders.isNotEmpty()) {
+                folderDao.moveMany(movedFolders, targetId, System.currentTimeMillis())
+            }
+        }
+        BatchMoveResult(movedFolders.size, movedDocs.size, skipped)
+    }
+
+    @Suppress("CyclomaticComplexMethod")
+    override suspend fun deleteItems(
+        folderIds: List<Long>,
+        documentIds: List<Long>,
+    ): BatchDeleteResult = withContext(dispatchers.io) {
+        // 文件夹：取选中根各自子树并集（防御性去重），后序删除，后代文档回根
+        val subtreeEntities = mutableMapOf<Long, FolderEntity>()
+        folderIds.distinct().forEach { id ->
+            folderDao.subtree(id).forEach { subtreeEntities[it.id] = it }
+        }
+        val byParent = subtreeEntities.values.groupBy { it.parentId }
+        val deleteOrder = mutableListOf<Long>()
+        val visited = mutableSetOf<Long>()
+        fun visit(fid: Long) {
+            if (!visited.add(fid)) return
+            byParent[fid]?.forEach { visit(it.id) }
+            deleteOrder += fid
+        }
+        folderIds.distinct().forEach { visit(it) }
+
+        val docs = if (documentIds.isEmpty()) emptyList() else documentDao.findByIds(documentIds.distinct())
+        db.withTransaction {
+            if (subtreeEntities.isNotEmpty()) {
+                documentDao.moveDocsInFoldersToRoot(subtreeEntities.keys.toList())
+                deleteOrder.forEach { folderDao.delete(it) }
+            }
+            if (docs.isNotEmpty()) documentDao.deleteMany(docs.map { it.id })
+        }
+        // 物理文件后置删除（提交成功后）；逐项容错，失败计孤儿
+        var orphan = 0
+        docs.forEach {
+            try {
+                if (!storage.deleteDocument(it.relPath)) orphan++
+                if (!storage.deleteThumbnail(it.thumbnailRelPath)) orphan++
+            } catch (_: Exception) {
+                orphan++
+            }
+        }
+        BatchDeleteResult(folderIds.distinct().size, docs.size, orphan)
     }
 
     // ---- 书签（M10）----

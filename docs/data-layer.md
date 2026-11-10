@@ -183,6 +183,25 @@ interface DocumentDao {
 
 > **与 `DocumentEntity` 外键 `onDelete = SET_NULL` 的关系**：该 FK 仅作兜底安全网（万一业务层漏处理直接删 folder，DB 自动把直接子文档 `folderId` 置 null，不致崩溃）。正常路径走业务层显式批量置 null，便于在单事务内统一编排「后代文档回根 + 子目录先于父删」，不依赖 FK 副作用的隐式顺序。`folders.parentId` 无自引用 FK，故子目录删除顺序必须业务层保证（子优先于父），否则 `parentId` 悬空成孤儿。
 
+## 批量操作（M13）
+
+> 书架「多选 → 批量移动 / 批量删除」。UI 见 docs/ui-design.md「多选态」。
+
+### DAO 批量查询（无 schema 变更，无 Migration）
+
+- `DocumentDao` 新增 `findByIds(ids)` / `moveMany(ids, newFolderId)` / `deleteMany(ids)`；`FolderDao` 新增 `findByIds(ids)` / `moveMany(ids, newParentId, ts)`。
+- **空 `IN` 契约**：Room 对空 List 生成 `IN ()` 非法 SQL，所有批量查询调用方必须保证 `ids` 非空（Repository 层已防护）。
+
+### Repository 批量语义
+
+- `moveItems(folderIds, documentIds, targetId)`：目标存在性 + 防环（目标不得落在任一选中文件夹子树并集内）校验失败抛 `IllegalArgumentException`；已在该目录项计 `skipped`；单事务内 `moveMany` 文档与文件夹，物理文件不动（`relPath` 不变）。
+- `deleteItems(folderIds, documentIds)`：文件夹取各自子树并集（防御去重 + 后序删除、后代文档回根，复用 `deleteFolder` 级联语义）；文档 `deleteMany`（FK CASCADE 删书签/批注）；**记录删于单事务，物理文件后置删除**（逐项容错，失败计 `orphanFiles`，不补孤儿扫描——已知限制）。
+- 结果模型：`BatchMoveResult(movedFolders, movedDocuments, skipped)` / `BatchDeleteResult(deletedFolders, deletedDocuments, orphanFiles)`，位于 `core:model/Batch.kt`；业务分支不抛异常（与 `BookmarkAddResult` 同构）。
+
+### 上限
+
+- `MAX_BATCH_SELECTION = 500`（`core:model`）：与目录导入 `maxFiles` 对齐，且 < SQLite 单条 `IN` 绑定上限（999）。
+
 ## PDF 文件存储策略（取舍结论）
 
 | 方案 | 优点 | 缺点 | 结论 |

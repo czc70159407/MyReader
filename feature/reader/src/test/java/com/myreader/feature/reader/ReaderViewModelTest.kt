@@ -19,6 +19,8 @@ import com.myreader.core.document.ProgressPayload
 import com.myreader.core.model.Annotation
 import com.myreader.core.model.AnnotationAddResult
 import com.myreader.core.model.AnnotationType
+import com.myreader.core.model.BatchDeleteResult
+import com.myreader.core.model.BatchMoveResult
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAddResult
 import com.myreader.core.model.LibraryItem
@@ -764,6 +766,15 @@ class ReaderViewModelTest {
         override suspend fun renameDocument(id: Long, title: String) = TODO()
         override suspend fun moveDocument(id: Long, newFolderId: Long?) = TODO()
         override suspend fun deleteDocument(id: Long) = TODO()
+        override suspend fun moveItems(
+            folderIds: List<Long>,
+            documentIds: List<Long>,
+            targetId: Long?,
+        ): BatchMoveResult = BatchMoveResult(0, 0, 0)
+        override suspend fun deleteItems(
+            folderIds: List<Long>,
+            documentIds: List<Long>,
+        ): BatchDeleteResult = BatchDeleteResult(0, 0, 0)
         // M10-C：书签可编排 fake（默认 ADDED，可切换 DUPLICATE/LIMIT_REACHED；可模拟写库异常）
         var bookmarkAddResult: BookmarkAddResult = BookmarkAddResult.ADDED
         var bookmarkAddThrow = false

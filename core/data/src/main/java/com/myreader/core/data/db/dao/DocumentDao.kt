@@ -75,4 +75,13 @@ interface DocumentDao {
 
     @Query("DELETE FROM documents WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("SELECT * FROM documents WHERE id IN (:ids)")
+    suspend fun findByIds(ids: List<Long>): List<DocumentEntity>   // 批量：调用方保证非空
+
+    @Query("UPDATE documents SET folderId = :newFolderId WHERE id IN (:ids)")
+    suspend fun moveMany(ids: List<Long>, newFolderId: Long?)       // 批量：调用方保证非空
+
+    @Query("DELETE FROM documents WHERE id IN (:ids)")              // 级联删书签/批注（FK CASCADE）
+    suspend fun deleteMany(ids: List<Long>)                         // 批量：调用方保证非空
 }

@@ -192,7 +192,7 @@ onUserScroll: () -> Unit,
 ### 8.1 文本朗读与复制（`[已实现 M14]`）
 
 - 入口：选中文本松手弹出的操作气泡（`SelectionMenu`，`Popup` 悬浮在选中锚点旁，20dp 圆角 + 对白框尾巴，锚点太靠上时翻转到下方）。
-- 朗读：系统 `TextToSpeech`，朗读前按 `detectLanguage`（含汉字 → `zh-CN`，否则 `en-US`）选语音包；语音包缺失/不支持弹 Snackbar「未找到语音包，请在系统设置中下载」。TTS 会话内持有一份，退出 `shutdown`；再次朗读 `QUEUE_FLUSH` 打断上一段。
+- 朗读：系统 `TextToSpeech`，朗读前按 `detectLanguage`（含汉字 → `zh-CN`，否则 `en-US`）选语音包；语音包缺失/不支持弹 Snackbar「未找到语音包，请在系统设置中下载」。TTS 会话内持有一份，退出 `shutdown`；再次朗读 `QUEUE_FLUSH` 打断上一段。朗读后**不收起选区与气泡**，可连续点击「朗读」重听同一句（高亮/复制仍保持动作后收起）。
 - 复制：`LocalClipboardManager` 写剪贴板 + Snackbar「已复制」。
 - 图标（material-icons-extended）：朗读 `RecordVoiceOver`、高亮 `Brush`、复制 `ContentCopy`。
 - 已知限制：朗读内容 = 手动选中文本（非自动句子吸附）；语言检测按「是否含汉字」二分（混排整段走中文）；依赖设备语音包。

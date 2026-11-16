@@ -386,11 +386,11 @@ fun ReaderScreen(
                 SelectionMenu(
                     draft = event.draft,
                     anchor = Offset(event.anchorX, event.anchorY),
+                    // 朗读后不清除选中与气泡，支持重复点击「朗读」多次听同一句
                     onSpeak = { text ->
                         if (!tts.speak(text)) {
                             scope.launch { snackbarHostState.showSnackbar("未找到语音包，请在系统设置中下载") }
                         }
-                        selectionMenuTarget = null
                     },
                     onHighlight = { draft ->
                         viewModel.addAnnotation(draft)

@@ -29,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 /** 连续尺寸变化（分屏拖动分隔条等）静止该时长后才执行一次全量重建 */
 private const val SIZE_SETTLE_DELAY_MS = 150L
@@ -44,6 +45,9 @@ private const val MIN_LAYOUT_PT = 100
 
 /** M14 选中视觉反馈：选区填充不透明度（作用于主题色 primary 之上，与高亮色板可辨识） */
 private const val SELECTION_ALPHA = 0.3f
+
+/** 零位移判定阈值（页面 pt）：起止点距离小于该值视为长按取词 */
+private const val SELECTION_POINT_EPSILON = 0.5f
 
 /** M14 选择手柄（泪滴形，尖朝上）：主体半径 / 尖点到圆心距离 / 白描边 / 命中半径（dp） */
 private const val HANDLE_RADIUS_DP = 10f
@@ -219,7 +223,7 @@ internal fun MuPdfReaderView(
                     return sx to sy
                 }
 
-                /** 选区更新：View 坐标 → 页面坐标（pt）→ 吸附词边界取 quad */
+                /** 选区更新：View 坐标 → 页面坐标（pt）；零位移长按取词（英文整词 / 中文单字），拖动按字符区间截取 */
                 private fun updateSelection(curX: Float, curY: Float) {
                     val pv = getDisplayedView() ?: return
                     val (sx, sy) = scaleOf()
@@ -227,7 +231,14 @@ internal fun MuPdfReaderView(
                     val y0 = (selAnchorY - pv.top) / sy
                     val x1 = (curX - pv.left) / sx
                     val y1 = (curY - pv.top) / sy
-                    val sel = core.selectText(getDisplayedViewIndex(), x0, y0, x1, y1)
+                    val page = getDisplayedViewIndex()
+                    val sel = if (abs(x0 - x1) < SELECTION_POINT_EPSILON &&
+                        abs(y0 - y1) < SELECTION_POINT_EPSILON
+                    ) {
+                        core.selectWordAt(page, x0, y0)
+                    } else {
+                        core.selectText(page, x0, y0, x1, y1)
+                    }
                     selQuads = sel?.quads
                     selText = sel?.text
                     invalidate()

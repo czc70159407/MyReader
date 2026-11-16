@@ -57,6 +57,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.withContext
 
@@ -202,6 +203,9 @@ internal fun MuPdfVerticalView(
 
 /** M14 选中视觉反馈：选区填充不透明度（作用于主题色 primary 之上，与高亮色板可辨识） */
 private const val SELECTION_ALPHA = 0.3f
+
+/** 零位移判定阈值（页面 pt）：起止点距离小于该值视为长按取词 */
+private const val SELECTION_POINT_EPSILON = 0.5f
 
 /** M12 已存高亮半透明度（自绘 overlay，接近原生高亮效果） */
 private const val HIGHLIGHT_ALPHA = 0.35f
@@ -488,9 +492,18 @@ private suspend fun selectQuads(
     ptHeight: Float,
 ): SelectionResult? {
     if (core == null || sx <= 0f || sy <= 0f || ptWidth <= 0f || ptHeight <= 0f) return null
-    // M14 方案 B：字符级精确选择（walk 逐字截取），消除矩形 highlight 的跨行跳变
+    val px0 = start.x / sx
+    val py0 = start.y / sy
+    val px1 = end.x / sx
+    val py1 = end.y / sy
+    // M14 方案 B：字符级精确选择（walk 逐字截取），消除矩形 highlight 的跨行跳变；
+    // 零位移长按走取词（英文整词 / 中文单字），避免整行成词
     val sel = withContext(Dispatchers.Default) {
-        core.selectTextByChars(page, start.x / sx, start.y / sy, end.x / sx, end.y / sy)
+        if (abs(px0 - px1) < SELECTION_POINT_EPSILON && abs(py0 - py1) < SELECTION_POINT_EPSILON) {
+            core.selectWordAt(page, px0, py0)
+        } else {
+            core.selectTextByChars(page, px0, py0, px1, py1)
+        }
     } ?: return null
     val quads = sel.quads.map { q ->
         floatArrayOf(

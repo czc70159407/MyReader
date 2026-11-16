@@ -179,6 +179,8 @@ fun ReaderScreen(
             val scope = rememberCoroutineScope()
             // M14 文本朗读：选中操作气泡目标（null = 未选中/菜单关闭）
             var selectionMenuTarget by remember { mutableStateOf<TextSelectionEvent?>(null) }
+            // M14 S2a：拖手柄中隐藏菜单（松手重弹）
+            var isAdjustingSelection by remember { mutableStateOf(false) }
             // M14：TTS 会话内持有一份，退出释放；剪贴板复用 LocalClipboardManager（同关于页）
             val tts = remember(context) { Tts(context) }
             val clipboard = LocalClipboardManager.current
@@ -242,6 +244,8 @@ fun ReaderScreen(
                         onUserScroll = { if (!touchExplorationEnabled) topBarVisible = false },
                         // M14 文本朗读：选中完成 → 弹操作气泡（朗读/高亮/复制）；高亮动作内走 addAnnotation
                         onTextSelected = { event -> selectionMenuTarget = event },
+                        // M14 S2a：拖手柄时收起菜单（松手重弹）
+                        onSelectionAdjusting = { adjusting -> isAdjustingSelection = adjusting },
                         // 已存高亮回放（持久标注）；当前选中经 activeSelection 分通道绘制（主题色选区 + 手柄）
                         annotations = annotations.map {
                             AnnotationDraft(page = it.page, anchor = it.anchor, text = it.text, color = it.color)
@@ -377,7 +381,8 @@ fun ReaderScreen(
                     },
                 )
             }
-            selectionMenuTarget?.let { event ->
+            // 拖手柄中隐藏菜单（S2a），松手后重弹
+            selectionMenuTarget?.takeIf { !isAdjustingSelection }?.let { event ->
                 SelectionMenu(
                     draft = event.draft,
                     anchor = Offset(event.anchorX, event.anchorY),

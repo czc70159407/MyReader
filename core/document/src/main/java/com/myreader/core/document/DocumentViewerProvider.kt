@@ -47,6 +47,7 @@ interface DocumentViewerProvider {
      * @param onUserScroll 用户翻页 / 滚动 / 缩放 → 隐藏顶栏（M12 沉浸模式）。实现应在主线程调用。
      * @param onTextSelected 文本选择完成（长按/拖动松手）→ 上报选择事件（归一化锚点草稿 + 屏幕锚点，M14 气泡菜单）；
      *   上报 null 表示「清除当前选中」（气泡非聚焦后点选区外空白由渲染端触发，M14 手柄交互前提）。
+     * @param onSelectionAdjusting 拖动手柄开始/结束（M14 S2a）：true = 开始拖动（菜单收起）、false = 结束（菜单重弹）。
      * @param annotations 已保存的高亮/笔记（渲染端据此回放原生 annotation）；reflowable 暂不消费。
      * @param activeSelection 当前选中的草稿（M14 选中视觉反馈）：非 null 时渲染端按主题色绘制选区 + 手柄，
      *   null 表示无选中（气泡关闭 / 动作执行 / 翻页后清除）。与 [annotations]（持久高亮）分通道，不落库。 */
@@ -61,6 +62,7 @@ interface DocumentViewerProvider {
         onTapContent: () -> Unit,
         onUserScroll: () -> Unit,
         onTextSelected: (TextSelectionEvent?) -> Unit,
+        onSelectionAdjusting: (Boolean) -> Unit,
         annotations: List<AnnotationDraft>,
         activeSelection: AnnotationDraft?,
         modifier: Modifier,

@@ -45,12 +45,11 @@ private const val MIN_LAYOUT_PT = 100
 /** M14 选中视觉反馈：选区填充不透明度（作用于主题色 primary 之上，与高亮色板可辨识） */
 private const val SELECTION_ALPHA = 0.3f
 
-/** M14 选择手柄：视觉半径与白描边宽度（dp） */
-private const val HANDLE_RADIUS_DP = 7f
-private const val HANDLE_STROKE_DP = 2f
-
-/** M14 手柄命中半径（dp，拖动手势语义下放宽于 tokens 48dp 静止触达） */
-private const val HANDLE_HIT_DP = 24f
+/** M14 选择手柄（泪滴形，尖朝上）：主体半径 / 尖点到圆心距离 / 白描边 / 命中半径（dp） */
+private const val HANDLE_RADIUS_DP = 10f
+private const val HANDLE_DROP_DP = 13f
+private const val HANDLE_STROKE_DP = 1f
+private const val HANDLE_HIT_R_DP = 24f
 
 /** M14 手柄标识：无 / 起点 / 终点 */
 private const val HANDLE_NONE = 0
@@ -90,6 +89,7 @@ internal fun MuPdfReaderView(
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
     onTextSelected: (TextSelectionEvent?) -> Unit,
+    onSelectionAdjusting: (Boolean) -> Unit,
     annotations: List<AnnotationDraft>,
     activeSelection: AnnotationDraft?,
     selectionColor: Color,
@@ -103,6 +103,8 @@ internal fun MuPdfReaderView(
     val latestScrollCallback by rememberUpdatedState(onUserScroll)
     // M12 高亮/笔记：选中完成回调（归一化锚点草稿）
     val latestSelectionCallback by rememberUpdatedState(onTextSelected)
+    // M14 S2a：拖手柄开始/结束（菜单收起/重弹）
+    val latestAdjustingCallback by rememberUpdatedState(onSelectionAdjusting)
     val adapterRef = remember { mutableStateOf<PageAdapter?>(null) }
     val resolver = remember(core) { if (reflowable) EpubLocationResolver(core) else null }
     // 重排协程作用域：rememberCoroutineScope 与组合同生命周期，组合离开即取消——
@@ -147,9 +149,12 @@ internal fun MuPdfReaderView(
                 }
                 private val selPath = Path()
                 private val handleFillPaint = Paint().apply { style = Paint.Style.FILL }
-                private val handleBasePaint = Paint().apply {
-                    style = Paint.Style.FILL
+
+                /** M14 泪滴白描边 */
+                private val handleStrokePaint = Paint().apply {
+                    style = Paint.Style.STROKE
                     color = android.graphics.Color.WHITE
+                    strokeWidth = HANDLE_STROKE_DP * context.resources.displayMetrics.density
                 }
                 private val selectDetector = GestureDetector(
                     ctx,
@@ -184,6 +189,8 @@ internal fun MuPdfReaderView(
                         if (handle != HANDLE_NONE) {
                             draggingHandle = handle
                             beginAdjusting()
+                            // S2a：菜单收起
+                            latestAdjustingCallback(true)
                             return true
                         }
                         // 点选区内部（非手柄）保持选中；点选区外才清除（避免误触选中文字即取消）
@@ -238,22 +245,24 @@ internal fun MuPdfReaderView(
                         ?.let { AnnotationAnchorCodec.toQuads(it, size.x, size.y) }
                 }
 
-                /** M14：DOWN 命中检测——touch 距起点/终点手柄 ≤ 24dp 视为命中（取更近者） */
-                @Suppress("ReturnCount")
+                /** M14：DOWN 命中检测——touch 距泪滴主体圆心 ≤ 24dp 视为命中 */
+                @Suppress("ReturnCount", "MagicNumber")
                 private fun hitHandle(x: Float, y: Float): Int {
                     val quads = currentSelectionQuads()?.takeIf { it.isNotEmpty() } ?: return HANDLE_NONE
                     val pv = getDisplayedView() ?: return HANDLE_NONE
                     val (sx, sy) = scaleOf()
-                    val hitR = HANDLE_HIT_DP * resources.displayMetrics.density
+                    val density = resources.displayMetrics.density
+                    val drop = HANDLE_DROP_DP * density
+                    val hitR = HANDLE_HIT_R_DP * density
                     val hitR2 = hitR * hitR
                     val first = quads.first()
                     val last = quads.last()
-                    val startX = pv.left + first.ul_x * sx
-                    val startY = pv.top + (first.ul_y + first.ll_y) / 2f * sy
+                    val startX = pv.left + first.ll_x * sx
+                    val startCy = pv.top + first.ll_y * sy + drop
                     val endX = pv.left + last.lr_x * sx
-                    val endY = pv.top + (last.ur_y + last.lr_y) / 2f * sy
-                    val dStart2 = (x - startX) * (x - startX) + (y - startY) * (y - startY)
-                    val dEnd2 = (x - endX) * (x - endX) + (y - endY) * (y - endY)
+                    val endCy = pv.top + last.lr_y * sy + drop
+                    val dStart2 = (x - startX) * (x - startX) + (y - startCy) * (y - startCy)
+                    val dEnd2 = (x - endX) * (x - endX) + (y - endCy) * (y - endCy)
                     return when {
                         dStart2 <= hitR2 && dStart2 <= dEnd2 -> HANDLE_START
                         dEnd2 <= hitR2 -> HANDLE_END
@@ -312,8 +321,10 @@ internal fun MuPdfReaderView(
                     val pv = getDisplayedView() ?: return
                     val (sx, sy) = scaleOf()
                     val page = getDisplayedViewIndex()
+                    val drop = HANDLE_DROP_DP * resources.displayMetrics.density
+                    // 泪滴主体圆心 → 反解回尖点（选区边界）位置
                     val tx = (x - pv.left) / sx
-                    val ty = (y - pv.top) / sy
+                    val ty = (y - pv.top - drop) / sy
                     val sel = if (draggingHandle == HANDLE_START) {
                         core.selectText(page, tx, ty, fixedX, fixedY)
                     } else {
@@ -324,8 +335,7 @@ internal fun MuPdfReaderView(
                     invalidate()
                 }
 
-                /** M14：松手手柄——上报新选区（ReaderScreen 更新 activeSelection 与气泡位置） */
-                @Suppress("ReturnCount")
+                /** M14：松手手柄——上报新选区（菜单重弹）；无有效选区时也要结束拖动态 */
                 private fun finishAdjusting() {
                     draggingHandle = HANDLE_NONE
                     val quads = adjustingQuads
@@ -333,8 +343,11 @@ internal fun MuPdfReaderView(
                     adjustingQuads = null
                     adjustingText = null
                     invalidate()
-                    if (quads.isNullOrEmpty()) return
-                    reportSelection(quads, text)
+                    if (!quads.isNullOrEmpty()) {
+                        reportSelection(quads, text)
+                    }
+                    // S2a → S2：菜单在新位置重弹
+                    latestAdjustingCallback(false)
                 }
 
                 /** 松手：上报归一化锚点草稿（落库后由 replayAnnotations 统一绘制，避免本地/回放双份） */
@@ -349,21 +362,24 @@ internal fun MuPdfReaderView(
                     reportSelection(quads, text)
                 }
 
-                /** M14：quads + text → 上报 TextSelectionEvent（draft + 窗口坐标锚点，气泡定位） */
+                /** M14：quads + text → 上报 TextSelectionEvent（draft + 窗口坐标锚点，菜单定位） */
                 private fun reportSelection(quads: Array<Quad>, text: String?) {
                     val page = getDisplayedViewIndex()
                     val size = core.getPageSize(page)
                     if (size.x <= 0f || size.y <= 0f) return
                     val anchor = AnnotationAnchorCodec.encode(quads, size.x, size.y)
                     val draft = AnnotationDraft(page = page, anchor = anchor, text = text ?: "")
-                    // 选区首 quad 左上角 → 窗口坐标锚点；必须 getLocationInWindow（父容器坐标缺状态栏偏移）
+                    // 锚点 = 选区中心 X + 选区上沿 Y（窗口坐标）：菜单居中于选区、尾巴指向选区上沿。
+                    // 必须 getLocationInWindow（父容器坐标缺状态栏偏移）。
                     val pv = getDisplayedView()
                     val (anchorX, anchorY) = if (pv != null) {
                         val (sx, sy) = scaleOf()
                         val first = quads[0]
+                        val last = quads[quads.size - 1]
                         val loc = IntArray(2)
                         pv.getLocationInWindow(loc)
-                        (loc[0] + first.ul_x * sx) to (loc[1] + first.ul_y * sy)
+                        val centerX = (first.ul_x + last.lr_x) / 2f * sx
+                        (loc[0] + centerX) to (loc[1] + first.ul_y * sy)
                     } else {
                         0f to 0f
                     }
@@ -432,23 +448,37 @@ internal fun MuPdfReaderView(
                     currentSelectionQuads()?.forEach { q -> drawQuad(canvas, pv, q, sx, sy) }
                 }
 
-                /** M14 选择手柄：选区首 quad 左缘中点 + 末 quad 右缘中点（primary 圆 + 白描边） */
-                @Suppress("ReturnCount")
+                /** M14 选择手柄（泪滴形，尖朝上贴选区下沿）：尖点标边界、主体沉入下方便于抓握 */
+                @Suppress("ReturnCount", "MagicNumber")
                 private fun drawHandles(canvas: Canvas, pv: View, sx: Float, sy: Float) {
                     val quads = currentSelectionQuads()?.takeIf { it.isNotEmpty() } ?: return
                     val density = resources.displayMetrics.density
                     val r = HANDLE_RADIUS_DP * density
-                    val stroke = HANDLE_STROKE_DP * density
+                    val drop = HANDLE_DROP_DP * density
                     val first = quads.first()
                     val last = quads.last()
-                    val startX = pv.left + first.ul_x * sx
-                    val startY = pv.top + (first.ul_y + first.ll_y) / 2f * sy
-                    val endX = pv.left + last.lr_x * sx
-                    val endY = pv.top + (last.ur_y + last.lr_y) / 2f * sy
-                    canvas.drawCircle(startX, startY, r, handleBasePaint)
-                    canvas.drawCircle(startX, startY, r - stroke, handleFillPaint)
-                    canvas.drawCircle(endX, endY, r, handleBasePaint)
-                    canvas.drawCircle(endX, endY, r - stroke, handleFillPaint)
+                    // 起点：首 quad 左缘下沿；终点：末 quad 右缘下沿
+                    drawTeardrop(canvas, pv.left + first.ll_x * sx, pv.top + first.ll_y * sy, r, drop)
+                    drawTeardrop(canvas, pv.left + last.lr_x * sx, pv.top + last.lr_y * sy, r, drop)
+                }
+
+                /** 泪滴路径：尖点 → 左弧到肩 → 圆弧经底 → 右肩 → 右弧回尖；填充 + 白描边 */
+                @Suppress("MagicNumber")
+                private fun drawTeardrop(canvas: Canvas, tipX: Float, tipY: Float, r: Float, drop: Float) {
+                    val cy = tipY + drop
+                    val k = r * 0.7071f
+                    val path = Path().apply {
+                        moveTo(tipX, tipY)
+                        quadTo(tipX - r * 0.85f, tipY + drop * 0.45f, tipX - k, cy - k)
+                        arcTo(
+                            android.graphics.RectF(tipX - r, cy - r, tipX + r, cy + r),
+                            225f, -270f, false,
+                        )
+                        quadTo(tipX + r * 0.85f, tipY + drop * 0.45f, tipX, tipY)
+                        close()
+                    }
+                    canvas.drawPath(path, handleFillPaint)
+                    canvas.drawPath(path, handleStrokePaint)
                 }
 
                 override fun onMoveToChild(i: Int) {

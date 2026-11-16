@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,14 +31,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -90,6 +90,7 @@ internal fun MuPdfVerticalView(
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
     onTextSelected: (TextSelectionEvent?) -> Unit,
+    onSelectionAdjusting: (Boolean) -> Unit,
     annotations: List<AnnotationDraft>,
     activeSelection: AnnotationDraft?,
     selectionColor: Color,
@@ -190,6 +191,7 @@ internal fun MuPdfVerticalView(
                     core = core,
                     annotations = annotations,
                     onTextSelected = onTextSelected,
+                    onSelectionAdjusting = onSelectionAdjusting,
                     activeSelection = activeSelection,
                     selectionColor = selectionColor,
                 )
@@ -204,10 +206,11 @@ private const val SELECTION_ALPHA = 0.3f
 /** M12 已存高亮半透明度（自绘 overlay，接近原生高亮效果） */
 private const val HIGHLIGHT_ALPHA = 0.35f
 
-/** M14 选择手柄：触达盒 / 视觉直径 / 白描边（dp） */
-private const val HANDLE_BOX_DP = 28f
-private const val HANDLE_VISUAL_DP = 14f
-private const val HANDLE_STROKE_DP = 2f
+/** M14 选择手柄（泪滴形，尖朝上）：触达盒宽 / 主体半径 / 尖点-圆心距离 / 白描边（dp） */
+private const val HANDLE_BOX_DP = 44f
+private const val HANDLE_RADIUS_DP = 10f
+private const val HANDLE_DROP_DP = 13f
+private const val HANDLE_STROKE_DP = 1f
 
 /** M14 手柄标识：无 / 起点 / 终点 */
 private const val HANDLE_NONE = 0
@@ -228,6 +231,7 @@ private fun VerticalPageItem(
     core: MuPDFCore?,
     annotations: List<AnnotationDraft>,
     onTextSelected: (TextSelectionEvent?) -> Unit,
+    onSelectionAdjusting: (Boolean) -> Unit,
     activeSelection: AnnotationDraft?,
     selectionColor: Color,
 ) {
@@ -308,11 +312,11 @@ private fun VerticalPageItem(
     val effectiveQuads = if (draggingHandle != HANDLE_NONE) selQuads else activeQuads
     val startHandleCenter: Offset? = when {
         draggingHandle == HANDLE_START -> selEnd
-        else -> effectiveQuads.firstOrNull()?.let { f -> Offset(f[0] * widthPx, (f[1] + f[5]) / 2f * heightPx) }
+        else -> effectiveQuads.firstOrNull()?.let { f -> Offset(f[0] * widthPx, f[5] * heightPx) }
     }
     val endHandleCenter: Offset? = when {
         draggingHandle == HANDLE_END -> selEnd
-        else -> effectiveQuads.lastOrNull()?.let { l -> Offset(l[6] * widthPx, (l[3] + l[7]) / 2f * heightPx) }
+        else -> effectiveQuads.lastOrNull()?.let { l -> Offset(l[6] * widthPx, l[7] * heightPx) }
     }
     val selectable = core != null && sx > 0f && sy > 0f
     val scope = rememberCoroutineScope()
@@ -331,25 +335,33 @@ private fun VerticalPageItem(
                     anchor = AnnotationAnchorCodec.encodeNormalized(result.quads),
                     text = result.text,
                 )
-                // 气泡锚点 = 选区首 quad 左上角（窗口坐标）
+                // 锚点 = 选区中心 X + 选区上沿 Y（窗口坐标）：菜单居中于选区
                 val first = result.quads.first()
-                val anchor = origin + Offset(first[0] * widthPx, first[1] * heightPx)
+                val last = result.quads.last()
+                val centerX = (first[0] + last[6]) / 2f * widthPx
+                val anchor = origin + Offset(centerX, first[1] * heightPx)
                 onTextSelected(TextSelectionEvent(draft, anchor.x, anchor.y))
             }
         }
     }
-    // M14 取消手柄拖动：仅清理状态，不提交
+    // M14 取消手柄拖动：仅清理状态，不提交；结束拖动态（菜单重弹）
     val cancelHandleDrag: () -> Unit = {
         selStart = null
         selEnd = null
         selQuads = emptyList()
         draggingHandle = HANDLE_NONE
+        onSelectionAdjusting(false)
     }
-    // M14 手柄松手：有起止点则提交，否则按取消处理
+    // M14 手柄松手：有起止点则提交（提交后结束拖动态），否则按取消处理
     val finishHandleDrag: () -> Unit = {
         val start = selStart
         val end = selEnd
-        if (start != null && end != null) submitSelection(start, end) else cancelHandleDrag()
+        if (start != null && end != null) {
+            submitSelection(start, end)
+            onSelectionAdjusting(false)
+        } else {
+            cancelHandleDrag()
+        }
     }
 
     // 拖动中实时重算选区（松手由 onDragEnd 直接按起止点重算提交，不依赖异步 state）
@@ -437,6 +449,7 @@ private fun VerticalPageItem(
                     selStart = touch
                     selEnd = endHandleCenter
                 },
+                onDragStart = { onSelectionAdjusting(true) },
                 onDragEnd = finishHandleDrag,
                 onDragCancel = cancelHandleDrag,
             )
@@ -451,6 +464,7 @@ private fun VerticalPageItem(
                     selStart = startHandleCenter
                     selEnd = touch
                 },
+                onDragStart = { onSelectionAdjusting(true) },
                 onDragEnd = finishHandleDrag,
                 onDragCancel = cancelHandleDrag,
             )
@@ -500,39 +514,61 @@ private fun DrawScope.drawQuadPath(n: FloatArray, color: Color) {
     drawPath(path, color)
 }
 
-/** M14 选择手柄：圆形（primary + 白描边），可拖动，带 a11y 语义（Box 局部坐标定位） */
+/** M14 选择手柄（泪滴形，尖朝上）：尖点标选区下沿边界、主体沉入下方便于抓握；拖动回报尖点页面坐标 */
 @Composable
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "MagicNumber")
 private fun BoxScope.SelectionHandle(
     center: Offset,
     color: Color,
     description: String,
+    onDragStart: () -> Unit,
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
     onDragCancel: () -> Unit,
 ) {
     val density = LocalDensity.current
     val boxSize = with(density) { HANDLE_BOX_DP.dp }
-    val halfPx = with(density) { HANDLE_BOX_DP.dp.toPx() / 2 }
+    val boxPx = with(density) { HANDLE_BOX_DP.dp.toPx() }
+    val dropPx = with(density) { HANDLE_DROP_DP.dp.toPx() }
+    // 手柄 Box 左上角（页面 Box 坐标）：尖点水平居中于 Box 顶部
+    val boxLeft = center.x - boxPx / 2f
+    val boxTop = center.y
     Box(
         modifier = Modifier
             .align(Alignment.TopStart)
-            .offset { IntOffset((center.x - halfPx).roundToInt(), (center.y - halfPx).roundToInt()) }
+            .offset { IntOffset(boxLeft.roundToInt(), boxTop.roundToInt()) }
             .size(boxSize)
             .pointerInput(Unit) {
                 detectDragGestures(
+                    onDragStart = { onDragStart() },
                     onDrag = { change, _ ->
                         change.consume()
-                        onDrag(change.position)
+                        // 回报「尖点」页面坐标 = Box 原点 + 局部坐标 - 泪滴尖点到圆心的距离
+                        onDrag(Offset(boxLeft + change.position.x, boxTop + change.position.y - dropPx))
                     },
                     onDragEnd = { onDragEnd() },
                     onDragCancel = { onDragCancel() },
                 )
             }
-            .semantics { contentDescription = description },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(Modifier.size(HANDLE_VISUAL_DP.dp).clip(CircleShape).background(Color.White))
-        Box(Modifier.size((HANDLE_VISUAL_DP - HANDLE_STROKE_DP * 2).dp).clip(CircleShape).background(color))
-    }
+            .semantics { contentDescription = description }
+            .drawWithContent {
+                drawContent()
+                val cx = size.width / 2f
+                val r = HANDLE_RADIUS_DP.dp.toPx()
+                val drop = HANDLE_DROP_DP.dp.toPx()
+                val k = r * 0.7071f
+                val path = Path().apply {
+                    moveTo(cx, 0f)
+                    quadraticTo(cx - r * 0.85f, drop * 0.45f, cx - k, drop - k)
+                    arcTo(
+                        Rect(cx - r, drop - r, cx + r, drop + r),
+                        225f, -270f, false,
+                    )
+                    quadraticTo(cx + r * 0.85f, drop * 0.45f, cx, 0f)
+                    close()
+                }
+                drawPath(path, color)
+                drawPath(path, Color.White, style = Stroke(width = HANDLE_STROKE_DP.dp.toPx()))
+            },
+    )
 }

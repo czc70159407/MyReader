@@ -78,6 +78,14 @@ PDF 内长按拖动选中文本 → 松手弹操作气泡（朗读 / 高亮 / �
 
 证据：`/sdcard/Download/MyReaderTest/m14/{png,xml}/`（9 张截图 + 31 个 UI dump），本地副本 `tools/acceptance/verify/m14/`；测试夹具 `m14_tts_test.pdf`（生成脚本 `tools/acceptance/gen_m14_test_pdf.py`）。
 
+## 5.2 v3 微信读书式定稿（2026-11-16）
+
+- **菜单**：`SelectionMenu` 深色横条（`#2C2C2C` + 白色图标/文字，三动作：朗读/高亮/复制），底部**弧形鱼尾指针**（两侧 quadratic 内凹）指向选区上沿；居中于选区（锚点改为「选区中心 X + 选区上沿 Y」）、出屏 clamp、上方空间不足翻转下方。（「更多」扩展位因暂无实际功能已移除，避免死按钮；后续接入查询/分享等功能时再加回。）
+- **手柄**：泪滴形（尖朝上贴选区下沿，主体半径 10dp、尖点-圆心 13dp），水平 `drawTeardrops`（Canvas Path：quadratic + arcTo 225°/-270°）+ 垂直 `SelectionHandle`（Compose Path 同几何）；拖动回报**尖点**页面坐标（顺带修复垂直手柄拖动未做坐标换算的隐藏 bug）。
+- **选区**：`primary` 25% 半透明，不遮字。
+- **拖手柄收起菜单**：`Content` 新增 `onSelectionAdjusting(Boolean)` 回调，S2a 拖动期间隐藏菜单、松手在新位置重弹（真机验证：拖动中/松手后菜单深色像素 136 vs 19050）。
+- **深色主题对比度验证**：PDF 内容不反色（白底），菜单条 `#2C2C2C` 其上实测 6.15:1（WCAG 非文本 3:1 达标）；页面外深色背景 2.65:1（边缘情况，不处理）。
+
 ## 6. 已知限制
 
 - 朗读内容 = 手动选中文本（非自动句子吸附）。

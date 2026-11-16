@@ -100,6 +100,7 @@ class DirectoryImporterTest {
             onTapContent: () -> Unit,
             onUserScroll: () -> Unit,
             onTextSelected: (TextSelectionEvent?) -> Unit,
+            onSelectionAdjusting: (Boolean) -> Unit,
             annotations: List<AnnotationDraft>,
             activeSelection: AnnotationDraft?,
             modifier: androidx.compose.ui.Modifier,

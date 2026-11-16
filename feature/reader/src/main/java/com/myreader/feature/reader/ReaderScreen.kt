@@ -47,12 +47,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -64,6 +68,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.document.TextSelectionEvent
+import kotlinx.coroutines.launch
 import com.myreader.core.model.Annotation
 import com.myreader.core.model.Bookmark
 import com.myreader.core.model.BookmarkAnchorCodec
@@ -170,6 +176,15 @@ fun ReaderScreen(
                     ?.isTouchExplorationEnabled == true
             }
             val snackbarHostState = remember { SnackbarHostState() }
+            val scope = rememberCoroutineScope()
+            // M14 文本朗读：选中操作气泡目标（null = 未选中/菜单关闭）
+            var selectionMenuTarget by remember { mutableStateOf<TextSelectionEvent?>(null) }
+            // M14：TTS 会话内持有一份，退出释放；剪贴板复用 LocalClipboardManager（同关于页）
+            val tts = remember(context) { Tts(context) }
+            val clipboard = LocalClipboardManager.current
+            DisposableEffect(tts) {
+                onDispose { tts.shutdown() }
+            }
             LaunchedEffect(Unit) {
                 viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
             }
@@ -225,8 +240,8 @@ fun ReaderScreen(
                         onTapContent = { topBarVisible = !topBarVisible },
                         // 触摸探索（TalkBack）开启时禁用自动隐藏，避免探索触摸误触（reader.md §6.3）
                         onUserScroll = { if (!touchExplorationEnabled) topBarVisible = false },
-                        // M12 高亮/笔记：选中完成 → 落库；已存高亮 → 渲染端回放
-                        onTextSelected = viewModel::addAnnotation,
+                        // M14 文本朗读：选中完成 → 弹操作气泡（朗读/高亮/复制）；高亮动作内走 addAnnotation
+                        onTextSelected = { event -> selectionMenuTarget = event },
                         annotations = annotations.map {
                             AnnotationDraft(page = it.page, anchor = it.anchor, text = it.text, color = it.color)
                         },
@@ -358,6 +373,28 @@ fun ReaderScreen(
                         if (!s.reflowable) viewModel.onProgress(ProgressPayload.Page(page, 0))
                         showGoTo = false
                     },
+                )
+            }
+            selectionMenuTarget?.let { event ->
+                SelectionMenu(
+                    draft = event.draft,
+                    anchor = Offset(event.anchorX, event.anchorY),
+                    onSpeak = { text ->
+                        if (!tts.speak(text)) {
+                            scope.launch { snackbarHostState.showSnackbar("未找到语音包，请在系统设置中下载") }
+                        }
+                        selectionMenuTarget = null
+                    },
+                    onHighlight = { draft ->
+                        viewModel.addAnnotation(draft)
+                        selectionMenuTarget = null
+                    },
+                    onCopy = { text ->
+                        clipboard.setText(AnnotatedString(text))
+                        scope.launch { snackbarHostState.showSnackbar("已复制") }
+                        selectionMenuTarget = null
+                    },
+                    onDismiss = { selectionMenuTarget = null },
                 )
             }
         }

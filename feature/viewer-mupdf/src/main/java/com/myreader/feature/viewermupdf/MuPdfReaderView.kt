@@ -21,6 +21,7 @@ import com.artifex.mupdf.viewer.PageAdapter
 import com.artifex.mupdf.viewer.ReaderView
 import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.document.TextSelectionEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -73,7 +74,7 @@ internal fun MuPdfReaderView(
     onPageCountChanged: (Int) -> Unit,
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
-    onTextSelected: (AnnotationDraft) -> Unit,
+    onTextSelected: (TextSelectionEvent) -> Unit,
     annotations: List<AnnotationDraft>,
     modifier: Modifier = Modifier,
 ) {
@@ -191,7 +192,21 @@ internal fun MuPdfReaderView(
                     val size = core.getPageSize(page)
                     if (size.x > 0f && size.y > 0f) {
                         val anchor = AnnotationAnchorCodec.encode(quads, size.x, size.y)
-                        latestSelectionCallback(AnnotationDraft(page = page, anchor = anchor, text = text ?: ""))
+                        val draft = AnnotationDraft(page = page, anchor = anchor, text = text ?: "")
+                        // M14：选区首 quad 左上角 → 窗口坐标锚点（气泡菜单定位）。
+                        // 必须用 getLocationInWindow：pv.left/top 只是父容器内坐标，缺状态栏/内容区偏移，
+                        // 会导致气泡偏上（真机验收发现）。
+                        val pv = getDisplayedView()
+                        val (anchorX, anchorY) = if (pv != null) {
+                            val (sx, sy) = scaleOf()
+                            val first = quads[0]
+                            val loc = IntArray(2)
+                            pv.getLocationInWindow(loc)
+                            (loc[0] + first.ul_x * sx) to (loc[1] + first.ul_y * sy)
+                        } else {
+                            0f to 0f
+                        }
+                        latestSelectionCallback(TextSelectionEvent(draft, anchorX, anchorY))
                     }
                 }
 

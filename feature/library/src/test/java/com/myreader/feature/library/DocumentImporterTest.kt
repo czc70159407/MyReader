@@ -14,6 +14,7 @@ import com.myreader.core.data.repo.LibraryRepositoryImpl
 import com.myreader.core.document.CorruptDocumentException
 import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
+import com.myreader.core.document.TextSelectionEvent
 import com.myreader.core.document.DocumentEngine
 import com.myreader.core.document.DocumentEngineRouter
 import com.myreader.core.document.DocumentViewerProvider
@@ -113,7 +114,7 @@ class DocumentImporterTest {
             onPageCountChanged: (Int) -> Unit,
             onTapContent: () -> Unit,
             onUserScroll: () -> Unit,
-            onTextSelected: (AnnotationDraft) -> Unit,
+            onTextSelected: (TextSelectionEvent) -> Unit,
             annotations: List<AnnotationDraft>,
             modifier: androidx.compose.ui.Modifier,
         ) = Unit

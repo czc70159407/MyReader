@@ -184,10 +184,18 @@ onUserScroll: () -> Unit,
 ## 8. 高亮与笔记（`[已实现 M12-B]`）
 
 - 入口：顶栏「标注」双 Tab 面板（`AnnotationHubSheet`，书签 + 高亮合并，见 §7）；高亮创建入口为**长按选中文本**（区别于单击切换顶栏 / 水平边缘翻页 / 垂直滚动）。
-- 选择与高亮：水平 `MuPdfReaderView` 长按进入选择、拖动扩展，松手创建原生 `PDFAnnotation.TYPE_HIGHLIGHT` 并上报归一化 `AnnotationDraft`；垂直 `MuPdfVerticalView` 用 `detectDragGesturesAfterLongPress` 选择，`drawWithContent` 自绘半透明黄 overlay（画在位图之上）。
+- 选择与操作（M14 改）：水平 `MuPdfReaderView` 长按进入选择、拖动扩展，垂直 `MuPdfVerticalView` 用 `detectDragGesturesAfterLongPress` 选择；松手**上报 `TextSelectionEvent`（归一化 `AnnotationDraft` + 屏幕锚点）并弹出操作气泡**（朗读 / 高亮 / 复制），不再直接落库。「高亮」动作才创建原生 `PDFAnnotation.TYPE_HIGHLIGHT`（水平）/ 自绘半透明黄 overlay（垂直，画在位图之上）。
 - 面板：`AnnotationSection` 列表展示页码 / 摘录（60 字截断）/ 时间 / 色点，点击跳转、尾部删除；点击已有高亮经 `AnnotationNoteDialog` 加/改笔记（空串即清空）；`AnnotationColorDialog` 5 色（`ANNOTATION_COLORS`，默认黄），水平按 `argbToRgb` 原生重放、垂直 `drawQuadPath` 自绘按色（alpha 0.35）。
 - 持久化：`annotations` 表（Room v3）+ 归一化 quad 锚点（`AnnotationAnchorCodec`），跨会话回放；随备份 v4 导出/恢复。见 `docs/data-layer.md`「标注存储」、`docs/m12-plan.md`。
 - 已知限制（已拍板不做）：epub 水平模式自绘 overlay、归一化 quad 跨重排页级近似提升。
+
+### 8.1 文本朗读与复制（`[已实现 M14]`）
+
+- 入口：选中文本松手弹出的操作气泡（`SelectionMenu`，`Popup` 悬浮在选中锚点旁，20dp 圆角 + 对白框尾巴，锚点太靠上时翻转到下方）。
+- 朗读：系统 `TextToSpeech`，朗读前按 `detectLanguage`（含汉字 → `zh-CN`，否则 `en-US`）选语音包；语音包缺失/不支持弹 Snackbar「未找到语音包，请在系统设置中下载」。TTS 会话内持有一份，退出 `shutdown`；再次朗读 `QUEUE_FLUSH` 打断上一段。
+- 复制：`LocalClipboardManager` 写剪贴板 + Snackbar「已复制」。
+- 图标（material-icons-extended）：朗读 `RecordVoiceOver`、高亮 `Brush`、复制 `ContentCopy`。
+- 已知限制：朗读内容 = 手动选中文本（非自动句子吸附）；语言检测按「是否含汉字」二分（混排整段走中文）；依赖设备语音包。
 
 ## 9. 无障碍
 

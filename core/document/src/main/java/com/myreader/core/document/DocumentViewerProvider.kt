@@ -20,6 +20,17 @@ data class AnnotationDraft(
 )
 
 /**
+ * M14：文本选择完成事件（渲染端 → 状态侧）。
+ * [draft] 为归一化锚点草稿（高亮落库用）；[anchorX]/[anchorY] 为选中区域屏幕锚点窗口坐标（px，气泡菜单定位用）。
+ * 用两个 Float 而非 Compose 几何类型，保持 core:document 接口不耦合 UI 几何对象。
+ */
+data class TextSelectionEvent(
+    val draft: AnnotationDraft,
+    val anchorX: Float,
+    val anchorY: Float,
+)
+
+/**
  * 渲染 Composable 提供者：feature:reader 经 [DocumentEngineRouter.viewerFor] 获取，
  * 在 Compose 上下文调用 [Content] 渲染；缩略图生成走普通 suspend 方法（导入流程可用）。
  */
@@ -34,7 +45,7 @@ interface DocumentViewerProvider {
      * @param onTapContent 内容区点按（水平模式非边缘区 / 垂直模式静止点按）→ 切换顶栏显隐（M12 沉浸模式）。
      *   水平模式边缘点按仍翻页、不回调；垂直模式滚动会取消 tap，无手势冲突。
      * @param onUserScroll 用户翻页 / 滚动 / 缩放 → 隐藏顶栏（M12 沉浸模式）。实现应在主线程调用。
-     * @param onTextSelected 文本选择完成（长按/拖动松手）→ 上报归一化锚点草稿（M12 高亮/笔记）。
+     * @param onTextSelected 文本选择完成（长按/拖动松手）→ 上报选择事件（归一化锚点草稿 + 屏幕锚点，M14 气泡菜单）。
      * @param annotations 已保存的高亮/笔记（渲染端据此回放原生 annotation）；reflowable 暂不消费。 */
     @Composable
     @Suppress("LongParameterList")
@@ -46,7 +57,7 @@ interface DocumentViewerProvider {
         onPageCountChanged: (Int) -> Unit,
         onTapContent: () -> Unit,
         onUserScroll: () -> Unit,
-        onTextSelected: (AnnotationDraft) -> Unit,
+        onTextSelected: (TextSelectionEvent) -> Unit,
         annotations: List<AnnotationDraft>,
         modifier: Modifier,
     )

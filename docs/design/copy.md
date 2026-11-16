@@ -63,6 +63,9 @@
 | `act_unselect_all` | 取消全选 | 多选顶栏（M13） |
 | `act_exit_selection` | 退出多选 | 多选顶栏返回（M13） |
 | `selected_count` | 已选 {n} 项 | 多选顶栏标题（M13） |
+| `act_speak` | 朗读 | 选中操作气泡（M14） |
+| `act_highlight` | 高亮 | 选中操作气泡（M14） |
+| `act_copy_text` | 复制 | 选中操作气泡（M14） |
 
 ## 3. 空态文案（empty_*）
 
@@ -122,6 +125,7 @@
 | `ok_batch_deleted` | 已删除 {documents} 个文档、{folders} 个文件夹 | Snackbar（M13） |
 | `ok_batch_skipped` | （{n} 个已在目标目录） | Snackbar（M13，拼接） |
 | `ok_batch_deleted_orphan` | {n} 个文件删除失败，请重试 | Snackbar（M13，拼接） |
+| `ok_text_copied` | 已复制 | Snackbar（M14，选中文本复制到剪贴板） |
 
 ## 6. 错误文案（err_*）
 
@@ -167,6 +171,7 @@
 | `err_annotation_color` | 更新颜色失败，请重试 | L3 | `[已实现 M12]` |
 | `err_link_no_browser` | 未找到可打开链接的应用，请长按复制链接 | L3 | `[已实现]`（关于页自行 `startActivity` 并捕获 `ActivityNotFoundException`；不用 `LocalUriHandler`——Compose 1.7.4 会包装成 `IllegalArgumentException` 重抛；异常消息不进文案） |
 | `err_batch_limit` | 一次最多选择 {n} 项 | L3 | `[已实现 M13]`（`MAX_BATCH_SELECTION = 500`） |
+| `err_tts_missing` | 未找到语音包，请在系统设置中下载 | L3 | `[已实现 M14]`（朗读选中文本时设备缺 en-US/zh-CN 语音包） |
 
 ## 7. 表单校验文案（inline_*）
 

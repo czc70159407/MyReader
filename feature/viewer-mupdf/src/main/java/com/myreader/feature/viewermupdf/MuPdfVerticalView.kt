@@ -35,12 +35,15 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.artifex.mupdf.viewer.MuPDFCore
 import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.document.TextSelectionEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -76,7 +79,7 @@ internal fun MuPdfVerticalView(
     onProgressChanged: (ProgressPayload) -> Unit,
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
-    onTextSelected: (AnnotationDraft) -> Unit,
+    onTextSelected: (TextSelectionEvent) -> Unit,
     annotations: List<AnnotationDraft>,
     modifier: Modifier = Modifier,
 ) {
@@ -200,7 +203,7 @@ private fun VerticalPageItem(
     widthPx: Int,
     core: MuPDFCore?,
     annotations: List<AnnotationDraft>,
-    onTextSelected: (AnnotationDraft) -> Unit,
+    onTextSelected: (TextSelectionEvent) -> Unit,
 ) {
     // 页点尺寸：异步获取；成功结果由 loader 跨重组/跨宽度缓存（防滚动中高度抖动）
     var pageSize by remember(page) { mutableStateOf<Size?>(null) }
@@ -263,6 +266,8 @@ private fun VerticalPageItem(
     var selStart by remember(page) { mutableStateOf<Offset?>(null) }
     var selEnd by remember(page) { mutableStateOf<Offset?>(null) }
     var selQuads by remember(page) { mutableStateOf<List<FloatArray>>(emptyList()) }
+    // M14：页 Box 窗口坐标锚点（选区起点 → 屏幕坐标，气泡菜单定位）
+    var boxOrigin by remember(page) { mutableStateOf(Offset.Zero) }
     val selectable = core != null && sx > 0f && sy > 0f
     val scope = rememberCoroutineScope()
 
@@ -282,6 +287,7 @@ private fun VerticalPageItem(
             .fillMaxWidth()
             .padding(vertical = PAGE_SPACING / 2)
             .height(with(density) { heightPx.toDp() })
+            .onGloballyPositioned { boxOrigin = it.positionInWindow() }
             .then(
                 if (selectable) {
                     Modifier.pointerInput(page, sx, sy) {
@@ -297,6 +303,7 @@ private fun VerticalPageItem(
                             onDragEnd = {
                                 val start = selStart
                                 val end = selEnd
+                                val origin = boxOrigin
                                 selStart = null
                                 selEnd = null
                                 selQuads = emptyList()
@@ -304,13 +311,13 @@ private fun VerticalPageItem(
                                     scope.launch {
                                         val result = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
                                         if (result != null && result.quads.isNotEmpty()) {
-                                            onTextSelected(
-                                                AnnotationDraft(
-                                                    page = page,
-                                                    anchor = AnnotationAnchorCodec.encodeNormalized(result.quads),
-                                                    text = result.text,
-                                                ),
+                                            val draft = AnnotationDraft(
+                                                page = page,
+                                                anchor = AnnotationAnchorCodec.encodeNormalized(result.quads),
+                                                text = result.text,
                                             )
+                                            val anchor = origin + start
+                                            onTextSelected(TextSelectionEvent(draft, anchor.x, anchor.y))
                                         }
                                     }
                                 }

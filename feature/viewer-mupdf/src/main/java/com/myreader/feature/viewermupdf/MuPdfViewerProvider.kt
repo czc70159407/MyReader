@@ -14,6 +14,7 @@ import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.document.TextSelectionEvent
 import com.myreader.core.model.ReaderMode
 import javax.inject.Inject
 
@@ -36,7 +37,7 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         onPageCountChanged: (Int) -> Unit,
         onTapContent: () -> Unit,
         onUserScroll: () -> Unit,
-        onTextSelected: (AnnotationDraft) -> Unit,
+        onTextSelected: (TextSelectionEvent) -> Unit,
         annotations: List<AnnotationDraft>,
         modifier: Modifier,
     ) {

@@ -204,8 +204,8 @@ internal fun MuPdfVerticalView(
 /** M14 选中视觉反馈：选区填充不透明度（作用于主题色 primary 之上，与高亮色板可辨识） */
 private const val SELECTION_ALPHA = 0.3f
 
-/** 零位移判定阈值（页面 pt）：起止点距离小于该值视为长按取词 */
-private const val SELECTION_POINT_EPSILON = 0.5f
+/** 长按取词判定阈值（页面 pt，≈15px@fit-width）：覆盖手指长按自然抖动；有意拖动选词远超该距离 */
+private const val SELECTION_POINT_EPSILON = 8f
 
 /** M12 已存高亮半透明度（自绘 overlay，接近原生高亮效果） */
 private const val HIGHLIGHT_ALPHA = 0.35f

@@ -731,8 +731,9 @@ class ReaderViewModelTest {
             onPageCountChanged: (Int) -> Unit,
             onTapContent: () -> Unit,
             onUserScroll: () -> Unit,
-            onTextSelected: (TextSelectionEvent) -> Unit,
+            onTextSelected: (TextSelectionEvent?) -> Unit,
             annotations: List<AnnotationDraft>,
+            activeSelection: AnnotationDraft?,
             modifier: androidx.compose.ui.Modifier,
         ) = Unit
         override suspend fun thumbnail(doc: Document): ImageBitmap = throw UnsupportedOperationException()

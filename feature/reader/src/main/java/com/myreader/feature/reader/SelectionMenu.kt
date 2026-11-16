@@ -62,7 +62,6 @@ internal fun SelectionMenu(
     onSpeak: (String) -> Unit,
     onHighlight: (AnnotationDraft) -> Unit,
     onCopy: (String) -> Unit,
-    onDismiss: () -> Unit,
 ) {
     val density = LocalDensity.current
     val gapPx = with(density) { TAIL_GAP.toPx() }.roundToInt()
@@ -91,8 +90,12 @@ internal fun SelectionMenu(
 
     Popup(
         popupPositionProvider = positionProvider,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true),
+        // 非聚焦：气泡不得拦截外部触摸——否则手柄拖动 / 重新长按的 DOWN 被全屏 popup window
+        // 吞掉（真机日志证实）。「点选区外取消」统一由渲染端上报清除（onTextSelected(null)），
+        // 此处忽略 dismiss 回调——部分版本下非聚焦 Popup 仍会因外部触摸回调 onDismissRequest，
+        // 导致点选区内部（应保持选中）也被误清（真机日志：inside=true 却仍消失）。
+        onDismissRequest = {},
+        properties = PopupProperties(focusable = false),
     ) {
         val surface = MaterialTheme.colorScheme.surface
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

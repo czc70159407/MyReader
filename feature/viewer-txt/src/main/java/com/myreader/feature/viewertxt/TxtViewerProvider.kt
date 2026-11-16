@@ -53,8 +53,9 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         onPageCountChanged: (Int) -> Unit,
         onTapContent: () -> Unit,
         onUserScroll: () -> Unit,
-        onTextSelected: (TextSelectionEvent) -> Unit,
+        onTextSelected: (TextSelectionEvent?) -> Unit,
         annotations: List<AnnotationDraft>,
+        activeSelection: AnnotationDraft?,
         modifier: Modifier,
     ) {
         val txtDoc = doc as? TxtDocument

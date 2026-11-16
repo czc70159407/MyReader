@@ -6,6 +6,7 @@ import android.graphics.Path
 import android.view.GestureDetector
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
+import android.view.View
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -14,6 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import com.artifex.mupdf.fitz.Quad
 import com.artifex.mupdf.viewer.MuPDFCore
@@ -39,8 +42,20 @@ private const val POINTS_PER_INCH = 72
 /** 重排排版最小尺寸（pt）：防极小分屏导致页数爆炸/除零 */
 private const val MIN_LAYOUT_PT = 100
 
-/** M12 文本选择拖动预览色（半透明黄，ARGB 0xAARRGGBB） */
-private const val SELECTION_PREVIEW_COLOR: Int = 0x66FFEB3B
+/** M14 选中视觉反馈：选区填充不透明度（作用于主题色 primary 之上，与高亮色板可辨识） */
+private const val SELECTION_ALPHA = 0.3f
+
+/** M14 选择手柄：视觉半径与白描边宽度（dp） */
+private const val HANDLE_RADIUS_DP = 7f
+private const val HANDLE_STROKE_DP = 2f
+
+/** M14 手柄命中半径（dp，拖动手势语义下放宽于 tokens 48dp 静止触达） */
+private const val HANDLE_HIT_DP = 24f
+
+/** M14 手柄标识：无 / 起点 / 终点 */
+private const val HANDLE_NONE = 0
+private const val HANDLE_START = 1
+private const val HANDLE_END = 2
 
 /** M12 改色：ARGB（Int）→ fitz RGB 0..1（原生高亮渲染用） */
 @Suppress("MagicNumber")
@@ -65,7 +80,7 @@ internal fun argbToRgb(argb: Int): FloatArray = floatArrayOf(
  * 避免旋转/分屏后白屏或回首页（对齐上游 DocumentActivity.onSizeChanged）。
  */
 @Composable
-@Suppress("LongParameterList")
+@Suppress("LongParameterList", "LongMethod")
 internal fun MuPdfReaderView(
     core: MuPDFCore,
     reflowable: Boolean,
@@ -74,8 +89,10 @@ internal fun MuPdfReaderView(
     onPageCountChanged: (Int) -> Unit,
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
-    onTextSelected: (TextSelectionEvent) -> Unit,
+    onTextSelected: (TextSelectionEvent?) -> Unit,
     annotations: List<AnnotationDraft>,
+    activeSelection: AnnotationDraft?,
+    selectionColor: Color,
     modifier: Modifier = Modifier,
 ) {
     // factory 只执行一次：经 State 转发保证匿名子类始终回调最新 lambda；adapterRef 供释放
@@ -116,13 +133,24 @@ internal fun MuPdfReaderView(
                 private var selAnchorY = 0f
                 private var selQuads: Array<Quad>? = null
                 private var selText: String? = null
+                // M14 手柄拖动状态：命中端标识 + 实时选区 + 固定端（S2a）
+                private var draggingHandle = HANDLE_NONE
+                private var adjustingQuads: Array<Quad>? = null
+                private var adjustingText: String? = null
+                private var fixedX = 0f
+                private var fixedY = 0f
                 /** 已回放高亮的 anchor 键（page|anchor），防重组重复创建 */
                 private val replayedAnchors = mutableSetOf<String>()
+                private var activeDraft: AnnotationDraft? = null
                 private val selPaint = Paint().apply {
-                    color = SELECTION_PREVIEW_COLOR
                     style = Paint.Style.FILL
                 }
                 private val selPath = Path()
+                private val handleFillPaint = Paint().apply { style = Paint.Style.FILL }
+                private val handleBasePaint = Paint().apply {
+                    style = Paint.Style.FILL
+                    color = android.graphics.Color.WHITE
+                }
                 private val selectDetector = GestureDetector(
                     ctx,
                     object : GestureDetector.SimpleOnGestureListener() {
@@ -138,12 +166,31 @@ internal fun MuPdfReaderView(
                     },
                 )
 
-                init {
-                    // 选区在 onDraw 叠加绘制（ReaderView 默认 ViewGroup 不绘制自身）
-                    setWillNotDraw(false)
-                }
-
+                @Suppress("ReturnCount")
                 override fun onTouchEvent(event: MotionEvent): Boolean {
+                    // S2a 手柄拖动中：MOVE 重算选区，UP/CANCEL 上报新选区
+                    if (draggingHandle != HANDLE_NONE) {
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_MOVE -> adjustSelection(event.x, event.y)
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> finishAdjusting()
+                            else -> Unit
+                        }
+                        return true
+                    }
+                    // S2 已选中：DOWN 命中手柄 → 进入拖动（优先于翻页/缩放/长按手势）；
+                    // 未命中 → 上报清除（气泡非聚焦、点选区外空白 = 取消选中，随后可长按重选）
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN && activeDraft != null) {
+                        val handle = hitHandle(event.x, event.y)
+                        if (handle != HANDLE_NONE) {
+                            draggingHandle = handle
+                            beginAdjusting()
+                            return true
+                        }
+                        // 点选区内部（非手柄）保持选中；点选区外才清除（避免误触选中文字即取消）
+                        if (!isPointInSelection(event.x, event.y)) {
+                            latestSelectionCallback(null)
+                        }
+                    }
                     if (!selecting) selectDetector.onTouchEvent(event)
                     if (selecting) {
                         when (event.actionMasked) {
@@ -179,6 +226,117 @@ internal fun MuPdfReaderView(
                     invalidate()
                 }
 
+                /** M14 当前生效选区（页面坐标 pt）：拖手柄中用实时 adjusting，否则用 activeDraft 反解 */
+                @Suppress("ReturnCount")
+                private fun currentSelectionQuads(): Array<Quad>? {
+                    adjustingQuads?.let { return it }
+                    val draft = activeDraft ?: return null
+                    if (draft.page != getDisplayedViewIndex()) return null
+                    val size = core.getPageSize(draft.page)
+                    if (size.x <= 0f || size.y <= 0f) return null
+                    return AnnotationAnchorCodec.decode(draft.anchor)
+                        ?.let { AnnotationAnchorCodec.toQuads(it, size.x, size.y) }
+                }
+
+                /** M14：DOWN 命中检测——touch 距起点/终点手柄 ≤ 24dp 视为命中（取更近者） */
+                @Suppress("ReturnCount")
+                private fun hitHandle(x: Float, y: Float): Int {
+                    val quads = currentSelectionQuads()?.takeIf { it.isNotEmpty() } ?: return HANDLE_NONE
+                    val pv = getDisplayedView() ?: return HANDLE_NONE
+                    val (sx, sy) = scaleOf()
+                    val hitR = HANDLE_HIT_DP * resources.displayMetrics.density
+                    val hitR2 = hitR * hitR
+                    val first = quads.first()
+                    val last = quads.last()
+                    val startX = pv.left + first.ul_x * sx
+                    val startY = pv.top + (first.ul_y + first.ll_y) / 2f * sy
+                    val endX = pv.left + last.lr_x * sx
+                    val endY = pv.top + (last.ur_y + last.lr_y) / 2f * sy
+                    val dStart2 = (x - startX) * (x - startX) + (y - startY) * (y - startY)
+                    val dEnd2 = (x - endX) * (x - endX) + (y - endY) * (y - endY)
+                    return when {
+                        dStart2 <= hitR2 && dStart2 <= dEnd2 -> HANDLE_START
+                        dEnd2 <= hitR2 -> HANDLE_END
+                        else -> HANDLE_NONE
+                    }
+                }
+
+                /** M14：touch（View 坐标）是否落在选区任一 quad 内（精确四边形包含，优于包围盒近似） */
+                @Suppress("ReturnCount", "MagicNumber")
+                private fun isPointInSelection(x: Float, y: Float): Boolean {
+                    val quads = currentSelectionQuads() ?: return false
+                    val pv = getDisplayedView() ?: return false
+                    val (sx, sy) = scaleOf()
+                    val px = (x - pv.left) / sx
+                    val py = (y - pv.top) / sy
+                    return quads.any { q -> pointInQuad(px, py, q) }
+                }
+
+                /** 点是否在 quad（四边形 ul→ur→lr→ll）内：叉积同号法 */
+                @Suppress("MagicNumber")
+                private fun pointInQuad(px: Float, py: Float, q: Quad): Boolean {
+                    val xs = floatArrayOf(q.ul_x, q.ur_x, q.lr_x, q.ll_x)
+                    val ys = floatArrayOf(q.ul_y, q.ur_y, q.lr_y, q.ll_y)
+                    var positive = false
+                    var negative = false
+                    for (i in 0 until 4) {
+                        val j = (i + 1) % 4
+                        val cross = (xs[j] - xs[i]) * (py - ys[i]) - (ys[j] - ys[i]) * (px - xs[i])
+                        if (cross > 0f) positive = true
+                        if (cross < 0f) negative = true
+                        if (positive && negative) return false
+                    }
+                    return true
+                }
+
+                /** M14：进入手柄拖动——记录固定端（对端手柄页面坐标） */
+                private fun beginAdjusting() {
+                    val quads = currentSelectionQuads() ?: return
+                    val first = quads.first()
+                    val last = quads.last()
+                    when (draggingHandle) {
+                        HANDLE_START -> {
+                            fixedX = last.lr_x
+                            fixedY = (last.ur_y + last.lr_y) / 2f
+                        }
+                        HANDLE_END -> {
+                            fixedX = first.ul_x
+                            fixedY = (first.ul_y + first.ll_y) / 2f
+                        }
+                        else -> Unit
+                    }
+                }
+
+                /** M14：拖手柄——本端跟随手指、对端固定，吸附词边界重算选区 */
+                private fun adjustSelection(x: Float, y: Float) {
+                    val pv = getDisplayedView() ?: return
+                    val (sx, sy) = scaleOf()
+                    val page = getDisplayedViewIndex()
+                    val tx = (x - pv.left) / sx
+                    val ty = (y - pv.top) / sy
+                    val sel = if (draggingHandle == HANDLE_START) {
+                        core.selectText(page, tx, ty, fixedX, fixedY)
+                    } else {
+                        core.selectText(page, fixedX, fixedY, tx, ty)
+                    }
+                    adjustingQuads = sel?.quads
+                    adjustingText = sel?.text
+                    invalidate()
+                }
+
+                /** M14：松手手柄——上报新选区（ReaderScreen 更新 activeSelection 与气泡位置） */
+                @Suppress("ReturnCount")
+                private fun finishAdjusting() {
+                    draggingHandle = HANDLE_NONE
+                    val quads = adjustingQuads
+                    val text = adjustingText
+                    adjustingQuads = null
+                    adjustingText = null
+                    invalidate()
+                    if (quads.isNullOrEmpty()) return
+                    reportSelection(quads, text)
+                }
+
                 /** 松手：上报归一化锚点草稿（落库后由 replayAnnotations 统一绘制，避免本地/回放双份） */
                 private fun finishSelection() {
                     val quads = selQuads
@@ -188,26 +346,28 @@ internal fun MuPdfReaderView(
                     selText = null
                     invalidate()
                     if (quads == null || quads.isEmpty()) return
+                    reportSelection(quads, text)
+                }
+
+                /** M14：quads + text → 上报 TextSelectionEvent（draft + 窗口坐标锚点，气泡定位） */
+                private fun reportSelection(quads: Array<Quad>, text: String?) {
                     val page = getDisplayedViewIndex()
                     val size = core.getPageSize(page)
-                    if (size.x > 0f && size.y > 0f) {
-                        val anchor = AnnotationAnchorCodec.encode(quads, size.x, size.y)
-                        val draft = AnnotationDraft(page = page, anchor = anchor, text = text ?: "")
-                        // M14：选区首 quad 左上角 → 窗口坐标锚点（气泡菜单定位）。
-                        // 必须用 getLocationInWindow：pv.left/top 只是父容器内坐标，缺状态栏/内容区偏移，
-                        // 会导致气泡偏上（真机验收发现）。
-                        val pv = getDisplayedView()
-                        val (anchorX, anchorY) = if (pv != null) {
-                            val (sx, sy) = scaleOf()
-                            val first = quads[0]
-                            val loc = IntArray(2)
-                            pv.getLocationInWindow(loc)
-                            (loc[0] + first.ul_x * sx) to (loc[1] + first.ul_y * sy)
-                        } else {
-                            0f to 0f
-                        }
-                        latestSelectionCallback(TextSelectionEvent(draft, anchorX, anchorY))
+                    if (size.x <= 0f || size.y <= 0f) return
+                    val anchor = AnnotationAnchorCodec.encode(quads, size.x, size.y)
+                    val draft = AnnotationDraft(page = page, anchor = anchor, text = text ?: "")
+                    // 选区首 quad 左上角 → 窗口坐标锚点；必须 getLocationInWindow（父容器坐标缺状态栏偏移）
+                    val pv = getDisplayedView()
+                    val (anchorX, anchorY) = if (pv != null) {
+                        val (sx, sy) = scaleOf()
+                        val first = quads[0]
+                        val loc = IntArray(2)
+                        pv.getLocationInWindow(loc)
+                        (loc[0] + first.ul_x * sx) to (loc[1] + first.ul_y * sy)
+                    } else {
+                        0f to 0f
                     }
+                    latestSelectionCallback(TextSelectionEvent(draft, anchorX, anchorY))
                 }
 
                 /** 回放库中高亮：与已绘制集合比对，一致则 no-op；新增/删除时清空该页全量重放（幂等） */
@@ -235,20 +395,60 @@ internal fun MuPdfReaderView(
                     if (dirty || drawn.isNotEmpty()) refresh()
                 }
 
-                override fun onDraw(canvas: Canvas) {
-                    super.onDraw(canvas)
-                    val quads = selQuads ?: return
+                /** M14：同步当前选中草稿与主题色；null 即清除选区预览 */
+                fun applySelection(active: AnnotationDraft?, color: Color) {
+                    activeDraft = active
+                    selPaint.color = color.copy(alpha = SELECTION_ALPHA).toArgb()
+                    handleFillPaint.color = color.toArgb()
+                    invalidate()
+                }
+
+                // M14 修复：ReaderView 是 ViewGroup，onDraw 绘制会被子 View（PageView 位图）覆盖——
+                // 拖动预览自 M12 起实际不可见（历史遗留缺陷，真机复验发现）。改为 dispatchDraw 之后
+                // 绘制，确保选区/手柄叠加在页面位图之上。
+                override fun dispatchDraw(canvas: Canvas) {
+                    super.dispatchDraw(canvas)
                     val pv = getDisplayedView() ?: return
                     val (sx, sy) = scaleOf()
-                    for (q in quads) {
-                        selPath.reset()
-                        selPath.moveTo(pv.left + q.ul_x * sx, pv.top + q.ul_y * sy)
-                        selPath.lineTo(pv.left + q.ur_x * sx, pv.top + q.ur_y * sy)
-                        selPath.lineTo(pv.left + q.lr_x * sx, pv.top + q.lr_y * sy)
-                        selPath.lineTo(pv.left + q.ll_x * sx, pv.top + q.ll_y * sy)
-                        selPath.close()
-                        canvas.drawPath(selPath, selPaint)
-                    }
+                    // S1 选择中实时预览（手指拖动）
+                    selQuads?.forEach { q -> drawQuad(canvas, pv, q, sx, sy) }
+                    // S2 已选中定格（从 activeDraft 反解，与 S1 同色）
+                    drawActiveSelection(canvas, pv, sx, sy)
+                    // S2 选择手柄（两端可拖动圆点）
+                    drawHandles(canvas, pv, sx, sy)
+                }
+
+                private fun drawQuad(canvas: Canvas, pv: View, q: Quad, sx: Float, sy: Float) {
+                    selPath.reset()
+                    selPath.moveTo(pv.left + q.ul_x * sx, pv.top + q.ul_y * sy)
+                    selPath.lineTo(pv.left + q.ur_x * sx, pv.top + q.ur_y * sy)
+                    selPath.lineTo(pv.left + q.lr_x * sx, pv.top + q.lr_y * sy)
+                    selPath.lineTo(pv.left + q.ll_x * sx, pv.top + q.ll_y * sy)
+                    selPath.close()
+                    canvas.drawPath(selPath, selPaint)
+                }
+
+                private fun drawActiveSelection(canvas: Canvas, pv: View, sx: Float, sy: Float) {
+                    currentSelectionQuads()?.forEach { q -> drawQuad(canvas, pv, q, sx, sy) }
+                }
+
+                /** M14 选择手柄：选区首 quad 左缘中点 + 末 quad 右缘中点（primary 圆 + 白描边） */
+                @Suppress("ReturnCount")
+                private fun drawHandles(canvas: Canvas, pv: View, sx: Float, sy: Float) {
+                    val quads = currentSelectionQuads()?.takeIf { it.isNotEmpty() } ?: return
+                    val density = resources.displayMetrics.density
+                    val r = HANDLE_RADIUS_DP * density
+                    val stroke = HANDLE_STROKE_DP * density
+                    val first = quads.first()
+                    val last = quads.last()
+                    val startX = pv.left + first.ul_x * sx
+                    val startY = pv.top + (first.ul_y + first.ll_y) / 2f * sy
+                    val endX = pv.left + last.lr_x * sx
+                    val endY = pv.top + (last.ur_y + last.lr_y) / 2f * sy
+                    canvas.drawCircle(startX, startY, r, handleBasePaint)
+                    canvas.drawCircle(startX, startY, r - stroke, handleFillPaint)
+                    canvas.drawCircle(endX, endY, r, handleBasePaint)
+                    canvas.drawCircle(endX, endY, r - stroke, handleFillPaint)
                 }
 
                 override fun onMoveToChild(i: Int) {
@@ -340,6 +540,8 @@ internal fun MuPdfReaderView(
             }
             // M12 高亮回放：库中已保存的高亮绘制为原生 annotation（当前页，幂等）
             view.replayAnnotations(annotations)
+            // M14 选中视觉反馈：同步选中草稿 + 主题色（选区随 primary）
+            view.applySelection(activeSelection, selectionColor)
         },
         modifier = modifier,
     )

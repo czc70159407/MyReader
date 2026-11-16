@@ -2,16 +2,21 @@ package com.myreader.feature.viewermupdf
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -38,6 +44,9 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.artifex.mupdf.viewer.MuPDFCore
 import com.myreader.core.document.AnnotationDraft
@@ -48,6 +57,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 import kotlinx.coroutines.withContext
 
 /** 页间距（dp） */
@@ -79,8 +89,10 @@ internal fun MuPdfVerticalView(
     onProgressChanged: (ProgressPayload) -> Unit,
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
-    onTextSelected: (TextSelectionEvent) -> Unit,
+    onTextSelected: (TextSelectionEvent?) -> Unit,
     annotations: List<AnnotationDraft>,
+    activeSelection: AnnotationDraft?,
+    selectionColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -178,17 +190,29 @@ internal fun MuPdfVerticalView(
                     core = core,
                     annotations = annotations,
                     onTextSelected = onTextSelected,
+                    activeSelection = activeSelection,
+                    selectionColor = selectionColor,
                 )
             }
         }
     }
 }
 
-/** M12 高亮填充色（半透明黄，与 PDF 选区预览同色） */
-private val HIGHLIGHT_FILL = Color(0x66FFEB3B)
+/** M14 选中视觉反馈：选区填充不透明度（作用于主题色 primary 之上，与高亮色板可辨识） */
+private const val SELECTION_ALPHA = 0.3f
 
 /** M12 已存高亮半透明度（自绘 overlay，接近原生高亮效果） */
 private const val HIGHLIGHT_ALPHA = 0.35f
+
+/** M14 选择手柄：触达盒 / 视觉直径 / 白描边（dp） */
+private const val HANDLE_BOX_DP = 28f
+private const val HANDLE_VISUAL_DP = 14f
+private const val HANDLE_STROKE_DP = 2f
+
+/** M14 手柄标识：无 / 起点 / 终点 */
+private const val HANDLE_NONE = 0
+private const val HANDLE_START = 1
+private const val HANDLE_END = 2
 
 /** 单页项：占位（4:3 + 加载圈）→ 页尺寸定高 → 位图就绪替换；渲染失败显示错误文案（不放无限加载圈）。
  *
@@ -196,14 +220,16 @@ private const val HIGHLIGHT_ALPHA = 0.35f
  * （reflowable 页非 `PDFPage`，无原生 annotation）。
  */
 @Composable
-@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
+@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod", "MagicNumber")
 private fun VerticalPageItem(
     loader: VerticalPageLoader,
     page: Int,
     widthPx: Int,
     core: MuPDFCore?,
     annotations: List<AnnotationDraft>,
-    onTextSelected: (TextSelectionEvent) -> Unit,
+    onTextSelected: (TextSelectionEvent?) -> Unit,
+    activeSelection: AnnotationDraft?,
+    selectionColor: Color,
 ) {
     // 页点尺寸：异步获取；成功结果由 loader 跨重组/跨宽度缓存（防滚动中高度抖动）
     var pageSize by remember(page) { mutableStateOf<Size?>(null) }
@@ -262,14 +288,69 @@ private fun VerticalPageItem(
             .toList()
     }
 
+    // M14 已选中定格：当前选中草稿（本页）反解归一化 quads（S2，与 S1 同色）
+    val activeQuads: List<FloatArray> = remember(activeSelection, page) {
+        activeSelection
+            ?.takeIf { it.page == page }
+            ?.let { AnnotationAnchorCodec.decode(it.anchor)?.quads }
+            ?: emptyList()
+    }
+
     // 拖动选择状态：起止点（Box 坐标）+ 实时归一化 quads 预览
     var selStart by remember(page) { mutableStateOf<Offset?>(null) }
     var selEnd by remember(page) { mutableStateOf<Offset?>(null) }
     var selQuads by remember(page) { mutableStateOf<List<FloatArray>>(emptyList()) }
     // M14：页 Box 窗口坐标锚点（选区起点 → 屏幕坐标，气泡菜单定位）
     var boxOrigin by remember(page) { mutableStateOf(Offset.Zero) }
+    // M14 手柄拖动：命中端（HANDLE_NONE/START/END）
+    var draggingHandle by remember(page) { mutableStateOf(HANDLE_NONE) }
+    // 手柄中心：拖某端时该端跟随 selEnd（touch），其余由 effective 反算
+    val effectiveQuads = if (draggingHandle != HANDLE_NONE) selQuads else activeQuads
+    val startHandleCenter: Offset? = when {
+        draggingHandle == HANDLE_START -> selEnd
+        else -> effectiveQuads.firstOrNull()?.let { f -> Offset(f[0] * widthPx, (f[1] + f[5]) / 2f * heightPx) }
+    }
+    val endHandleCenter: Offset? = when {
+        draggingHandle == HANDLE_END -> selEnd
+        else -> effectiveQuads.lastOrNull()?.let { l -> Offset(l[6] * widthPx, (l[3] + l[7]) / 2f * heightPx) }
+    }
     val selectable = core != null && sx > 0f && sy > 0f
     val scope = rememberCoroutineScope()
+    // M14 统一提交：按起止点重算选区并上报（长按选择与手柄拖动共用，消除重复）
+    val submitSelection: (Offset, Offset) -> Unit = { start, end ->
+        val origin = boxOrigin
+        selStart = null
+        selEnd = null
+        selQuads = emptyList()
+        draggingHandle = HANDLE_NONE
+        scope.launch {
+            val result = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
+            if (result != null && result.quads.isNotEmpty()) {
+                val draft = AnnotationDraft(
+                    page = page,
+                    anchor = AnnotationAnchorCodec.encodeNormalized(result.quads),
+                    text = result.text,
+                )
+                // 气泡锚点 = 选区首 quad 左上角（窗口坐标）
+                val first = result.quads.first()
+                val anchor = origin + Offset(first[0] * widthPx, first[1] * heightPx)
+                onTextSelected(TextSelectionEvent(draft, anchor.x, anchor.y))
+            }
+        }
+    }
+    // M14 取消手柄拖动：仅清理状态，不提交
+    val cancelHandleDrag: () -> Unit = {
+        selStart = null
+        selEnd = null
+        selQuads = emptyList()
+        draggingHandle = HANDLE_NONE
+    }
+    // M14 手柄松手：有起止点则提交，否则按取消处理
+    val finishHandleDrag: () -> Unit = {
+        val start = selStart
+        val end = selEnd
+        if (start != null && end != null) submitSelection(start, end) else cancelHandleDrag()
+    }
 
     // 拖动中实时重算选区（松手由 onDragEnd 直接按起止点重算提交，不依赖异步 state）
     LaunchedEffect(page, selStart, selEnd, sx, sy) {
@@ -303,24 +384,7 @@ private fun VerticalPageItem(
                             onDragEnd = {
                                 val start = selStart
                                 val end = selEnd
-                                val origin = boxOrigin
-                                selStart = null
-                                selEnd = null
-                                selQuads = emptyList()
-                                if (start != null && end != null) {
-                                    scope.launch {
-                                        val result = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
-                                        if (result != null && result.quads.isNotEmpty()) {
-                                            val draft = AnnotationDraft(
-                                                page = page,
-                                                anchor = AnnotationAnchorCodec.encodeNormalized(result.quads),
-                                                text = result.text,
-                                            )
-                                            val anchor = origin + start
-                                            onTextSelected(TextSelectionEvent(draft, anchor.x, anchor.y))
-                                        }
-                                    }
-                                }
+                                if (start != null && end != null) submitSelection(start, end)
                             },
                             onDragCancel = {
                                 selStart = null
@@ -338,7 +402,12 @@ private fun VerticalPageItem(
                 savedQuads.forEach { (n, color) ->
                     drawQuadPath(n, Color(color).copy(alpha = HIGHLIGHT_ALPHA))
                 }
-                selQuads.forEach { n -> drawQuadPath(n, HIGHLIGHT_FILL) }
+                // S1 选择中 + S2 已选中（拖手柄时 selQuads 即实时选区，避免与旧 activeQuads 叠加）
+                val selectionFill = selectionColor.copy(alpha = SELECTION_ALPHA)
+                selQuads.forEach { n -> drawQuadPath(n, selectionFill) }
+                if (draggingHandle == HANDLE_NONE) {
+                    activeQuads.forEach { n -> drawQuadPath(n, selectionFill) }
+                }
             },
         contentAlignment = Alignment.Center,
     ) {
@@ -355,6 +424,36 @@ private fun VerticalPageItem(
                 color = MaterialTheme.colorScheme.error,
             )
             else -> CircularProgressIndicator()
+        }
+
+        // M14 手柄（Compose 化：可拖动 + a11y），仅已选中时显示
+        startHandleCenter?.let { center ->
+            SelectionHandle(
+                center = center,
+                color = selectionColor,
+                description = "调整选区起点",
+                onDrag = { touch ->
+                    draggingHandle = HANDLE_START
+                    selStart = touch
+                    selEnd = endHandleCenter
+                },
+                onDragEnd = finishHandleDrag,
+                onDragCancel = cancelHandleDrag,
+            )
+        }
+        endHandleCenter?.let { center ->
+            SelectionHandle(
+                center = center,
+                color = selectionColor,
+                description = "调整选区终点",
+                onDrag = { touch ->
+                    draggingHandle = HANDLE_END
+                    selStart = startHandleCenter
+                    selEnd = touch
+                },
+                onDragEnd = finishHandleDrag,
+                onDragCancel = cancelHandleDrag,
+            )
         }
     }
 }
@@ -399,4 +498,41 @@ private fun DrawScope.drawQuadPath(n: FloatArray, color: Color) {
     path.lineTo(n[4] * size.width, n[5] * size.height)
     path.close()
     drawPath(path, color)
+}
+
+/** M14 选择手柄：圆形（primary + 白描边），可拖动，带 a11y 语义（Box 局部坐标定位） */
+@Composable
+@Suppress("LongParameterList")
+private fun BoxScope.SelectionHandle(
+    center: Offset,
+    color: Color,
+    description: String,
+    onDrag: (Offset) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val boxSize = with(density) { HANDLE_BOX_DP.dp }
+    val halfPx = with(density) { HANDLE_BOX_DP.dp.toPx() / 2 }
+    Box(
+        modifier = Modifier
+            .align(Alignment.TopStart)
+            .offset { IntOffset((center.x - halfPx).roundToInt(), (center.y - halfPx).roundToInt()) }
+            .size(boxSize)
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDrag = { change, _ ->
+                        change.consume()
+                        onDrag(change.position)
+                    },
+                    onDragEnd = { onDragEnd() },
+                    onDragCancel = { onDragCancel() },
+                )
+            }
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(Modifier.size(HANDLE_VISUAL_DP.dp).clip(CircleShape).background(Color.White))
+        Box(Modifier.size((HANDLE_VISUAL_DP - HANDLE_STROKE_DP * 2).dp).clip(CircleShape).background(color))
+    }
 }

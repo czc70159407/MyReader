@@ -74,6 +74,7 @@ PDF 内长按拖动选中文本 → 松手弹操作气泡（朗读 / 高亮 / �
 1. **`not bound to TTS engine`（致命）**：`AndroidManifest.xml` 缺 `<queries>` TTS_SERVICE 声明，Android 11+ 包可见性导致 `TextToSpeech` 无法发现系统引擎，朗读静默失败。加 `<queries>` 声明修复。
 2. **初始化未就绪静默失败**：`Tts.speak` 在 `onInit` 完成前调用返回 true 但无声音。改为 PENDING/READY/FAILED 三态 + 待播队列（`onInit` 成功后自动播放；FAILED 返回 false 提示）。
 3. **气泡定位偏上约 220px**：水平模式用 `pv.left/top`（父容器坐标）当窗口坐标，缺状态栏/内容区偏移。改用 `getLocationInWindow` 换算（真机复验气泡已紧贴选中文字）。
+4. **选中后看不到选中内容（用户反馈）**：渲染端松手即清空选区预览（M12 靠「松手即落库高亮」接管显示，M14 改为弹气泡不落库，导致无任何视觉反馈）。修复：`ReaderScreen` 把当前选中草稿附加到 `annotations` 参数作为「临时高亮」回放，气泡关闭（动作执行/取消）即移除。真机复验：水平 PDF（原生 annotation 回放）与垂直 EPUB（overlay 回放）选中均显示黄色高亮；点「朗读」后气泡关闭、高亮同步清除（未落库位置无残留）。
 
 证据：`/sdcard/Download/MyReaderTest/m14/{png,xml}/`（9 张截图 + 31 个 UI dump），本地副本 `tools/acceptance/verify/m14/`；测试夹具 `m14_tts_test.pdf`（生成脚本 `tools/acceptance/gen_m14_test_pdf.py`）。
 

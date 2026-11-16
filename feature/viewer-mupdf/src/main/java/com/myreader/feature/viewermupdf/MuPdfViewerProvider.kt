@@ -3,10 +3,12 @@ package com.myreader.feature.viewermupdf
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
@@ -37,12 +39,15 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         onPageCountChanged: (Int) -> Unit,
         onTapContent: () -> Unit,
         onUserScroll: () -> Unit,
-        onTextSelected: (TextSelectionEvent) -> Unit,
+        onTextSelected: (TextSelectionEvent?) -> Unit,
         annotations: List<AnnotationDraft>,
+        activeSelection: AnnotationDraft?,
         modifier: Modifier,
     ) {
         val muDoc = doc as MuPdfDocument
         val reflowable = muDoc.reflowable
+        // M14 选中视觉反馈：选区随主题色（水平 AndroidView 无法自取 Compose 主题色，故在此层取好传入）
+        val selectionColor = MaterialTheme.colorScheme.primary
         if (muDoc.pageCount <= 0) {
             // 空文档/页数未知：ReaderView 依赖 adapter count，兜底不进桥接
             Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -62,6 +67,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 onUserScroll = onUserScroll,
                 onTextSelected = onTextSelected,
                 annotations = annotations,
+                activeSelection = activeSelection,
+                selectionColor = selectionColor,
                 modifier = modifier,
             )
             // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）。
@@ -75,6 +82,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 onUserScroll = onUserScroll,
                 onTextSelected = onTextSelected,
                 annotations = annotations,
+                activeSelection = activeSelection,
+                selectionColor = selectionColor,
                 modifier = modifier,
             )
         }

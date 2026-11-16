@@ -242,9 +242,11 @@ fun ReaderScreen(
                         onUserScroll = { if (!touchExplorationEnabled) topBarVisible = false },
                         // M14 文本朗读：选中完成 → 弹操作气泡（朗读/高亮/复制）；高亮动作内走 addAnnotation
                         onTextSelected = { event -> selectionMenuTarget = event },
+                        // 已存高亮回放（持久标注）；当前选中经 activeSelection 分通道绘制（主题色选区 + 手柄）
                         annotations = annotations.map {
                             AnnotationDraft(page = it.page, anchor = it.anchor, text = it.text, color = it.color)
                         },
+                        activeSelection = selectionMenuTarget?.draft,
                         modifier = Modifier.fillMaxSize(),
                     )
                     // M12 沉浸模式：顶栏 overlay + 淡入淡出——内容区尺寸恒定（不 relayout 不闪）；
@@ -394,7 +396,6 @@ fun ReaderScreen(
                         scope.launch { snackbarHostState.showSnackbar("已复制") }
                         selectionMenuTarget = null
                     },
-                    onDismiss = { selectionMenuTarget = null },
                 )
             }
         }

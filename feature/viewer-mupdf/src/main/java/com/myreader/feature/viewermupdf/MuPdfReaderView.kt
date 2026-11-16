@@ -325,11 +325,9 @@ internal fun MuPdfReaderView(
                     // 泪滴主体圆心 → 反解回尖点（选区边界）位置
                     val tx = (x - pv.left) / sx
                     val ty = (y - pv.top - drop) / sy
-                    val sel = if (draggingHandle == HANDLE_START) {
-                        core.selectText(page, tx, ty, fixedX, fixedY)
-                    } else {
-                        core.selectText(page, fixedX, fixedY, tx, ty)
-                    }
+                    // M14 方案 B：字符级精确选择（walk 逐字截取），替代矩形 highlight——
+                    // 消除「手指微抖跨行 → 选区跳到相邻行行末」；反向由 min/max 自动处理
+                    val sel = core.selectTextByChars(page, fixedX, fixedY, tx, ty)
                     adjustingQuads = sel?.quads
                     adjustingText = sel?.text
                     invalidate()

@@ -101,3 +101,84 @@ PDF 内长按拖动选中文本 → 松手弹操作气泡（朗读 / 高亮 / �
 | 签名变更波及 TXT / 测试 Fake | 已同步适配 + epub 回归验收 |
 | TTS 生命周期泄漏 | `DisposableEffect` + `shutdown`（内含 stop） |
 | 气泡坐标失效（旋转/分屏） | `PopupPositionProvider` 按窗口 size clamp |
+
+## 8. 方案 B：拖柄词级精确选择（规划，2026-11-16 修订版）
+
+> 背景（真机反馈）：拖动手柄时手柄偶尔乱窜、忽然到行末。根因：拖柄重算用 `selectText` → `StructuredText.highlight(矩形)`，矩形选择在手指 y 微抖跨行时会把选区末尾扩展到相邻行行末；泪滴主体位于「选区下沿 + 13dp」的下一行区域，`y - drop` 反解稍有偏差即触发跨行。
+
+### 8.1 目标与范围
+
+- **目标**：拖柄时选区吸附词边界、平滑跨行、不乱窜。
+- **范围**：水平 PDF（`MuPdfReaderView`）+ 垂直 EPUB（`MuPdfVerticalView`）；`MuPDFCore` 新增词级选择 API。
+- **非目标**：不改长按框选 `selectText`；不改选区视觉（泪滴/菜单）；不解决「垂直手柄 vs LazyColumn 滚动抢占」（既有风险，另议）。
+
+### 8.2 核心思路
+
+拖柄重算从「矩形 `highlight`」改为「词级 `highlightSelection`」：fitz 的 `highlightSelection(a, b)`（若可用）按阅读顺序返回「a 到 b 的连续文本」quads，天然跨行且不含无关行。
+
+### 8.3 S0 可行性门禁（4 项，任一不过 → 回退方案 A）
+
+| # | 验证项 | 方式 | 不过的处置 |
+|---|---|---|---|
+| V1 | `StructuredText.highlightSelection`/`copySelection` **存在** | 编译探针（引用方法编译）或 `javap` 反编译 aar | 方案 B 重构（`snapSelection`×2 + 手动拼 quads）或降级方案 A |
+| V2 | JNI **不崩溃**（`search` 曾 `jobject invalid local reference` 崩溃，同源风险） | 真机调用 | 降级方案 A |
+| V3 | **反向端点**语义（touch < fixed） | 真机拖动验证 | 实现端点交换 |
+| V4 | **空选区**（空白处 `snapSelection` 返回 null） | 真机拖到空白区 | 松手保持原选区（不清除） |
+
+### 8.4 吸附粒度决策
+
+- 英文：`SELECT_WORDS`（词吸附）。
+- 中文/CJK：fitz 无中文分词器，`SELECT_WORDS` 对无空格中文可能退化为整段 → S0 验证；若退化严重，中文改 `SELECT_CHARS`（字符级）。
+- 决策点：S0 真机验证后定，写入实现注释。
+
+### 8.5 边界与降级
+
+- 拖到空白处/无效位置：`selectTextByWords` 返回 null → 预览清空、松手**保持原选区**（不提交空）。
+- 反向拖动（越过固定端）：端点交换后调 `highlightSelection`。
+- 拖柄跨页：不跨页（拖动中手势不翻页），明确为范围约束。
+
+### 8.6 阶段与交付物
+
+| 阶段 | 内容 | 交付物 | 判据 |
+|---|---|---|---|
+| S0 | 4 项门禁验证 | 探针结论（V1~V4） | 4/4 通过或转方案 A |
+| S1 | `MuPDFCore.selectTextByWords` | API + 边界注释 | 编译 + 真机选区正确 |
+| S2 | 水平接入 `adjustSelection` | 改造 + 证据 | 拖柄不乱窜、平滑跨行 |
+| S3 | 垂直接入 `selectQuads` | 改造 + 证据 | EPUB 同上 |
+| S4 | 测试验收 | 单测/build/真机清单 | 全绿 |
+| S5 | 文档 + 提交 | `docs` 更新 + dev 推送 | 推送成功 |
+
+### 8.7 测试策略（修正）
+
+- `MuPDFCore` 依赖 native，**无法 JVM 单测**；「端点选择/方向判断」等纯逻辑可下沉 `core:*` 单测，JNI 部分全部真机覆盖。
+- **回归**：①长按框选 `selectText` 行为不变；②高亮落库 `replayAnnotations` 不变。
+
+### 8.8 风险与应对
+
+| 风险 | 应对 |
+|---|---|
+| V1 方法不存在 / V2 JNI 崩溃 | 降级方案 A（拖柄锁行、只水平调整，1 行改动） |
+| CJK 分词退化 | S0 验证；退化严重则中文改 `SELECT_CHARS` |
+| 性能（每 MOVE 多次 JNI 遍历） | 复用同一 `StructuredText` 实例；真机实测卡顿 |
+| 改 third-party 的 AGPL/边界 | 仅在 `selectText` 旁加方法，不改底层 C |
+| 回退门槛 | S0 4 项任一不过 → 转方案 A，不硬上 |
+
+### 8.9 已知限制（预期）
+
+- 中文词吸附精度依赖 fitz 分词（可能字符级）。
+- 拖柄不跨页。
+- 空白处拖动不改变选区。
+
+### 8.10 S0 结论（2026-11-16 执行）
+
+| 项 | 结果 |
+|---|---|
+| V1 | ❌ **`StructuredText.highlightSelection`/`copySelection` 在 fitz 1.28.2 不存在**（编译报「找不到符号」）。改走 **`walk(StructuredTextWalker)`**：`onChar` 回调提供每字符精确 Quad，实现 `selectTextByChars`（字符级截取）——编译通过 |
+| V2 | ✅ 无 JNI 崩溃（历史 FATAL 均为 `com.heytap.cloud`，非本应用） |
+| V3 | ✅ 反向拖动生效（选区 100-780 → 100-238，`min/max` 自动处理） |
+| V4 | ✅ 拖到空白不崩溃（吸附最近字符，选区 y 721-1055） |
+| 核心 | ✅ 微抖不乱窜（选区 y 721-765 保持）；✅ 平滑跨行（y 721-837 扩展到第 2 行） |
+
+**实现落点**：`MuPDFCore.selectTextByChars`（walk 逐字）+ 水平 `adjustSelection` / 垂直 `selectQuads` 已切换。证据：`m14_62~66`（基线/微抖/跨行/反向/空白）。
+
+**性能优化（S0 后追加）**：页文本结构（字符 Quad + unicode）按页缓存（`getTextStructure`，`TextStructure` 内部类），拖柄高频 MOVE 只做内存索引查找，**不再每次 `toStructuredText` + walk 全页**；翻页时按 `textStructurePage` 自动重建。验证：同页拖动选区正确（`m14_67`）、翻页后重建正常（`m14_68`）。

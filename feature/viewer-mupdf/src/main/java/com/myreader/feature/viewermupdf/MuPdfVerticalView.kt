@@ -488,8 +488,9 @@ private suspend fun selectQuads(
     ptHeight: Float,
 ): SelectionResult? {
     if (core == null || sx <= 0f || sy <= 0f || ptWidth <= 0f || ptHeight <= 0f) return null
+    // M14 方案 B：字符级精确选择（walk 逐字截取），消除矩形 highlight 的跨行跳变
     val sel = withContext(Dispatchers.Default) {
-        core.selectText(page, start.x / sx, start.y / sy, end.x / sx, end.y / sy)
+        core.selectTextByChars(page, start.x / sx, start.y / sy, end.x / sx, end.y / sy)
     } ?: return null
     val quads = sel.quads.map { q ->
         floatArrayOf(

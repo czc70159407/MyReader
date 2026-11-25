@@ -121,6 +121,48 @@
 
 **兼容性**：选区 / 高亮 / 书签的归一化坐标基准统一为 layout 画布，与渲染基准一致；M16 高亮锚点 v2 为文本指纹（不依赖尺寸）、v1 已降级不绘制；M11 `cp:` 比例锚点不依赖尺寸；PDF 路径零影响。
 
-**验证**：`.\gradlew.bat build` 全绿（1056 tasks，含 detekt 与全部单测）。**待真机验收**：EPUB 调字号后页宽稳定、内容不变形、横竖屏切换无漂移；PDF / EPUB 选区与高亮坐标正确。
+**验证**：`.\gradlew.bat build` 全绿（1056 tasks，含 detekt 与全部单测）。**真机验收通过（PKC110 / Android 17 / API 37，2026-11-25，6/6）**：
+
+| # | 场景 | 结果 | 证据 |
+|---|---|---|---|
+| 1 | EPUB 垂直字号 10→13 | 页数 45→93，内容不变形 | `05_reader_large.png` |
+| 2 | 横屏水平字号 13/10 | `left/em` = 23.62 / 23.50（常数 → 页面画布固定为 layout 尺寸） | `06` / `08` |
+| 3 | 内容等比映射 | 各图 `content_w + left + right_margin = 屏幕宽` | `02/05/06/08` |
+| 4 | 选区坐标 | 选区精准落在正文行，手柄 `[158,645][312,799]` | `11_vertical_selection.png` |
+| 5 | 高亮落点 | 跨行高亮正确覆盖选区 | `12_highlight.png` |
+| 6 | PDF 回归 | 渲染正常 + 150% 缩放正常 + 面板显示缩放档 | `13/14/15` |
+
+证据落盘 `/sdcard/Download/MyReaderTest/m15_p0/`（15 份），本地 `tools/acceptance/verify/m15_p0/`。设备状态已还原（`user_rotation=0`、`font_scale=1.0`、`density=560`）。
+
+### 9.1 行宽固定（行宽随字号漂移的二次修复，同日用户反馈后发现）
+
+**现象**：首次修复后「页面画布」已稳定，但**行宽（内容区宽度）仍随字号变化**——小字号行宽宽、大字号行宽窄（用户反馈「行宽问题依然存在」）。
+
+**根因**：MuPDF 内置默认 CSS 的页面边距为 **em 单位**（实测 `left/em` 恒为 23.5px，即 `left = 3em × zoom`），故「内容宽度 = 页宽 − 6em」随字号缩放。这与页面画布无关，是排版 CSS 层面的问题。
+
+**修复（fork `MuPDFCore.layout()` 内，layout 前调用）**：
+
+```java
+if (reflowable) {
+    doc.style(false, "@page { margin: 16pt; } body { padding: 0; margin: 0; }");
+}
+```
+
+**关键发现（探索记录）**：
+- `Document.style(boolean disable, String css)` 是 fitz 暴露的用户 CSS 入口（javap 确认）；
+- `disable=false` 时用户 CSS 与默认 CSS **叠加**——`body { padding: 16pt }` 会让边距变大而非覆盖；
+- **`@page` 规则可覆盖默认**（`@page { margin: 0 }` 使边距归零、页数 33），但 `body` 默认 `padding: 1em` 仍在，需显式归零；
+- 最终 `@page { margin: 16pt }`（固定物理边距）+ `body { padding: 0 }` → 内容区宽度恒定；
+- `em=6` 的 12 页是**正确排版**（页数 ∝ em²），此前误判为「未重排」。
+- **边界语义**：`body { padding: 0; margin: 0 }` 会覆盖用户 EPUB 自带的 body 边距（固定行宽的有意取舍，个别艺术排版 EPUB 会丢失自定义内边距）；`@page { margin }` 是页面级边距、`body { padding }` 是内容级内边距，二者叠加后内容区 = 页宽 − 2×16pt。
+
+**验收（2026-11-25）**：
+
+| 场景 | 字号 | 左边距（px） |
+|---|---|---|
+| 竖屏垂直 | 6 / 10 / 13 | **126 / 125 / 126** |
+| 横屏水平 | 13 / 10 | **128 / 125** |
+
+三档左边距恒定（16pt × 560/72 ≈ 124.5px），行宽不再随字号变化；PDF 路径不受影响（`else` 分支）。证据 `30/31/32/33/34/35/36/37`。
 
 > 工作规则 11 提醒：fork 子模块改动需 commit 后 `git -C third-party/mupdf-android-viewer push fork myreader-patches`，并确认主仓 gitlink 与 fork 顶端一致（工作规则 9：commit/push 需用户授权）。

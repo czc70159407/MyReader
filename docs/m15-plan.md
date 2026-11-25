@@ -98,3 +98,29 @@
 
 - 预研：MuPDF 页内容 bbox（`StructuredText` / 页内对象并集 + 安全内缩）；当前 `MuPDFCore` 未暴露，需 fork 补 API。
 - 建议全书统一裁切（各页 bbox 并集），避免翻页视觉跳动；与缩放正交可组合；高亮/选区归一化 quad 锚点不受影响（仅渲染 offset 变化）。
+
+## 9. P0 修复：改字号后文档宽度漂移（2026-11-25）
+
+**现象**：EPUB 调整字号档位后，页面在屏幕上的显示宽度（水平分页）与内容排版宽度（垂直滚动）发生变化；横屏水平模式最明显，短内容页 / 图文混排页尤甚。
+
+**根因链**：
+
+1. `layout(w, h, em)` 的 `w`/`h`（视口 pt）在换字号时**不变**，但下游渲染完全绕过了 `w`；
+2. `MuPDFCore.getPageSize()` 返回 `page.getBounds()`（内容边界 bbox），其宽度 = 最长文本行宽——按词换行时恒 < `w` 且随 `em` 变化（`em` 决定 glyph advance，换行残差随字号缩放）；
+3. 水平 `PageView.setPage` 用 `mSourceScale = min(parentW/bboxW, parentH/bboxH)` 做整页适配：竖屏宽度受限时页宽稳定，**横屏高度受限时页宽 = parentH × (bboxW/bboxH)，随 bbox 跟随字号漂移**；
+4. 垂直 `VerticalPageItem` 用 `ratio = bboxH/bboxW` 定页高、`sx = widthPx/bboxW` 定内容缩放，字号变化 → bbox 变化 → 页高 / 内容宽度变化；
+5. `MuPDFCore.drawPage` 按 `page.getBounds()` 非等比拉伸（`xscale = pageW/bboxW, yscale = pageH/bboxH`）——若只改缩放基准而不改此处，会导致内容非等比变形。
+
+**修复（方案 A：fork `MuPDFCore` 两处，上层零改动）**：
+
+| 改动 | 内容 |
+|---|---|
+| `getPageSize()` | reflowable 返回 `layoutW × layoutH`（固定布局画布），不再返回内容 bbox；固定版式仍返回 bbox（真实页面尺寸） |
+| `drawPage()` | reflowable 以 `layoutW × layoutH` 为缩放基准（`xscale = pageW/(layoutW×zoom)`），内容在画布内等比渲染、不变形；固定版式仍按 bbox |
+| `getLayoutSize()`（新增） | 显式暴露布局画布尺寸，语义澄清，供上层未来使用 |
+
+**兼容性**：选区 / 高亮 / 书签的归一化坐标基准统一为 layout 画布，与渲染基准一致；M16 高亮锚点 v2 为文本指纹（不依赖尺寸）、v1 已降级不绘制；M11 `cp:` 比例锚点不依赖尺寸；PDF 路径零影响。
+
+**验证**：`.\gradlew.bat build` 全绿（1056 tasks，含 detekt 与全部单测）。**待真机验收**：EPUB 调字号后页宽稳定、内容不变形、横竖屏切换无漂移；PDF / EPUB 选区与高亮坐标正确。
+
+> 工作规则 11 提醒：fork 子模块改动需 commit 后 `git -C third-party/mupdf-android-viewer push fork myreader-patches`，并确认主仓 gitlink 与 fork 顶端一致（工作规则 9：commit/push 需用户授权）。

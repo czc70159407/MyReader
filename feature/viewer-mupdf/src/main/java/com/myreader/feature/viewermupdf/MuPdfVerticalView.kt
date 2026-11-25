@@ -49,6 +49,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.artifex.mupdf.viewer.MuPDFCore
+import com.myreader.core.document.AnnotationAnchorV2Codec
 import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.ProgressPayload
@@ -135,6 +136,8 @@ internal fun MuPdfVerticalView(
 
     // 滚动回流守卫：初始 = 恢复锚点（page + 项内偏移）；snapshotFlow 发射时同步更新（见下方 collect）
     var lastEmitted by remember(doc) { mutableStateOf(initPage to initOffsetY) }
+    // M16：重排代次——relayout 完成后递增，驱动高亮文本匹配重算（页尺寸不变，需独立 key）
+    var layoutEpoch by remember(doc) { mutableStateOf(0) }
     // 恢复完成前抑制进度回写，避免首帧 (0,0) 覆盖库中进度（与 TxtViewerProvider 同款守卫，T4；
     // 此前仅靠 lastEmittedPage 初值 + VM 600ms 防抖间接兜底，同类竞态两视图封堵程度不一致）
     var restored by remember(doc) { mutableStateOf(false) }
@@ -195,6 +198,14 @@ internal fun MuPdfVerticalView(
                 val currentPage = if (restored) listState.firstVisibleItemIndex else initPage
                 val remapped = withContext(Dispatchers.Default) {
                     runCatching { c.layout(currentPage, lw, lh, fontScale.em.toInt()) }
+                        .onFailure { e ->
+                            // 重排失败不得静默（「切字号页面无变化」类问题的唯一诊断线索）
+                            android.util.Log.w(
+                                "MuPdfRelayout",
+                                "vertical layout($lw x $lh em=${fontScale.em}) failed",
+                                e,
+                            )
+                        }
                         .getOrDefault(currentPage)
                 }
                 // 重排后页点尺寸全变：位图与页尺寸缓存一并失效重建
@@ -202,6 +213,7 @@ internal fun MuPdfVerticalView(
                 val safe = remapped.coerceIn(0, (doc.pageCount - 1).coerceAtLeast(0))
                 listState.scrollToItem(safe, 0)
                 latestPageCountCallback(doc.pageCount)
+                layoutEpoch++   // M16：重排完成 → 高亮文本匹配重算
             } else {
                 listState.scrollToItem(initPage, initOffsetY)
             }
@@ -223,6 +235,7 @@ internal fun MuPdfVerticalView(
                     loader = loader,
                     page = page,
                     widthPx = widthPx,
+                    layoutEpoch = layoutEpoch,
                     core = core,
                     annotations = annotations,
                     onTextSelected = onTextSelected,
@@ -266,6 +279,7 @@ private fun VerticalPageItem(
     loader: VerticalPageLoader,
     page: Int,
     widthPx: Int,
+    layoutEpoch: Int,
     core: MuPDFCore?,
     annotations: List<AnnotationDraft>,
     onTextSelected: (TextSelectionEvent?) -> Unit,
@@ -315,27 +329,31 @@ private fun VerticalPageItem(
     val sx = if (ptWidth > 0f) widthPx / ptWidth else 0f
     val sy = if (ptHeight > 0f) heightPx / ptHeight else 0f
 
-    // 当前页已存高亮（归一化 quad + 颜色）
-    val savedQuads: List<Pair<FloatArray, Int>> = remember(annotations, page) {
+    // 当前页已存高亮：M16 v2 按文本指纹重建，**不按 a.page 过滤**——重排后同一内容可能落到
+    // 不同页（原页码只用于 PDF v1 与面板跳转）；epub 的 v1 旧锚点无法重建 → 不绘制（降级）
+    val savedQuads: List<Pair<FloatArray, Int>> = remember(annotations, page, ptWidth, ptHeight, layoutEpoch) {
         annotations.asSequence()
-            .filter { it.page == page }
             .flatMap { a: AnnotationDraft ->
-                val decoded = AnnotationAnchorCodec.decode(a.anchor)
-                if (decoded == null) {
-                    emptySequence()
-                } else {
-                    decoded.quads.asSequence().map { q -> q to a.color }
+                val v2 = AnnotationAnchorV2Codec.decode(a.anchor)
+                when {
+                    v2 != null -> resolveV2Quads(core, page, a, v2, ptWidth, ptHeight)
+                    a.page == page -> resolveV1Quads(core, a)
+                    else -> emptySequence()
                 }
             }
             .toList()
     }
 
-    // M14 已选中定格：当前选中草稿（本页）反解归一化 quads（S2，与 S1 同色）
-    val activeQuads: List<FloatArray> = remember(activeSelection, page) {
-        activeSelection
-            ?.takeIf { it.page == page }
-            ?.let { AnnotationAnchorCodec.decode(it.anchor)?.quads }
-            ?: emptyList()
+    // M14 已选中定格：当前选中草稿反解 quads（S2，与 S1 同色）；M16 v2 与已存高亮同路径重建
+    val activeQuads: List<FloatArray> = remember(activeSelection, page, ptWidth, ptHeight, layoutEpoch) {
+        activeSelection?.let { draft ->
+            val v2 = AnnotationAnchorV2Codec.decode(draft.anchor)
+            when {
+                v2 != null -> resolveV2Quads(core, page, draft, v2, ptWidth, ptHeight).map { it.first }.toList()
+                draft.page == page -> resolveV1Quads(core, draft).map { it.first }.toList()
+                else -> emptyList()
+            }
+        } ?: emptyList()
     }
 
     // 拖动选择状态：起止点（Box 坐标）+ 实时归一化 quads 预览
@@ -368,9 +386,12 @@ private fun VerticalPageItem(
         scope.launch {
             val result = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
             if (result != null && result.quads.isNotEmpty()) {
+                // M16：reflowable 优先存文本指纹锚点 v2（换字号/旋转后可重建）；不可用时回落 v1
+                val anchorJson = buildAnchorV2(core, page, result.text)
+                    ?: AnnotationAnchorCodec.encodeNormalized(result.quads)
                 val draft = AnnotationDraft(
                     page = page,
-                    anchor = AnnotationAnchorCodec.encodeNormalized(result.quads),
+                    anchor = anchorJson,
                     text = result.text,
                 )
                 // 锚点 = 选区中心 X + 选区上沿 Y（窗口坐标）：菜单居中于选区
@@ -508,6 +529,67 @@ private fun VerticalPageItem(
             )
         }
     }
+}
+
+/** M16：文本指纹前后文长度（字符） */
+private const val CONTEXT_CHARS = 20
+
+/**
+ * M16：v2 锚点 → 当前页绘制 quads（归一化 8 分量）。
+ * 按文本指纹在当前页重建，**不限原始页码**——重排后内容跨页时各页各画命中的一段。
+ */
+@Suppress("LongParameterList", "ReturnCount")
+private fun resolveV2Quads(
+    core: MuPDFCore?,
+    page: Int,
+    a: AnnotationDraft,
+    v2: AnnotationAnchorV2Codec.AnchorV2,
+    ptWidth: Float,
+    ptHeight: Float,
+): Sequence<Pair<FloatArray, Int>> {
+    if (core == null || ptWidth <= 0f || ptHeight <= 0f) return emptySequence()
+    val raw = runCatching { core.findTextQuads(page, v2.quote, v2.pre, v2.post) }.getOrNull()
+        ?: return emptySequence()
+    return raw.asSequence().map { q ->
+        floatArrayOf(
+            q.ul_x / ptWidth, q.ul_y / ptHeight,
+            q.ur_x / ptWidth, q.ur_y / ptHeight,
+            q.ll_x / ptWidth, q.ll_y / ptHeight,
+            q.lr_x / ptWidth, q.lr_y / ptHeight,
+        ) to a.color
+    }
+}
+
+/** M16：v1 锚点（归一化 quad）——仅固定版式（PDF 垂直）按旧路径绘制；epub 旧锚点降级不绘制。 */
+@Suppress("ReturnCount")
+private fun resolveV1Quads(core: MuPDFCore?, a: AnnotationDraft): Sequence<Pair<FloatArray, Int>> {
+    if (core != null && core.isReflowable()) return emptySequence()
+    val decoded = AnnotationAnchorCodec.decode(a.anchor) ?: return emptySequence()
+    return decoded.quads.asSequence().map { it to a.color }
+}
+
+/**
+ * M16：构建文本指纹锚点 v2（epub 垂直模式）。
+ * null = 不可用（非 reflowable / Location 不可得 / quote 空）→ 调用方回落 v1。
+ * quote 取「当前页文本中匹配到的实际子串」，保证重建时能在页文本内命中。
+ */
+@Suppress("ReturnCount")
+private fun buildAnchorV2(core: MuPDFCore?, page: Int, quoteText: String): String? {
+    if (core == null || !core.isReflowable()) return null
+    // M16：与 fork findTextQuads 的 squash 空间一致——删除全部空白
+    val normalized = quoteText.replace(Regex("\\s+"), "")
+    if (normalized.isEmpty()) return null
+    val loc = runCatching { core.pageToLocation(page) }.getOrNull() ?: return null
+    val pageText = runCatching { core.pageText(page) }.getOrDefault("")
+    val idx = pageText.indexOf(normalized)
+    val quote = if (idx >= 0) pageText.substring(idx, idx + normalized.length) else normalized
+    val pre = if (idx >= 0) pageText.substring((idx - CONTEXT_CHARS).coerceAtLeast(0), idx) else null
+    val post = if (idx >= 0) {
+        pageText.substring((idx + quote.length).coerceAtMost(pageText.length))
+    } else {
+        null
+    }
+    return AnnotationAnchorV2Codec.encode(loc[0], loc[1], quote, pre, post)
 }
 
 /** 选择结果：归一化 quads（每项 8 个 0..1 值）+ 选中文本快照 */

@@ -9,11 +9,13 @@ package com.myreader.core.model
  */
 @Suppress("MagicNumber")
 enum class ReaderFontScale(val em: Float, val label: String) {
-    SMALL(8f, "小"),
-    MEDIUM_SMALL(9f, "较小"),
+    // 档位间距须保证相邻档视觉可辨（真机教训：原 8/9/10 相邻仅差 12.5%，用户切「小↔较小」无感误判为功能失效）；
+    // 现相邻差 33%/25%/30%/23%，标准=10 与 MuPDF 默认排版对齐（零回归）。
+    SMALL(6f, "小"),
+    MEDIUM_SMALL(8f, "较小"),
     DEFAULT(10f, "标准"),
-    MEDIUM_LARGE(12f, "较大"),
-    LARGE(14f, "大"),
+    MEDIUM_LARGE(13f, "较大"),
+    LARGE(16f, "大"),
     ;
 
     companion object {

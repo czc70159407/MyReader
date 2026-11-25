@@ -564,6 +564,8 @@ internal fun MuPdfReaderView(
                         layoutJob = scope.launch(Dispatchers.Default) {
                             val remapped = runCatching {
                                 core.layout(target, lw, lh, em)
+                            }.onFailure {
+                                android.util.Log.w("MuPdfRelayout", "horizontal layout($lw x $lh em=$em) failed", it)
                             }.getOrDefault(target)
                             withContext(Dispatchers.Main) {
                                 if (!isAttachedToWindow) return@withContext

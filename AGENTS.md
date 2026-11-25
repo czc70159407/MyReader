@@ -6,6 +6,7 @@
 
 ### 最近状态
 
+- **M16 高亮锚点文本化（2026-11-25，真机验收 4/4 通过）**：EPUB 高亮锚点从「归一化页面比例 quad（v1）」升级为「文本指纹 v2」（章节 Location 分量 + 选中文本 + 前后文，JSON 存 `annotations.anchor`，**无 Room schema 变更**）。渲染端对当前页遍历全部 v2 锚点按页文本匹配重建 quad（**不限原页码**，重排后内容换页自动命中）；旧 v1 锚点降级不绘制（无法迁移）。fork 新增 `findTextQuads`/`pageText`（空白不敏感 squash 匹配——真机实证 fitz 字符流空白输出随排版变化），`layout()` 清页字符缓存。修复 3 缺陷：①字符缓存不随重排失效；②v2 仍按原页码过滤；③重建早于异步 relayout（引入 `layoutEpoch` 代次）。`build` 全绿。真机 4/4：旧 v1 降级、新建贴合、EM10→EM6 换页仍精确（32 quad）、EM6→EM13 再精确（29 quad）。证据 `tools/acceptance/verify/m15/`（png 61/65/71/76）。详见 [docs/m16-plan.md](docs/m16-plan.md) §5.1/§5.2。
 - **M15 显示偏好（2026-11-25，真机验收通过 8/8）**：EPUB 阅读字号 5 档（EM 8/9/10/12/14；水平/垂直均整书重排，`core.layout(pagenum,…)` remap 保持位置）+ 固定版式默认缩放 5 档（fork `ReaderView.setDefaultScale`：立即生效 + refresh 回落该档；仅水平模式，路线 A 拍板）。双入口同源：设置页「显示」分区 + 阅读器顶栏「Aa」`DisplaySheet`（按 `reflowable` 分派，`FilterChip` 档位行）；偏好走 `SettingsPrefs.readerFontScale/readerZoomScale`（DataStore name 存储 + legacy key 兼容）。`.\gradlew.bat build` 全绿（detekt 修复 1 处 LongParameterList suppress；`SettingsPrefsTest` +3 例全绿）。P2 后置：TXT 字号、垂直 PDF 缩放、边距裁切（见 docs/m15-plan.md §8）。**真机验收通过（PKC110 / Android 17 / API 37，S1~S8 8/8，验收修复 0 缺陷）**：EPUB「大」档 27→75 页 remap 位置等义保持；杀进程重启持久化生效；水平模式横屏 84→竖屏 75 页分母随动；PDF 150% 放大 + 旋转回落精确 1.48≈1.5；设置页双向同源；309dp 顶栏 5 动作无溢出。**确认行为变更（非缺陷）**：垂直 EPUB 排版基准从固定 312×504pt 变为「视口宽 + 字号」（EM10：27→48 页），垂直旋转不重排。证据 `/sdcard/Download/MyReaderTest/m15/{png,xml}/`（46 份），本地 `tools/acceptance/verify/m15/`。详见 [docs/m15-plan.md](docs/m15-plan.md) §5.1。
 - **M14 文本朗读（2026-11-16，真机验收通过 10/10）**：PDF 内长按拖动选中文本 → 松手弹操作气泡（朗读 / 高亮 / 复制）。新增 `TextSelectionEvent(draft, anchorX, anchorY)` 携带屏幕锚点（纯 Float 坐标，不耦合 Compose 几何类型）（`core:document`，`onTextSelected` 签名 `(TextSelectionEvent) -> Unit`，`AnnotationDraft` 持久化语义不变）；`feature/reader/Tts.kt`（`Tts` + `detectLanguage`：含汉字 → zh-CN，否则 en-US）；`SelectionMenu.kt`（`Popup` 气泡对白框，20dp 圆角 + 三角尾巴 + 上下翻转，图标 `RecordVoiceOver`/`Brush`/`ContentCopy`）；水平 `finishSelection` / 垂直 `onGloballyPositioned` 换算选区屏幕锚点；复制走 `LocalClipboardManager`。**仅 PDF，零新增依赖**；`DetectLanguageTest`（4 例）+ 4 个测试 Fake 签名同步；`.\gradlew.bat build` 全绿。**真机验收通过（PKC110 / Android 17 / API 37）**：长按选中弹气泡；英文/中文朗读均验证 `AudioTrack state:started, CONTENT_TYPE_SPEECH`；高亮 Snackbar「已添加高亮」+ 黄色渲染；重复高亮「该位置已有高亮」；复制「已复制」；朗读中退出音频停止；深色主题气泡配色随 `colorScheme`；EPUB 选中/高亮回归正常；三动作 a11y `content-desc` 验证。**验收修复 4 缺陷**：①`AndroidManifest` 缺 `<queries>` TTS_SERVICE → 引擎 not bound 静默无声（加声明）；②`Tts` 初始化未就绪静默失败 → PENDING/READY/FAILED 三态 + 待播队列；③气泡定位缺窗口偏移偏上 220px → `getLocationInWindow`；④选中后看不到选中内容（松手清空选区预览又不落库）→ 选中草稿作为「临时高亮」附加 `annotations` 回放，气泡关闭即移除。证据 `/sdcard/Download/MyReaderTest/m14/{png,xml}/`（9 截图 + 31 dump），本地 `tools/acceptance/verify/m14/`。详见 [docs/m14-plan.md](docs/m14-plan.md) §5.1。
 
@@ -39,7 +40,8 @@
 | M12 | 沉浸模式 + 高亮/笔记（v1.5） | 已完成（A 沉浸模式 7 条真机通过；B 高亮/笔记 Room v3 + 备份 v4，两项低价值项拍板不做） |
 | M13 | 批量操作（多选/批量移动/批量删除） | 已完成（真机验收通过 + `build` 全绿 + 单测/a11y 全绿） |
 | M14 | 文本朗读（选中气泡：朗读/高亮/复制） | 已完成（真机验收 10/10 通过 + `build` 全绿 + 单测全绿；验收修复 3 缺陷） |
-| M15 | 显示偏好（EPUB 字号 + 固定版式默认缩放） | 已完成（真机验收 8/8 通过 + `build` 全绿 + 单测全绿；验收修复 0 缺陷；垂直 EPUB 排版基准变更为视口宽+字号） |
+| M15 | 显示偏好（EPUB 字号 + 固定版式默认缩放） | 已完成（真机验收 8/8 通过 + `build` 全绿 + 单测全绿；验收修复 0 缺陷；垂直 EPUB 排版基准变更为视口宽+字号；字号档位后续调整为 6/8/10/13/16——原 8/9/10 间距过小导致「小↔较小」视觉不可辨） |
+| M16 | 高亮锚点文本化（v2 跨字号/跨排版精确复原） | 已完成（真机验收 4/4 通过 + `build` 全绿；修复 3 缺陷；旧 v1 锚点降级不绘制） |
 
 > 状态取值：未开始 / 进行中 / 已完成。标记「已完成」必须附验收证据（命令输出摘要），并同步更新「下一步」。里程碑任务与验收标准详见 docs/process.md。
 
@@ -66,6 +68,8 @@
 10. **真机验收文件落盘（红线）**：真机验收产生的所有测试文件（截图 / `uiautomator` dump / 日志 / 拉取产物）在设备上一律写入 `/sdcard/Download/MyReaderTest/`（与测试夹具同目录），**禁止散落到 `/sdcard` 根目录或任何其它目录**；收尾只清理本轮临时文件，留档产物按分类子目录保留。本地留档放 `tools/acceptance/verify/`（已被 `.gitignore` 排除），仓库不提交验收截图。内部结构、命名与归位记录见 [docs/acceptance-files.md](docs/acceptance-files.md)；两者冲突时以本条为准
 11. **子模块提交门禁**：改 `third-party/mupdf-android-viewer` 后，子模块新 commit **必须** `git -C third-party/mupdf-android-viewer push fork myreader-patches`（推自己的 fork `czc70159407/mupdf-android-viewer` 的 `myreader-patches` 分支，**不是** `origin` 上游 ArtifexSoftware），并确认主仓 gitlink（`git ls-tree HEAD third-party/mupdf-android-viewer`）与 fork 分支顶端一致——否则 CI 的 `git submodule update --init` 拉不到 gitlink 指向的 commit，编译失败（M12 B/C 阶段曾踩坑：本地 commit 后未 push fork，主仓 gitlink `6785e32` 超前 fork 顶端 `9df85e4`，CI 红，修复即 push fork）
 12. **分支主干与版本 tag**：主干固定为 `main`（仓库默认分支），日常开发切 `dev` 或按里程碑开 `feature/xxx`，完成后合并回 `main`；版本发布须打附注 tag——每次 `versionName`/`versionCode` 升级执行 `git tag -a vX.Y.Z <sha> -m "..."` 并 `git push origin --tags`（tag 名与 `app/build.gradle.kts` 的 `versionName` 一致，如 `v1.5.0`）
+
+13. **真机验收设备状态还原（红线，M15 教训）**：验收涉及修改系统设置（`wm density`、`settings put system user_rotation` / `accelerometer_rotation` / `font_scale` 等）时，**必须在修改前先 `settings get` / `wm density` 记录原值**，验收收尾逐项还原并**复读核对**；涉及显示密度 / 字体大小的改动（直接影响用户全系统字体与 UI 观感），还原后需经用户确认方可断开设备。**禁止在未记录原值的情况下修改任何系统设置**（M15 验收曾改 `wm density` 未记录原值，用户系统字体观感被改动）。**特别警惕：`wm density` 在 ColorOS 上会按密度比例联动改写 `system.font_scale`（实测 560→480 时 1.0 被自动提至 1.15），且 `wm density reset` 不回滚该联动**——还原密度后必须核对 `font_scale` 与 `device_font_scale` 一致并手动还原（M15 实际踩坑：用户字体被联动改至 1.15 未察觉，用户反馈后才 `settings put system font_scale 1.0` 修复）。
 
 ## 常用命令（PowerShell）
 

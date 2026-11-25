@@ -55,7 +55,7 @@ internal fun DisplaySheet(
             }
             Text(
                 text = if (reflowable) {
-                    "字号对 EPUB 生效，调整后重新排版分页"
+                    "当前字号：${fontScale.label} · 字号对 EPUB 生效，调整后重新排版分页"
                 } else {
                     "缩放对 PDF 等固定版式生效，超出屏幕宽度可横向滑动"
                 },

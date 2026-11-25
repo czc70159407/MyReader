@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.FindInPage
+import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -98,6 +99,9 @@ fun ReaderScreen(
     val bookmarksError by viewModel.bookmarksError.collectAsStateWithLifecycle()
     // M12：高亮/笔记（Ready 后持续观察；渲染端回放）
     val annotations by viewModel.annotations.collectAsStateWithLifecycle()
+    // M15：显示偏好（字号 / 缩放，全局持久化；渲染端差分消费）
+    val fontScale by viewModel.fontScale.collectAsStateWithLifecycle()
+    val zoomScale by viewModel.zoomScale.collectAsStateWithLifecycle()
 
     // 进度保底：ON_PAUSE / ON_STOP / 离开组合时即时落库
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -164,6 +168,8 @@ fun ReaderScreen(
             var showOutline by remember { mutableStateOf(false) }
             var showGoTo by remember { mutableStateOf(false) }
             var showAnnotationHub by remember { mutableStateOf(false) }
+            // M15：显示设置面板（字号 / 缩放，按文档类型分派）
+            var showDisplay by remember { mutableStateOf(false) }
             // M12-C1：正在编辑笔记的高亮（null 表示对话框关闭）
             var noteTarget by remember { mutableStateOf<Annotation?>(null) }
             // M12 改色：正在改色的高亮（null 表示对话框关闭）
@@ -251,6 +257,8 @@ fun ReaderScreen(
                             AnnotationDraft(page = it.page, anchor = it.anchor, text = it.text, color = it.color)
                         },
                         activeSelection = selectionMenuTarget?.draft,
+                        fontScale = fontScale,
+                        zoomScale = zoomScale,
                         modifier = Modifier.fillMaxSize(),
                     )
                     // M12 沉浸模式：顶栏 overlay + 淡入淡出——内容区尺寸恒定（不 relayout 不闪）；
@@ -273,6 +281,7 @@ fun ReaderScreen(
                                 onAnnotations = { showAnnotationHub = true },
                                 onOutline = { showOutline = true },
                                 onGoTo = { showGoTo = true },
+                                onDisplay = { showDisplay = true },
                                 onToggleMode = viewModel::toggleMode,
                             ),
                         )
@@ -381,6 +390,16 @@ fun ReaderScreen(
                     },
                 )
             }
+            if (showDisplay) {
+                DisplaySheet(
+                    reflowable = s.reflowable,
+                    fontScale = fontScale,
+                    zoomScale = zoomScale,
+                    onFontScale = viewModel::setFontScale,
+                    onZoomScale = viewModel::setZoomScale,
+                    onDismiss = { showDisplay = false },
+                )
+            }
             // 拖手柄中隐藏菜单（S2a），松手后重弹
             selectionMenuTarget?.takeIf { !isAdjustingSelection }?.let { event ->
                 SelectionMenu(
@@ -421,6 +440,7 @@ private data class ReaderTopBarActions(
     val onAnnotations: () -> Unit,
     val onOutline: () -> Unit,
     val onGoTo: () -> Unit,
+    val onDisplay: () -> Unit,
     val onToggleMode: () -> Unit,
 )
 
@@ -474,6 +494,10 @@ private fun ReaderTopBar(
             }
             IconButton(onClick = actions.onGoTo) {
                 Icon(imageVector = Icons.Filled.FindInPage, contentDescription = "跳页")
+            }
+            // M15 显示设置（字号 / 缩放按文档类型分派）；全局偏好持久化
+            IconButton(onClick = actions.onDisplay) {
+                Icon(imageVector = Icons.Filled.FormatSize, contentDescription = "显示设置")
             }
             // 阅读模式实时切换（M7）：会话内生效不回写偏好；当前进度经 initialProgress 保持
             IconButton(onClick = actions.onToggleMode) {

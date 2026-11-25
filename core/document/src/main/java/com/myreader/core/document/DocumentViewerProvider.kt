@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import com.myreader.core.model.ANNOTATION_COLOR_YELLOW
+import com.myreader.core.model.ReaderFontScale
 import com.myreader.core.model.ReaderMode
+import com.myreader.core.model.ReaderZoomScale
 
 /**
  * M12：高亮/笔记草稿（渲染端选中 → 状态侧落库；状态侧回放 → 渲染端绘制）。
@@ -50,7 +52,11 @@ interface DocumentViewerProvider {
      * @param onSelectionAdjusting 拖动手柄开始/结束（M14 S2a）：true = 开始拖动（菜单收起）、false = 结束（菜单重弹）。
      * @param annotations 已保存的高亮/笔记（渲染端据此回放原生 annotation）；reflowable 暂不消费。
      * @param activeSelection 当前选中的草稿（M14 选中视觉反馈）：非 null 时渲染端按主题色绘制选区 + 手柄，
-     *   null 表示无选中（气泡关闭 / 动作执行 / 翻页后清除）。与 [annotations]（持久高亮）分通道，不落库。 */
+     *   null 表示无选中（气泡关闭 / 动作执行 / 翻页后清除）。与 [annotations]（持久高亮）分通道，不落库。
+     * @param fontScale 阅读字号档位（M15）：仅 reflowable（epub）消费——档位变化触发整书重排，
+     *   页数经 [onPageCountChanged] 上抛；固定版式实现忽略。
+     * @param zoomScale 默认显示缩放档位（M15）：仅固定版式水平模式消费——「适合宽度」基础上的
+     *   放大倍数，refresh（旋转/尺寸变化）后回落该档；reflowable 实现忽略。 */
     @Composable
     @Suppress("LongParameterList")
     fun Content(
@@ -65,6 +71,8 @@ interface DocumentViewerProvider {
         onSelectionAdjusting: (Boolean) -> Unit,
         annotations: List<AnnotationDraft>,
         activeSelection: AnnotationDraft?,
+        fontScale: ReaderFontScale,
+        zoomScale: ReaderZoomScale,
         modifier: Modifier,
     )
 

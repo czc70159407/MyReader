@@ -53,6 +53,7 @@ import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.Document
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.document.TextSelectionEvent
+import com.myreader.core.model.ReaderFontScale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -67,6 +68,15 @@ private val PAGE_SPACING = 4.dp
 /** 占位宽高比（页尺寸未就绪/异常页兜底） */
 private const val PLACEHOLDER_RATIO = 4f / 3f
 
+/** pt 与 px 换算：每英寸 72 点（与 MuPdfReaderView 同值，垂直 relayout 用） */
+private const val POINTS_PER_INCH = 72
+
+/** px → dpi 换算基数：density 1.0 = 160dpi */
+private const val DENSITY_DPI_BASE = 160f
+
+/** 重排排版最小尺寸（pt）：防极小分屏导致页数爆炸/除零（与 MuPdfReaderView 同值） */
+private const val MIN_LAYOUT_PT = 100
+
 /**
  * 垂直连续滚动渲染（M7）：LazyColumn 每页一项，位图经 [VerticalPageLoader] 异步渲染 + 字节预算缓存。
  *
@@ -77,9 +87,9 @@ private const val PLACEHOLDER_RATIO = 4f / 3f
  * [lastEmitted]（page + 项内偏移对）守卫区分「自身滚动回流」（值与最近发射一致则 no-op）与「外部跳页」，
  * 防跳转回环；书签跳转需落到页内偏移，故不能只比 page（M10-D 抓出：仅比 page 会忽略偏移且回写覆盖为 0）。
  *
- * M9 重排（reflowable，如 epub）：进度回调改走 CFI 锚点（[EpubLocationResolver]）；
- * 垂直模式沿用 MuPDFCore 默认固定排版（312×504pt）不 relayout，故 [Document.pageCount] 稳定、
- * LazyColumn 项数不变——重排拟合由水平 ReaderView 承担（见 [MuPdfReaderView]）。
+ * M9 重排（reflowable，如 epub）：进度回调改走 CFI 锚点（[EpubLocationResolver]）。
+ * M15：垂直模式改为「打开 / 换字号时按视口宽 + 字号整书 relayout」——core.layout 保留当前页
+ * remap（与水平模式同机制），页数变化经 [onPageCountChanged] 上抛；位置经 remap 页码保持。
  */
 @Composable
 @Suppress("LongParameterList", "LongMethod")
@@ -87,6 +97,8 @@ internal fun MuPdfVerticalView(
     doc: Document,
     reflowable: Boolean,
     initialProgress: ProgressPayload,
+    fontScale: ReaderFontScale,
+    onPageCountChanged: (Int) -> Unit,
     onProgressChanged: (ProgressPayload) -> Unit,
     onTapContent: () -> Unit,
     onUserScroll: () -> Unit,
@@ -106,6 +118,9 @@ internal fun MuPdfVerticalView(
     val latestTapCallback by rememberUpdatedState(onTapContent)
     val latestScrollCallback by rememberUpdatedState(onUserScroll)
     val resolver = remember(doc) { if (reflowable) EpubLocationResolver((doc as MuPdfDocument).core) else null }
+    // M15：垂直 epub relayout 后页数变化上抛（顶栏分母 / 跳页 clamp 随动）
+    val latestPageCountCallback by rememberUpdatedState(onPageCountChanged)
+    val density = LocalDensity.current
 
     // 初始恢复锚点：重排文档把 Cfi 解析为当前排版页码；页码式取 Page(page/offset)
     // （ProgressPayload 为 data class，remember 按结构相等判定，同内容 payload 不会重复解析）
@@ -126,12 +141,6 @@ internal fun MuPdfVerticalView(
 
     DisposableEffect(doc) {
         onDispose { loader.evictAll() }
-    }
-
-    // 一次性恢复进度（doc 换新会话时重新锚定；模式切换是新组合，天然重执行）
-    LaunchedEffect(doc) {
-        listState.scrollToItem(initPage, initOffsetY)
-        restored = true   // 锚定完成后才放行 snapshotFlow 回写（T4）
     }
 
     // 外部跳页差分：(page, 项内偏移) 变化且非自身滚动回流时，滚到目标锚点并回发实际目标
@@ -173,6 +182,31 @@ internal fun MuPdfVerticalView(
             .background(MaterialTheme.colorScheme.background),
     ) {
         val widthPx = constraints.maxWidth
+
+        // M15：恢复 / 换字号（epub 垂直）。reflowable 先按视口宽 + 字号整书 relayout——
+        // core.layout(currentPage,…) 返回 remap 后页码（与水平模式同机制），完成后锚定新页码；
+        // 换字号时 currentPage 取首可见页，remap 保持阅读位置。页码式直接锚定 (page, offset)。
+        LaunchedEffect(doc, fontScale) {
+            val c = core
+            if (reflowable && c != null) {
+                val dpi = density.density * DENSITY_DPI_BASE
+                val lw = (widthPx * POINTS_PER_INCH / dpi).toInt().coerceAtLeast(MIN_LAYOUT_PT)
+                val lh = (constraints.maxHeight * POINTS_PER_INCH / dpi).toInt().coerceAtLeast(MIN_LAYOUT_PT)
+                val currentPage = if (restored) listState.firstVisibleItemIndex else initPage
+                val remapped = withContext(Dispatchers.Default) {
+                    runCatching { c.layout(currentPage, lw, lh, fontScale.em.toInt()) }
+                        .getOrDefault(currentPage)
+                }
+                // 重排后页点尺寸全变：位图与页尺寸缓存一并失效重建
+                loader.evictAll(invalidatePageSizes = true)
+                val safe = remapped.coerceIn(0, (doc.pageCount - 1).coerceAtLeast(0))
+                listState.scrollToItem(safe, 0)
+                latestPageCountCallback(doc.pageCount)
+            } else {
+                listState.scrollToItem(initPage, initOffsetY)
+            }
+            restored = true   // 锚定完成后才放行 snapshotFlow 回写（T4）
+        }
 
         // 宽度变化（旋转/分屏）：旧宽度位图按 key 自然失配，立即清引用释放内存
         LaunchedEffect(loader, widthPx) { loader.evictAll() }

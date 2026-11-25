@@ -17,6 +17,8 @@ import com.myreader.core.document.EpubProgressCodec
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.PasswordRequiredException
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.ReaderFontScale
+import com.myreader.core.model.ReaderZoomScale
 import com.myreader.core.model.Annotation
 import com.myreader.core.model.AnnotationAddResult
 import com.myreader.core.model.AnnotationType
@@ -735,6 +737,8 @@ class ReaderViewModelTest {
             onSelectionAdjusting: (Boolean) -> Unit,
             annotations: List<AnnotationDraft>,
             activeSelection: AnnotationDraft?,
+            fontScale: ReaderFontScale,
+            zoomScale: ReaderZoomScale,
             modifier: androidx.compose.ui.Modifier,
         ) = Unit
         override suspend fun thumbnail(doc: Document): ImageBitmap = throw UnsupportedOperationException()

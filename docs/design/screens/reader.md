@@ -52,6 +52,7 @@ stateDiagram-v2
 | 浮层 | 形态 | 触发 | 关闭 |
 |---|---|---|---|
 | 大纲 | `ModalBottomSheet` | 顶栏「目录」 | 下滑/点外部/选条目跳页 |
+| 显示设置（M15） | `ModalBottomSheet` | 顶栏「Aa」 | 下滑/点外部 |
 | 跳页 | `AlertDialog` | 顶栏「跳页」 | 取消/跳转 |
 | 密码 | `AlertDialog` | 打开加密文档 | 取消=返回书架 / 打开 |
 | 书签（M10） | `ModalBottomSheet` | 顶栏「书签」 | 下滑/点外部 |
@@ -95,6 +96,14 @@ stateDiagram-v2
 
 - 返回前 flush 进度（`DisposableEffect` + 生命周期观察者双保险）；
 - 密码框取消：先让弹窗离开组合再导航（避免残影）。
+
+### 4.6 显示偏好（M15）
+
+- 顶栏「Aa」（`FormatSize`，CD「显示设置」）→ `DisplaySheet`（`ModalBottomSheet` + `FilterChip` 档位行）：按 `doc.reflowable` 分派——EPUB 显字号 5 档（EM 8/9/10/12/14），PDF/CBZ/XPS 显默认缩放 5 档（1.0×~3.0×，相对适合宽度）。
+- 选择即写**全局偏好**（DataStore，跨会话/跨文档生效），与设置页「显示」分区同源（区别于「模式切换」的会话态）。
+- EPUB 字号：水平经 `scheduleRelayout` 去抖整书 relayout（与尺寸变化同路径，`Dispatchers.Default`）；垂直打开/换字号时 `core.layout(currentPage,…)` remap 后锚定；页数经 `onPageCountChanged` 上抛。
+- PDF 缩放：fork `ReaderView.setDefaultScale` 立即生效（mScale 重置 + requestLayout），refresh（旋转/尺寸变化）后回落该档；pinch 缩放仍为会话内临时值。
+- 顶栏动作 4→5（标注/目录/跳页/显示/模式），360dp 溢出为验收项（§11-10）。
 
 ## 5. 失败页
 

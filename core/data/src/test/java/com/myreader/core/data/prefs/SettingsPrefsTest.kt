@@ -4,7 +4,9 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.myreader.core.model.ReaderFontScale
 import com.myreader.core.model.ReaderMode
+import com.myreader.core.model.ReaderZoomScale
 import com.myreader.core.model.ThemeMode
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -92,5 +94,35 @@ class SettingsPrefsTest {
         val prefs = SettingsPrefs(dataStore)
         assertEquals(ReaderMode.HORIZONTAL, prefs.defaultReaderMode.first())
         assertEquals(ThemeMode.SYSTEM, prefs.themeMode.first())
+    }
+
+    // ---- M15：阅读字号 / 显示缩放 ----
+
+    @Test
+    fun fontScale_defaultsAndRoundTrip() = runTest {
+        val prefs = SettingsPrefs(newDataStore(File(tmp.newFolder(), "fontscale.preferences_pb"), testScheduler))
+        assertEquals(ReaderFontScale.DEFAULT, prefs.readerFontScale.first())
+        prefs.setReaderFontScale(ReaderFontScale.LARGE)
+        assertEquals(ReaderFontScale.LARGE, prefs.readerFontScale.first())
+    }
+
+    @Test
+    fun zoomScale_defaultsAndRoundTrip() = runTest {
+        val prefs = SettingsPrefs(newDataStore(File(tmp.newFolder(), "zoomscale.preferences_pb"), testScheduler))
+        assertEquals(ReaderZoomScale.FIT_WIDTH, prefs.readerZoomScale.first())
+        prefs.setReaderZoomScale(ReaderZoomScale.ZOOM_150)
+        assertEquals(ReaderZoomScale.ZOOM_150, prefs.readerZoomScale.first())
+    }
+
+    @Test
+    fun fontZoom_unknownNames_fallBackToDefaults() = runTest {
+        val dataStore = newDataStore(File(tmp.newFolder(), "fontzoom_badname.preferences_pb"), testScheduler)
+        dataStore.edit {
+            it[stringPreferencesKey("reader_font_scale_name")] = "GARBAGE"
+            it[stringPreferencesKey("reader_zoom_scale_name")] = "GARBAGE"
+        }
+        val prefs = SettingsPrefs(dataStore)
+        assertEquals(ReaderFontScale.DEFAULT, prefs.readerFontScale.first())
+        assertEquals(ReaderZoomScale.FIT_WIDTH, prefs.readerZoomScale.first())
     }
 }

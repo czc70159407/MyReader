@@ -17,13 +17,18 @@ import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.document.TextSelectionEvent
+import com.myreader.core.model.ReaderFontScale
 import com.myreader.core.model.ReaderMode
+import com.myreader.core.model.ReaderZoomScale
 import javax.inject.Inject
 
 /**
  * MuPDF 渲染提供者（@FileTypeKey("pdf") 注册）。
  * thumbnail：首页渲染（导入验证 / 首开兜底），供书架缩略图。
  * Content：阅读器渲染主体——AndroidView 桥接 ReaderView（瓦片渲染 + BitmapPool）。
+ *
+ * M15 显示偏好分派：[fontScale] 仅 reflowable（epub）消费（重排排版字号）；
+ * [zoomScale] 仅固定版式（pdf/cbz/xps）水平模式消费（默认显示缩放）。
  */
 class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
 
@@ -43,6 +48,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
         onSelectionAdjusting: (Boolean) -> Unit,
         annotations: List<AnnotationDraft>,
         activeSelection: AnnotationDraft?,
+        fontScale: ReaderFontScale,
+        zoomScale: ReaderZoomScale,
         modifier: Modifier,
     ) {
         val muDoc = doc as MuPdfDocument
@@ -62,6 +69,8 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 core = muDoc.core,
                 reflowable = reflowable,
                 initialProgress = initialProgress,
+                fontScale = fontScale,
+                zoomScale = zoomScale,
                 onProgressChanged = onProgressChanged,
                 onPageCountChanged = onPageCountChanged,
                 onTapContent = onTapContent,
@@ -74,11 +83,13 @@ class MuPdfViewerProvider @Inject constructor() : DocumentViewerProvider {
                 modifier = modifier,
             )
             // M7 垂直连续滚动：LazyColumn + 自管理位图（只依赖 Document 接口，MuPDF 边界仍在模块内）。
-            // 垂直模式不 relayout（epub 沿用打开时排版，页数恒定），无需页数回调
+            // M15：垂直 epub 亦按字号 relayout（打开 / 换字号），页数变化经 onPageCountChanged 上抛
             ReaderMode.VERTICAL -> MuPdfVerticalView(
                 doc = doc,
                 reflowable = reflowable,
                 initialProgress = initialProgress,
+                fontScale = fontScale,
+                onPageCountChanged = onPageCountChanged,
                 onProgressChanged = onProgressChanged,
                 onTapContent = onTapContent,
                 onUserScroll = onUserScroll,

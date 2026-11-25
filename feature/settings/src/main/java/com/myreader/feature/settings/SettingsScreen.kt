@@ -44,7 +44,9 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.myreader.core.model.DocSort
+import com.myreader.core.model.ReaderFontScale
 import com.myreader.core.model.ReaderMode
+import com.myreader.core.model.ReaderZoomScale
 import com.myreader.core.model.ThemeMode
 
 /**
@@ -64,6 +66,8 @@ fun SettingsScreen(
     val defaultReaderMode by vm.defaultReaderMode.collectAsStateWithLifecycle()
     val themeMode by vm.themeMode.collectAsStateWithLifecycle()
     val docSort by vm.docSort.collectAsStateWithLifecycle()
+    val fontScale by vm.fontScale.collectAsStateWithLifecycle()
+    val zoomScale by vm.zoomScale.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val progress by vm.progress.collectAsStateWithLifecycle()
     val status by vm.status.collectAsStateWithLifecycle()
@@ -167,6 +171,35 @@ fun SettingsScreen(
                     selected = docSort == DocSort.SIZE,
                     onClick = { vm.setDocSort(DocSort.SIZE) },
                 )
+            }
+            // M15：字号（EPUB 重排）与缩放（固定版式）——与阅读器 DisplaySheet 同一偏好
+            SettingsSection(title = "显示") {
+                Text(
+                    text = "字号（EPUB）",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 2.dp),
+                )
+                ReaderFontScale.entries.forEach { scale ->
+                    RadioRow(
+                        label = scale.label,
+                        selected = fontScale == scale,
+                        onClick = { vm.setFontScale(scale) },
+                    )
+                }
+                Text(
+                    text = "缩放（PDF / CBZ / XPS）",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
+                )
+                ReaderZoomScale.entries.forEach { scale ->
+                    RadioRow(
+                        label = scale.label,
+                        selected = zoomScale == scale,
+                        onClick = { vm.setZoomScale(scale) },
+                    )
+                }
             }
             // M8：备份与恢复（导出 library/ + 缩略图 + DB 快照到用户指定 zip；从备份合并式恢复）
             SettingsSection(title = "备份与恢复") {

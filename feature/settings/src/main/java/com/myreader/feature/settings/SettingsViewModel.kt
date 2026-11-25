@@ -6,7 +6,9 @@ import com.myreader.core.data.backup.BackupManager
 import com.myreader.core.data.prefs.LibraryPrefs
 import com.myreader.core.data.prefs.SettingsPrefs
 import com.myreader.core.model.DocSort
+import com.myreader.core.model.ReaderFontScale
 import com.myreader.core.model.ReaderMode
+import com.myreader.core.model.ReaderZoomScale
 import com.myreader.core.model.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -109,9 +111,21 @@ class SettingsViewModel @Inject constructor(
         libraryPrefs.docSort
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DocSort.TITLE)
 
+    /** 阅读字号档位（M15，epub 重排排版字号；与阅读器 DisplaySheet 同源） */
+    val fontScale: StateFlow<ReaderFontScale> =
+        settingsPrefs.readerFontScale
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderFontScale.FALLBACK)
+
+    /** 显示缩放档位（M15，固定版式默认缩放；与阅读器 DisplaySheet 同源） */
+    val zoomScale: StateFlow<ReaderZoomScale> =
+        settingsPrefs.readerZoomScale
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderZoomScale.FALLBACK)
+
     fun setDefaultReaderMode(mode: ReaderMode) = set { settingsPrefs.setDefaultReaderMode(mode) }
     fun setThemeMode(mode: ThemeMode) = set { settingsPrefs.setThemeMode(mode) }
     fun setDocSort(sort: DocSort) = set { libraryPrefs.setDocSort(sort) }
+    fun setFontScale(scale: ReaderFontScale) = set { settingsPrefs.setReaderFontScale(scale) }
+    fun setZoomScale(scale: ReaderZoomScale) = set { settingsPrefs.setReaderZoomScale(scale) }
 
     /** 写偏好：磁盘故障静默降级（偏好维持旧值，无副作用可吞，分工同 LibraryViewModel.setSort） */
     private fun set(block: suspend () -> Unit) {

@@ -21,6 +21,8 @@ import com.myreader.core.document.DocumentEngineRouter
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.OutlineEntry
 import com.myreader.core.document.ProgressPayload
+import com.myreader.core.model.ReaderFontScale
+import com.myreader.core.model.ReaderZoomScale
 import com.myreader.core.document.SimpleDocumentEngineRouter
 import com.myreader.core.model.ReaderMode
 import com.myreader.core.storage.DocumentStorage
@@ -103,6 +105,8 @@ class DirectoryImporterTest {
             onSelectionAdjusting: (Boolean) -> Unit,
             annotations: List<AnnotationDraft>,
             activeSelection: AnnotationDraft?,
+            fontScale: ReaderFontScale,
+            zoomScale: ReaderZoomScale,
             modifier: androidx.compose.ui.Modifier,
         ) = Unit
 

@@ -27,7 +27,9 @@ import com.myreader.core.model.BookmarkAnchorCodec
 import com.myreader.core.model.LibraryItem
 import com.myreader.core.model.MAX_ANNOTATIONS_PER_DOCUMENT
 import com.myreader.core.model.MAX_BOOKMARKS_PER_DOCUMENT
+import com.myreader.core.model.ReaderFontScale
 import com.myreader.core.model.ReaderMode
+import com.myreader.core.model.ReaderZoomScale
 import com.myreader.core.storage.DocumentStorage
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -41,8 +43,10 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -115,6 +119,38 @@ class ReaderViewModel @Inject constructor(
     /** 切换水平/垂直（ReaderScreen 顶栏入口）；当前页经 initialProgress 传递保持 */
     fun toggleMode() {
         _mode.value = if (_mode.value == ReaderMode.HORIZONTAL) ReaderMode.VERTICAL else ReaderMode.HORIZONTAL
+    }
+
+    // ---- 显示偏好（M15）：全局持久化，与设置页「显示」分区同源 ----
+
+    /** 阅读字号档位（epub 重排排版字号）：独立流而非并入 Ready——Ready 变化会触发
+     *  ReaderScreen 的 key(s) 全套会话态重置（理由同 displayPageCount） */
+    val fontScale: StateFlow<ReaderFontScale> =
+        settingsPrefs.readerFontScale
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderFontScale.FALLBACK)
+
+    /** 默认显示缩放档位（固定版式水平模式）：同上独立流 */
+    val zoomScale: StateFlow<ReaderZoomScale> =
+        settingsPrefs.readerZoomScale
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderZoomScale.FALLBACK)
+
+    /** 改字号（DisplaySheet 入口）：写全局偏好；渲染端经流差分触发 relayout */
+    fun setFontScale(scale: ReaderFontScale) = setPref { settingsPrefs.setReaderFontScale(scale) }
+
+    /** 改默认缩放（DisplaySheet 入口）：写全局偏好；渲染端经流差分应用 */
+    fun setZoomScale(scale: ReaderZoomScale) = setPref { settingsPrefs.setReaderZoomScale(scale) }
+
+    /** 写偏好：磁盘故障静默降级（偏好维持旧值，无副作用可吞；分工同 SettingsViewModel.set） */
+    private fun setPref(block: suspend () -> Unit) {
+        viewModelScope.launch {
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // DataStore 写失败（IO/磁盘故障）
+            }
+        }
     }
 
     /** 当前进度（回写事实源）：页码式 [ProgressPayload.Page] 或流式 [ProgressPayload.Cfi]；

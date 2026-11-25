@@ -25,6 +25,8 @@ import com.artifex.mupdf.viewer.ReaderView
 import com.myreader.core.document.AnnotationDraft
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.document.TextSelectionEvent
+import com.myreader.core.model.ReaderFontScale
+import com.myreader.core.model.ReaderZoomScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -34,8 +36,8 @@ import kotlin.math.abs
 /** 连续尺寸变化（分屏拖动分隔条等）静止该时长后才执行一次全量重建 */
 private const val SIZE_SETTLE_DELAY_MS = 150L
 
-/** 重排文档排版字号（pt），与 MuPDFCore 默认 layoutEM 一致 */
-private const val REFLOW_EM = 10
+/** 排版字号兜底（pt，MuPDFCore.layout 的 em 参数为 Int）：appliedFontEm 未就绪时的回退值 */
+private const val DEFAULT_REFLOW_EM = 10
 
 /** pt 与 px 换算：每英寸 72 点 */
 private const val POINTS_PER_INCH = 72
@@ -81,6 +83,10 @@ internal fun argbToRgb(argb: Int): FloatArray = floatArrayOf(
  * M9 重排（reflowable，如 epub）：排版随视口变化 → 页码漂移，故进度改走 CFI 锚点
  * （[EpubLocationResolver]）；尺寸变化时 relayout 到当前视口并把当前页 remap 到新页码，
  * 避免旋转/分屏后白屏或回首页（对齐上游 DocumentActivity.onSizeChanged）。
+ *
+ * M15：[fontScale] 作 reflowable 排版字号——字号变化与尺寸变化走同一去抖 relayout 路径；
+ * [zoomScale] 作固定版式默认缩放（fork ReaderView.setDefaultScale 立即生效，
+ * refresh 后回落该档；pinch 缩放仍是会话内临时值）。
  */
 @Composable
 @Suppress("LongParameterList", "LongMethod")
@@ -88,6 +94,8 @@ internal fun MuPdfReaderView(
     core: MuPDFCore,
     reflowable: Boolean,
     initialProgress: ProgressPayload,
+    fontScale: ReaderFontScale,
+    zoomScale: ReaderZoomScale,
     onProgressChanged: (ProgressPayload) -> Unit,
     onPageCountChanged: (Int) -> Unit,
     onTapContent: () -> Unit,
@@ -132,6 +140,10 @@ internal fun MuPdfReaderView(
             object : ReaderView(ctx) {
                 private var refreshPending: Runnable? = null
                 private var layoutJob: Job? = null
+
+                // M15：当前应生效的排版字号 / 默认缩放（update 块差分维护；NaN = 尚未应用）
+                var appliedFontEm: Float = Float.NaN
+                var appliedZoomFactor: Float = Float.NaN
 
                 // M12 B-1/B-2：文本选择（长按 + 拖动）；选区在 onDraw 绘制，松手创建原生高亮
                 private var selecting = false
@@ -520,45 +532,57 @@ internal fun MuPdfReaderView(
                     // 非重排文档首次布局（oldw<=0）无需重建；重排文档需在首次真实尺寸时排版到视口
                     if (oldw <= 0 && !reflowable) return
                     if (!isAttachedToWindow) return
+                    scheduleRelayout()
+                }
+
+                /** M15：去抖调度一次 relayout（尺寸变化与字号变化共用；重复调度自动互斥）。
+                 *  非 private：update 块（Compose 作用域）在字号差分时调用 */
+                fun scheduleRelayout() {
                     refreshPending?.let(::removeCallbacks)
-                    layoutJob?.cancel()
                     refreshPending = Runnable {
                         refreshPending = null
                         if (!isAttachedToWindow) return@Runnable
-                        val target = mCurrent
-                        if (reflowable && w > 0 && h > 0) {
-                            // relayout 到当前视口（pt = px * 72 / dpi），并把当前页 remap 到新页码
-                            val dpi = resources.displayMetrics.densityDpi.coerceAtLeast(1)
-                            // 钳最小排版尺寸，防极小分屏导致页数爆炸/除零（M9 review S4）
-                            val lw = (w * POINTS_PER_INCH / dpi).coerceAtLeast(MIN_LAYOUT_PT)
-                            val lh = (h * POINTS_PER_INCH / dpi).coerceAtLeast(MIN_LAYOUT_PT)
-                            // 整书重排放后台线程执行，避免阻塞 UI（EPUB 整书秒级重排 → ANR 风险）；
-                            // 完成后再回主线程 remap 当前页并 refresh。
-                            // 注意：rememberCoroutineScope 默认调度器是 Compose 主线程，必须显式指定
-                            // Default，否则重排会回到主线程（review 修正）
-                            layoutJob = scope.launch(Dispatchers.Default) {
-                                val remapped = runCatching {
-                                    core.layout(target, lw, lh, REFLOW_EM)
-                                }.getOrDefault(target)
-                                withContext(Dispatchers.Main) {
-                                    if (!isAttachedToWindow) return@withContext
-                                    // 越界钳制，防止 layout 返回超界值导致整屏空白（M9 review M2）
-                                    val safe = remapped.coerceIn(0, core.countPages() - 1)
-                                    if (safe != mCurrent) {
-                                        onMoveOffChild(mCurrent)
-                                        mCurrent = safe
-                                        onMoveToChild(safe)
-                                    }
-                                    refresh()
-                                    // relayout 后页数已变（可能增减）：上抛实时页数，
-                                    // 顶栏分母/跳页弹窗/大纲 clamp 随动（T3，修复 Ready 快照过时）
-                                    latestPageCountCallback(core.countPages())
-                                }
-                            }
-                        } else {
-                            refresh()
-                        }
+                        relayoutToViewport()
                     }.also { postDelayed(it, SIZE_SETTLE_DELAY_MS) }
+                }
+
+                /** M15：按当前视口 + 当前字号 relayout（reflowable）；页码式仅 refresh 重建子视图。
+                 *  整书重排放后台线程（EPUB 整书秒级 → ANR 风险），完成后回主线程 remap 当前页。 */
+                private fun relayoutToViewport() {
+                    if (!isAttachedToWindow) return
+                    layoutJob?.cancel()
+                    if (reflowable && width > 0 && height > 0) {
+                        // relayout 到当前视口（pt = px * 72 / dpi），并把当前页 remap 到新页码
+                        val dpi = resources.displayMetrics.densityDpi.coerceAtLeast(1)
+                        // 钳最小排版尺寸，防极小分屏导致页数爆炸/除零（M9 review S4）
+                        val lw = (width * POINTS_PER_INCH / dpi).coerceAtLeast(MIN_LAYOUT_PT)
+                        val lh = (height * POINTS_PER_INCH / dpi).coerceAtLeast(MIN_LAYOUT_PT)
+                        val target = mCurrent
+                        val em = if (appliedFontEm.isNaN()) DEFAULT_REFLOW_EM else appliedFontEm.toInt()
+                        // 注意：rememberCoroutineScope 默认调度器是 Compose 主线程，必须显式指定
+                        // Default，否则重排会回到主线程（review 修正）
+                        layoutJob = scope.launch(Dispatchers.Default) {
+                            val remapped = runCatching {
+                                core.layout(target, lw, lh, em)
+                            }.getOrDefault(target)
+                            withContext(Dispatchers.Main) {
+                                if (!isAttachedToWindow) return@withContext
+                                // 越界钳制，防止 layout 返回超界值导致整屏空白（M9 review M2）
+                                val safe = remapped.coerceIn(0, core.countPages() - 1)
+                                if (safe != mCurrent) {
+                                    onMoveOffChild(mCurrent)
+                                    mCurrent = safe
+                                    onMoveToChild(safe)
+                                }
+                                refresh()
+                                // relayout 后页数已变（可能增减）：上抛实时页数，
+                                // 顶栏分母/跳页弹窗/大纲 clamp 随动（T3，修复 Ready 快照过时）
+                                latestPageCountCallback(core.countPages())
+                            }
+                        }
+                    } else {
+                        refresh()
+                    }
                 }
 
                 override fun onDetachedFromWindow() {
@@ -581,6 +605,16 @@ internal fun MuPdfReaderView(
             view.replayAnnotations(annotations)
             // M14 选中视觉反馈：同步选中草稿 + 主题色（选区随 primary）
             view.applySelection(activeSelection, selectionColor)
+            // M15 字号：变化 → 去抖 relayout（reflowable；与尺寸变化同一 scheduleRelayout 路径）
+            if (view.appliedFontEm != fontScale.em) {
+                view.appliedFontEm = fontScale.em
+                view.scheduleRelayout()
+            }
+            // M15 默认缩放：固定版式差分应用（fork setDefaultScale 立即生效 + requestLayout）
+            if (!reflowable && view.appliedZoomFactor != zoomScale.factor) {
+                view.appliedZoomFactor = zoomScale.factor
+                view.setDefaultScale(zoomScale.factor)
+            }
         },
         modifier = modifier,
     )

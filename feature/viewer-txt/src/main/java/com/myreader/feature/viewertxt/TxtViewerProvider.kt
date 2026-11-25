@@ -27,7 +27,9 @@ import com.myreader.core.document.Document
 import com.myreader.core.document.DocumentViewerProvider
 import com.myreader.core.document.ProgressPayload
 import com.myreader.core.document.TextSelectionEvent
+import com.myreader.core.model.ReaderFontScale
 import com.myreader.core.model.ReaderMode
+import com.myreader.core.model.ReaderZoomScale
 import kotlinx.coroutines.flow.distinctUntilChanged
 import javax.inject.Inject
 
@@ -57,6 +59,8 @@ class TxtViewerProvider @Inject constructor() : DocumentViewerProvider {
         onSelectionAdjusting: (Boolean) -> Unit,
         annotations: List<AnnotationDraft>,
         activeSelection: AnnotationDraft?,
+        fontScale: ReaderFontScale,
+        zoomScale: ReaderZoomScale,
         modifier: Modifier,
     ) {
         val txtDoc = doc as? TxtDocument

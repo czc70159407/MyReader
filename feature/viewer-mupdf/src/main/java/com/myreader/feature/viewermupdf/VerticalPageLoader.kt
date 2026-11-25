@@ -75,9 +75,11 @@ internal class VerticalPageLoader(
         }
     }
 
-    /** 清位图缓存引用（宽度变化/离场时）；pageSizes 保留（点尺寸与宽度无关） */
-    fun evictAll() {
+    /** 清位图缓存引用（宽度变化/离场时）；pageSizes 保留（点尺寸与宽度无关）。
+     *  [invalidatePageSizes]：字号重排后页点尺寸失配（M15 垂直 epub relayout），需一并清空重建。 */
+    fun evictAll(invalidatePageSizes: Boolean = false) {
         cache.evictAll()
+        if (invalidatePageSizes) pageSizes.clear()
     }
 
     /** 已持锁前提下取页尺寸（map 命中或 native 拉取并缓存；异常 0 尺寸不缓存，下次重试） */

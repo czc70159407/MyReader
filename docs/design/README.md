@@ -20,6 +20,7 @@
 | [components/cards.md](components/cards.md) | 文件夹卡 / 文档卡 / 最近阅读卡 / 角标 | 改书架卡片 |
 | [components/dialogs.md](components/dialogs.md) | 8 类弹窗规格与通用规则 | 改/加弹窗 |
 | [components/states.md](components/states.md) | 加载 / 空 / 错误全量矩阵 | 任一页面状态设计 |
+| [components/font-size-sheet.md](components/font-size-sheet.md) | 显示设置面板（字号 / 缩放档位控件 + 无障碍 + 适配） | 改字号 / 缩放调节 |
 | [screens/library.md](screens/library.md) | 书架页与搜索态 | 改书架 |
 | [screens/reader.md](screens/reader.md) | 阅读器（状态机、顶栏、跳页、大纲、失败页） | 改阅读器 |
 | [screens/settings.md](screens/settings.md) | 设置页（四分区 + 备份恢复） | 改设置 |
@@ -29,6 +30,7 @@
 | [flows/move-and-delete.md](flows/move-and-delete.md) | 移动防环、删除后果 | 改目录操作 |
 | [flows/backup-restore.md](flows/backup-restore.md) | 备份导出 / 恢复（含二次确认） | 改备份 |
 | [flows/bookmark-m10.md](flows/bookmark-m10.md) | M10 章节级书签（设计预留） | 执行 M10 前 |
+| [flows/font-size.md](flows/font-size.md) | EPUB 阅读字号（PRD：目标/场景/交互/边界/验收） | 改字号需求或验收 |
 
 ## 决策日志
 
@@ -45,6 +47,7 @@
 | D9 | 组件交互状态六态模型 | 统一为 `默认/悬停/按下/禁用/加载/错误`；悬停不承载信息，仅指针设备增强 | `interaction.md` §2 |
 | D10 | 反馈四级载体 | `L1 就近内联 / L2 页面 / L3 Snackbar / 确认对话框`，与 `copy.md` 级别列同口径 | `interaction.md` §3 |
 | D11 | 图标 / 启动画面是否引入品牌色 | **路线 C：图标资源色独立于 UI 主题**。launcher / splash 用深墨绿 `#103D2C` + 奶油白 `#F5F1E4` 实心「打开的书」，仅存于 `res` 资源层；UI 主题仍为 Material3 默认色板、不进 `colorScheme`、不随深浅色切换 | `tokens.md` §1.1 |
+| D12 | 阅读字号调节方式（档位 vs 连续滑杆） | **离散 5 档**（EM 6/8/10/13/16），非微信读书式连续滑杆——整书重排为 O(全书) 操作，连续拖动致海量重排 ANR；相邻档视觉差 ≥23% 保证可辨；标准=EM10 与 MuPDF 默认排版对齐零回归 | `flows/font-size.md` §3.2、`components/font-size-sheet.md` §3 |
 
 ## 交付状态
 

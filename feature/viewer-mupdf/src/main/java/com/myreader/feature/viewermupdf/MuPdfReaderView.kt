@@ -115,6 +115,8 @@ internal fun MuPdfReaderView(
     val latestScrollCallback by rememberUpdatedState(onUserScroll)
     // M12 高亮/笔记：选中完成回调（归一化锚点草稿）
     val latestSelectionCallback by rememberUpdatedState(onTextSelected)
+    // M14：点空白清选中气泡（需读取最新选中态）
+    val latestActiveSelection by rememberUpdatedState(activeSelection)
     // M14 S2a：拖手柄开始/结束（菜单收起/重弹）
     val latestAdjustingCallback by rememberUpdatedState(onSelectionAdjusting)
     val adapterRef = remember { mutableStateOf<PageAdapter?>(null) }
@@ -509,10 +511,15 @@ internal fun MuPdfReaderView(
                     latestCallback(payload)
                 }
 
-                // M12 沉浸模式：中间区点按 → 切换顶栏（边缘区仍翻页，上游自行处理不回调）
+                // M12 沉浸模式：中间区点按 → 切换顶栏（边缘区仍翻页，上游自行处理不回调）；
+                // M14：有选中气泡时，点空白只清除气泡（上报 null），不切换顶栏
                 override fun onTapMainDocArea() {
                     super.onTapMainDocArea()
-                    latestTapCallback()
+                    if (latestActiveSelection != null) {
+                        latestSelectionCallback(null)
+                    } else {
+                        latestTapCallback()
+                    }
                 }
 
                 // M12 沉浸模式：拖动 / 滚动 / 缩放 → 隐藏顶栏

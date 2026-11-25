@@ -93,7 +93,7 @@ private const val MIN_LAYOUT_PT = 100
  * remap（与水平模式同机制），页数变化经 [onPageCountChanged] 上抛；位置经 remap 页码保持。
  */
 @Composable
-@Suppress("LongParameterList", "LongMethod")
+@Suppress("LongParameterList", "LongMethod", "CyclomaticComplexMethod")
 internal fun MuPdfVerticalView(
     doc: Document,
     reflowable: Boolean,
@@ -121,6 +121,9 @@ internal fun MuPdfVerticalView(
     val resolver = remember(doc) { if (reflowable) EpubLocationResolver((doc as MuPdfDocument).core) else null }
     // M15：垂直 epub relayout 后页数变化上抛（顶栏分母 / 跳页 clamp 随动）
     val latestPageCountCallback by rememberUpdatedState(onPageCountChanged)
+    // M14：点空白清选中气泡（选中回调 + 当前选中态都取最新引用）
+    val latestSelectCallback by rememberUpdatedState(onTextSelected)
+    val latestActiveSelection by rememberUpdatedState(activeSelection)
     val density = LocalDensity.current
 
     // 初始恢复锚点：重排文档把 Cfi 解析为当前排版页码；页码式取 Page(page/offset)
@@ -227,8 +230,19 @@ internal fun MuPdfVerticalView(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                // M12 沉浸模式：静止点按 → 切换顶栏（滚动会取消 tap，无手势冲突）
-                .pointerInput(Unit) { detectTapGestures(onTap = { latestTapCallback() }) },
+                // M12 沉浸模式：静止点按 → 切换顶栏（滚动会取消 tap，无手势冲突）；
+                // M14：有选中气泡时，点空白只清除气泡（上报 null），不切换顶栏
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onTap = {
+                            if (latestActiveSelection != null) {
+                                latestSelectCallback(null)
+                            } else {
+                                latestTapCallback()
+                            }
+                        },
+                    )
+                },
         ) {
             items(doc.pageCount) { page ->
                 VerticalPageItem(
@@ -287,9 +301,10 @@ private fun VerticalPageItem(
     activeSelection: AnnotationDraft?,
     selectionColor: Color,
 ) {
-    // 页点尺寸：异步获取；成功结果由 loader 跨重组/跨宽度缓存（防滚动中高度抖动）
-    var pageSize by remember(page) { mutableStateOf<Size?>(null) }
-    LaunchedEffect(loader, page) {
+    // 页点尺寸：异步获取；成功结果由 loader 跨重组/跨宽度缓存（防滚动中高度抖动）。
+    // M16：layoutEpoch 重排代次入 key——字号重排后必须重新取尺寸，否则坐标换算用旧排版导致选错位置
+    var pageSize by remember(page, layoutEpoch) { mutableStateOf<Size?>(null) }
+    LaunchedEffect(loader, page, layoutEpoch) {
         pageSize = try {
             loader.pageSize(page)
         } catch (e: CancellationException) {
@@ -299,10 +314,11 @@ private fun VerticalPageItem(
         }
     }
 
-    // 位图：先同步查缓存（命中免占位闪烁），未命中异步渲染
-    var bitmap by remember(page, widthPx) { mutableStateOf(loader.cachedBitmap(page, widthPx)) }
-    var loadFailed by remember(page, widthPx) { mutableStateOf(false) }
-    LaunchedEffect(loader, page, widthPx) {
+    // 位图：先同步查缓存（命中免占位闪烁），未命中异步渲染。
+    // M16：layoutEpoch 入 key——重排后必须重渲染，否则显示旧排版位图（与文本结构错位）
+    var bitmap by remember(page, widthPx, layoutEpoch) { mutableStateOf(loader.cachedBitmap(page, widthPx)) }
+    var loadFailed by remember(page, widthPx, layoutEpoch) { mutableStateOf(false) }
+    LaunchedEffect(loader, page, widthPx, layoutEpoch) {
         if (bitmap == null) {
             loadFailed = false
             bitmap = try {
@@ -387,7 +403,7 @@ private fun VerticalPageItem(
             val result = selectQuads(core, page, start, end, sx, sy, ptWidth, ptHeight)
             if (result != null && result.quads.isNotEmpty()) {
                 // M16：reflowable 优先存文本指纹锚点 v2（换字号/旋转后可重建）；不可用时回落 v1
-                val anchorJson = buildAnchorV2(core, page, result.text)
+                val anchorJson = buildAnchorV2(core, page, result.text, result.quads.firstOrNull())
                     ?: AnnotationAnchorCodec.encodeNormalized(result.quads)
                 val draft = AnnotationDraft(
                     page = page,
@@ -548,8 +564,8 @@ private fun resolveV2Quads(
     ptHeight: Float,
 ): Sequence<Pair<FloatArray, Int>> {
     if (core == null || ptWidth <= 0f || ptHeight <= 0f) return emptySequence()
-    val raw = runCatching { core.findTextQuads(page, v2.quote, v2.pre, v2.post) }.getOrNull()
-        ?: return emptySequence()
+    val raw = runCatching { core.findTextQuads(page, v2.quote, v2.pre, v2.post, v2.hintX, v2.hintY) }
+        .getOrNull() ?: return emptySequence()
     return raw.asSequence().map { q ->
         floatArrayOf(
             q.ul_x / ptWidth, q.ul_y / ptHeight,
@@ -574,7 +590,7 @@ private fun resolveV1Quads(core: MuPDFCore?, a: AnnotationDraft): Sequence<Pair<
  * quote 取「当前页文本中匹配到的实际子串」，保证重建时能在页文本内命中。
  */
 @Suppress("ReturnCount")
-private fun buildAnchorV2(core: MuPDFCore?, page: Int, quoteText: String): String? {
+private fun buildAnchorV2(core: MuPDFCore?, page: Int, quoteText: String, hintQuad: FloatArray?): String? {
     if (core == null || !core.isReflowable()) return null
     // M16：与 fork findTextQuads 的 squash 空间一致——删除全部空白
     val normalized = quoteText.replace(Regex("\\s+"), "")
@@ -589,7 +605,11 @@ private fun buildAnchorV2(core: MuPDFCore?, page: Int, quoteText: String): Strin
     } else {
         null
     }
-    return AnnotationAnchorV2Codec.encode(loc[0], loc[1], quote, pre, post)
+    // M16：位置提示 = 选区首字符归一化坐标（result.quads 已是归一化 8 值）——
+    // 本书每段文本完全相同，纯文本无法区分多处命中，位置提示是唯一可靠消歧手段
+    val hintX = hintQuad?.get(0) ?: 0f
+    val hintY = hintQuad?.get(1) ?: 0f
+    return AnnotationAnchorV2Codec.encode(loc[0], loc[1], quote, pre, post, hintX, hintY)
 }
 
 /** 选择结果：归一化 quads（每项 8 个 0..1 值）+ 选中文本快照 */

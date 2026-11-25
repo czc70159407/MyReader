@@ -33,6 +33,9 @@ object AnnotationAnchorV2Codec {
         val q: String,
         val pre: String? = null,
         val post: String? = null,
+        /** 位置提示：quote 首字符的归一化左上坐标（多处同文命中时消歧；0,0 = 无提示） */
+        val nx: Float = 0f,
+        val ny: Float = 0f,
     )
 
     /** 解码结果（对外只读视图） */
@@ -42,18 +45,23 @@ object AnnotationAnchorV2Codec {
         val quote: String,
         val pre: String?,
         val post: String?,
+        val hintX: Float,
+        val hintY: Float,
     )
 
     /**
      * 编码。quote 空串 / Location 分量非法时返回 null（调用方回落 v1 或不落库）；
      * pre 截取尾部、post 截取头部各 ≤20 字符。
      */
+    @Suppress("LongParameterList")   // 锚点字段语义化展开，参数对象化会降低可读性（同项目先例）
     fun encode(
         chapter: Int,
         pageInChapter: Int,
         quote: String,
         pre: String? = null,
         post: String? = null,
+        hintX: Float = 0f,
+        hintY: Float = 0f,
     ): String? {
         val q = quote.trim()
         if (q.isEmpty() || chapter < 0 || pageInChapter < 0) return null
@@ -66,6 +74,8 @@ object AnnotationAnchorV2Codec {
                 q = q,
                 pre = pre?.trim()?.takeLast(CONTEXT_MAX)?.takeIf { it.isNotEmpty() },
                 post = post?.trim()?.take(CONTEXT_MAX)?.takeIf { it.isNotEmpty() },
+                nx = hintX.coerceIn(0f, 1f),
+                ny = hintY.coerceIn(0f, 1f),
             ),
         )
     }
@@ -87,6 +97,8 @@ object AnnotationAnchorV2Codec {
             quote = payload.q,
             pre = payload.pre?.takeIf { it.isNotBlank() },
             post = payload.post?.takeIf { it.isNotBlank() },
+            hintX = payload.nx.coerceIn(0f, 1f),
+            hintY = payload.ny.coerceIn(0f, 1f),
         )
     }
 }
